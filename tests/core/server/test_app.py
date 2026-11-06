@@ -106,7 +106,7 @@ def test_shutdown_delegates_to_orchestrator(mocker) -> None:
 
 
 def test_mcp_has_tools_registered_after_import() -> None:
-    """All five register_* fns ran. We can't easily inspect MCPServer's
+    """The registration functions ran. We can't easily inspect MCPServer's
     internal route table here, but we can confirm at least one of the
     tool functions is callable on the mcp instance via the public
     interface (the routes were wired before any test ran)."""
@@ -125,16 +125,18 @@ def test_register_modules_imported() -> None:
     in a fake."""
     from physiclaw.core.server import app
     from physiclaw.core.server.bridge import register as bridge_register
-    from physiclaw.core.server.calibration import (
-        register as calibration_register,
-    )
-    from physiclaw.core.server.hardware import register as hardware_register
     from physiclaw.core.server.tools import register as tools_register
     from physiclaw.core.server.watch import register as watch_register
+    from physiclaw.core.setup.calibration_routes import (
+        register as calibration_register,
+    )
+    from physiclaw.core.setup.completion_routes import register as completion_register
+    from physiclaw.core.setup.hardware_routes import register as hardware_register
 
     # Module-private names are stable enough to introspect.
     assert app._register_bridge is bridge_register
     assert app._register_calibration is calibration_register
     assert app._register_hardware is hardware_register
+    assert app._register_completion is completion_register
     assert app._register_tools is tools_register
     assert app._register_watch is watch_register

@@ -1,7 +1,4 @@
-"""Tests for `physiclaw.core.server.hardware` — hardware setup route registration.
-
-Named with the `server_` prefix to avoid a basename collision with
-`tests/cli/setup/test_hardware.py`.
+"""Tests for `physiclaw.core.setup.hardware_routes` — hardware setup route registration.
 
 `fake_mcp` and `async_request` fixtures live in `conftest.py`.
 """
@@ -12,7 +9,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from physiclaw.core.server import hardware as hw_reg
+from physiclaw.core.setup import hardware_routes as hw_reg
 
 
 def test_hardware_register_wires_all_routes(fake_mcp) -> None:
@@ -21,7 +18,6 @@ def test_hardware_register_wires_all_routes(fake_mcp) -> None:
     by_path = {(p, ms[0]) for p, ms, _ in fake_mcp.routes}
     assert by_path == {
         ("/setup-hardware", "GET"),
-        ("/api/status", "GET"),
         ("/api/connect-arm", "POST"),
         ("/api/connect-camera", "POST"),
         ("/api/disconnect-camera", "POST"),
@@ -37,7 +33,6 @@ async def test_hardware_routes_forward_to_handlers(
 ) -> None:
     spies = {
         "handle_setup_page": mocker.patch.object(hw_reg, "handle_setup_page"),
-        "handle_status": mocker.patch.object(hw_reg, "handle_status"),
         "handle_connect_arm": mocker.patch.object(hw_reg, "handle_connect_arm"),
         "handle_connect_camera": mocker.patch.object(hw_reg, "handle_connect_camera"),
         "handle_camera_preview": mocker.patch.object(hw_reg, "handle_camera_preview"),
@@ -55,9 +50,6 @@ async def test_hardware_routes_forward_to_handlers(
     req = async_request()
     await fake_mcp.get("/setup-hardware")(req)
     spies["handle_setup_page"].assert_called_once_with(req)
-
-    await fake_mcp.get("/api/status")(req)
-    spies["handle_status"].assert_called_once_with(req, pl)
 
     await fake_mcp.get("/api/connect-arm", "POST")(req)
     spies["handle_connect_arm"].assert_called_once_with(req, pl)

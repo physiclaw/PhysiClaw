@@ -17,12 +17,13 @@ import threading
 from contextlib import contextmanager
 
 from physiclaw.common import paths
+from physiclaw.common.logger.evidence import OperationRecorder
 from physiclaw.common.text import read_text
 from physiclaw.core.bridge import BridgeState
 from physiclaw.core.calibration import PARK_PCT, Calibration, ScreenTransforms
 from physiclaw.core.hardware.arm import StylusArm
 from physiclaw.core.hardware.camera import Camera
-from physiclaw.core.hardware.iphone import AssistiveTouch
+from physiclaw.core.hardware.iphone import SCREENSHOT_TIMEOUT_SECONDS, AssistiveTouch
 
 log = logging.getLogger(__name__)
 
@@ -71,6 +72,7 @@ class HardwareRig:
         self._ready = False  # set True only after /setup finishes its last step
         # Does the GRBL work frame match `calibration`'s affine? See park().
         self._origin_pinned = False
+        self.setup_recording: OperationRecorder | None = None
 
     # ─── Wiring ──────────────────────────────────────────────
 
@@ -525,7 +527,9 @@ class HardwareRig:
     # wiring lives here and callers never unpack it. Caller must hold
     # the hardware lock.
 
-    def take_screenshot(self, timeout: float = 60.0) -> bytes | None:
+    def take_screenshot(
+        self, timeout: float = SCREENSHOT_TIMEOUT_SECONDS
+    ) -> bytes | None:
         """Trigger the iOS capture-and-upload Shortcut via AssistiveTouch;
         return the uploaded image bytes, or None on upload timeout."""
         self.assert_locked()

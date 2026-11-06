@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#16151a">
 <title>PhysiClaw · Hardware Setup</title>
-<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+<script src="/assets/qrcode-1.4.4.min.js"></script>
 <style>
 :root{
   /* Warm graphite neutrals — a calm, professional base that pairs
@@ -554,7 +554,7 @@ const $ = (h) => { const t = document.createElement("template"); t.innerHTML = h
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 function renderQR(canvas, text) {
-  if (typeof qrcode === "undefined") return false;  // CDN blocked / offline
+  if (typeof qrcode === "undefined") return false;  // local QR asset unavailable
   const qr = qrcode(0, "M");
   qr.addData(text);
   qr.make();

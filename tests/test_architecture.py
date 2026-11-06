@@ -128,6 +128,33 @@ def test_common_is_a_leaf() -> None:
     assert not bad, "common must not import core or agent:\n" + "\n".join(bad)
 
 
+def test_reusable_core_layers_do_not_depend_on_setup_feature() -> None:
+    violations = [
+        violation
+        for package in (
+            "core/hardware",
+            "core/calibration",
+            "core/bridge",
+            "core/orchestration",
+        )
+        for violation in _violations(package, "physiclaw.core.setup")
+    ]
+
+    assert not violations, "Reusable core layers must not import setup:\n" + "\n".join(
+        violations
+    )
+
+
+def test_setup_does_not_import_server_assembly_or_client_cli() -> None:
+    violations = _violations("core/setup", "physiclaw.core.server") + _violations(
+        "core/setup", "physiclaw.cli"
+    )
+
+    assert not violations, (
+        "Setup must stay independent of assembly and clients:\n" + "\n".join(violations)
+    )
+
+
 def test_decision_contract_and_base_are_vendor_and_chat_independent() -> None:
     """Vendor wiring belongs at the registry composition root, not in DTOs."""
     for relative in ("contract/decision.py", "provider/decision/base.py"):

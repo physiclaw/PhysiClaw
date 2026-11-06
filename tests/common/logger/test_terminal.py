@@ -80,7 +80,8 @@ async def test_camera_advice_reaches_setup_and_diagnostics_only(
 ):
     import numpy as np
 
-    from physiclaw.core.calibration import camera_frame, handler
+    from physiclaw.core.calibration import camera_frame
+    from physiclaw.core.setup import calibration_handlers as handler
     from tests.core.conftest import stream_request, wire_locked
 
     if mode == "json":

@@ -10,6 +10,7 @@ import math
 import threading
 import time
 
+from physiclaw.common.logger.evidence import record_event
 from physiclaw.core import geometry
 from physiclaw.core.geometry import (
     AT_CSS_X,
@@ -128,6 +129,7 @@ class CalibrationState:
             self._touch_event.clear()
             if phase == "assistive_touch":
                 self._screenshot_nonce = nonce
+        record_event("phone.phase_requested", command=self.get_state())
 
     def touch_token(self) -> int | None:
         """Capture an active touch collection before awaiting an HTTP request body."""

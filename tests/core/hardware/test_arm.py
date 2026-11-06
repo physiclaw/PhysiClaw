@@ -684,6 +684,21 @@ def test_tap_strikes_solenoid(mocker) -> None:
     assert b"G4 P0.2" in written  # spring-rebound dwell before any next move
 
 
+def test_tap_uses_requested_contact_duration(mocker) -> None:
+    arm, fake = _arm(
+        mocker,
+        responses=[b"ok\n"] * 4,
+        status_replies=[b"<Idle|WPos:0,0>\n"],
+    )
+
+    arm.tap(duration=0.15)
+
+    written = b"".join(fake.writes)
+    assert b"G4 P0.15" in written
+    assert b"M5" in written
+    assert b"G4 P0.2" in written
+
+
 def test_double_tap_fires_two_strikes(mocker) -> None:
     arm, fake = _arm(
         mocker,

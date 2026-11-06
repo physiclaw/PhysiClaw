@@ -34,6 +34,7 @@ Layout::
         ├── server.log                   (hardware/MCP diagnostics)
         ├── runtime.log                  (agent diagnostics)
         ├── studio.log                   (Studio diagnostics)
+        ├── setup/<run-id>/{run.json, summary.json, events.jsonl, steps/}
         ├── archive/<service>.log.<1-5>   (bounded older service logs)
         ├── session-stats.jsonl           (one summary per completed session)
         ├── sessions/{README.md, <sid>/{summary.json, events.jsonl, model.jsonl,
@@ -584,6 +585,11 @@ def sessions_dir() -> Path:
     """Per-session artifact dirs: sessions/<sid>/{events.jsonl, model.jsonl,
     summary.json, images/}."""
     return LOG_DIR / "sessions"
+
+
+def setup_log_dir() -> Path:
+    """Server-owned setup runs, named YYYYMMDD-HHMMSS-<6 hex digits>."""
+    return LOG_DIR / "setup"
 
 
 def active_session_marker() -> Path:

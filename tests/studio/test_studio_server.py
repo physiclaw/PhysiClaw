@@ -1,5 +1,5 @@
 """Tests for `physiclaw.studio.server` — the HTTP marshalling layer,
-handlers called directly (the `hardware_setup` test convention)."""
+handlers called directly (the `core.setup.hardware_handlers` test convention)."""
 
 from __future__ import annotations
 

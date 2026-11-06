@@ -18,6 +18,7 @@ import cv2
 import numpy as np
 
 from physiclaw.common.config import CONFIG
+from physiclaw.common.logger.evidence import record_event
 from physiclaw.core.bridge import CalibrationState
 from physiclaw.core.calibration._common import (
     grid_positions,
@@ -64,6 +65,14 @@ def _detect_screen_region(cam: Camera, rotation: int) -> np.ndarray | None:
     poly = screen_polygon(corners, margin=margin) if len(corners) == 4 else None
     if poly is not None and (len(poly) != 4 or cv2.contourArea(poly) <= 0):
         poly = None
+    record_event(
+        "camera.screen_region",
+        rotation=rotation,
+        corners=corners,
+        polygon=poly,
+        margin_px=margin,
+        gate_active=poly is not None,
+    )
     log.info(
         f"  Screen corners: detected {len(corners)} "
         f"→ {'polygon gate active' if poly is not None else 'no gate (need 4 corners)'}"
@@ -117,6 +126,12 @@ def _pin_focus(cam: Camera, rotation: int, poly: np.ndarray | None) -> float | N
             return None
         gray = grayscale(region)
         score = laplacian_variance(gray)
+        record_event(
+            "camera.focus_meter",
+            sharpness=score,
+            screen_polygon=poly,
+            crop_shape=list(region.shape),
+        )
         # The caller reports the focus verdict after metering.
         # Guarded: the full-res median costs more than the (downscaled)
         # sharpness measurement it decorates.
@@ -129,10 +144,12 @@ def _pin_focus(cam: Camera, rotation: int, poly: np.ndarray | None) -> float | N
         return score
 
     bounds = cam.focus_search_range
+    record_event("camera.focus_search", bounds=bounds)
     if bounds is None:
         log.info("  Manual focus range unavailable — no position saved")
         return None
     value = focus.search(bounds, meter, cam.apply_focus, cam.unlock_focus)
+    record_event("camera.focus_result", value=value, pinned=cam.focus_pinned)
     if value is None or not cam.focus_pinned:
         cam.unlock_focus()
         log.warning(
@@ -283,6 +300,16 @@ def _detect_grid_mapping(
         frame = cv2.rotate(f, rotation) if rotation >= 0 else f
         dots = detect_red_dots(_mask_outside(frame, screen_poly), expected=expected)
         last_dots = len(dots)
+        record_event(
+            "camera.grid_detection",
+            capture_attempt=attempt + 1,
+            expected_dots=expected,
+            detected_dots=dots,
+            detected_count=len(dots),
+            rotation=rotation,
+            screen_polygon=screen_poly,
+            exposure_recovery_attempted=exposure_recovery_attempted,
+        )
         log.info(
             f"  Red dot detection (try {attempt + 1}): "
             f"found {len(dots)}/{expected} dots inside the screen"
@@ -305,6 +332,19 @@ def _detect_grid_mapping(
         camera_01[:, 1] /= frame_h
 
         pct_to_cam, inliers, max_res = _fit_grid_mapping(screen_pcts, camera_01)
+        record_event(
+            "camera.grid_fit",
+            capture_attempt=attempt + 1,
+            screen_points=screen_pcts,
+            camera_pixels=camera_pixels,
+            camera_normalized=camera_01,
+            affine=pct_to_cam,
+            inliers=inliers,
+            min_inliers=GRID_FIT_MIN_INLIERS,
+            max_residual=max_res,
+            max_allowed_residual=GRID_FIT_MAX_RESIDUAL,
+            coordinate_space="camera_normalized_0_1",
+        )
         log.info(
             f"    fit: {inliers}/{expected} homography inliers, "
             f"max reprojection {max_res:.4f} (camera 0-1)"
@@ -358,6 +398,9 @@ def _recover_grid_exposure(
     if not crop.size:
         return False
     quality = assess(crop)
+    record_event(
+        "camera.grid_quality", quality=quality, clip_threshold=exposure.TUNE_CLIP_PCT
+    )
     if not (quality.blown or quality.clip_pct > exposure.TUNE_CLIP_PCT):
         return False
 
@@ -384,4 +427,5 @@ def _recover_grid_exposure(
         ),
     )
     log.info("  Grid exposure recovery: %s", result.detail)
+    record_event("camera.exposure_recovery", result=result)
     return True

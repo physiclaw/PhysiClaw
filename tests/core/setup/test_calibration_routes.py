@@ -1,4 +1,4 @@
-"""Tests for `physiclaw.core.server.calibration` — calibration route registration.
+"""Tests for `physiclaw.core.setup.calibration_routes` — calibration route registration.
 
 `fake_mcp` and `async_request` fixtures live in `conftest.py`.
 """
@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from physiclaw.core.server import calibration as calib_reg
+from physiclaw.core.setup import calibration_routes as calib_reg
 
 
 def test_calibration_register_wires_all_routes(fake_mcp) -> None:

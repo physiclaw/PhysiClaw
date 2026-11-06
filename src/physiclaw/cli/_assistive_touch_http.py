@@ -16,13 +16,14 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 from physiclaw import port as platform
+from physiclaw.common.assets import QR_CODE_JS
 
 PAGE_PATH = "/test-assistive-touch"
 API_PATH = "/api/test-assistive-touch"
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 MAX_JSON_BYTES = 64 * 1024
 PAGE_FILE = Path(__file__).with_name("static") / "test-assistive-touch.html"
-QR_FILE = PAGE_FILE.parent / "vendor" / "qrcode-1.4.4.min.js"
+QR_FILE = QR_CODE_JS
 
 
 def random_code(previous: str = "") -> str:

@@ -19,6 +19,8 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
+SCREENSHOT_TIMEOUT_SECONDS = 5.0
+
 
 class AssistiveTouch:
     """AssistiveTouch button driver.
@@ -39,6 +41,9 @@ class AssistiveTouch:
     AT_CSS_X = geometry.AT_CSS_X
     AT_CSS_Y = geometry.AT_CSS_Y
     AT_RADIUS = geometry.AT_RADIUS
+    # The normal 80 ms strike intermittently misses AT on the bench rig.
+    # Use the same 150 ms contact window as calibration, below a long-press.
+    TAP_DURATION = 0.15
 
     def __init__(self) -> None:
         self.at_screen: tuple[float, float] | None = None  # screenshot 0-1
@@ -127,7 +132,7 @@ class AssistiveTouch:
     def tap(self, arm: StylusArm, pct_to_grbl: np.ndarray) -> None:
         """Single-tap AT — iOS Shortcut captures and uploads the current screen."""
         sx, sy = self._move_to_at(arm, pct_to_grbl)
-        arm.tap()
+        arm.tap(duration=self.TAP_DURATION)
         log.info(f"AT single-tap at screen ({sx:.3f}, {sy:.3f})")
 
     def double_tap(self, arm: StylusArm, pct_to_grbl: np.ndarray) -> None:
@@ -147,7 +152,7 @@ class AssistiveTouch:
         arm: StylusArm,
         bridge: "BridgeState",
         pct_to_grbl: np.ndarray,
-        timeout: float = 10.0,
+        timeout: float = SCREENSHOT_TIMEOUT_SECONDS,
     ) -> bytes | None:
         """Single-tap to capture and upload the current screen, then await the image."""
         bridge.clear_screenshot()

@@ -33,6 +33,8 @@ _CONTEXT: ContextVar[dict[str, Any]] = ContextVar("physiclaw_log_context", defau
 _FIELDS = (
     "event",
     "session_id",
+    "setup_run_id",
+    "step",
     "turn",
     "tool_call_id",
     "tool",

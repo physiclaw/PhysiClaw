@@ -99,8 +99,10 @@ def test_verify_assistive_touch_returns_failed_dict_on_screenshot_timeout(
     )
 
     assert out["passed"] is False
+    assert out["reason"] == "screenshot_timeout"
     assert out["screenshot"]["passed"] is False
     assert out["clipboard"]["fetched"] is False
+    bridge.wait_screenshot.assert_called_once_with(timeout=5.0)
 
 
 def test_verify_assistive_touch_screenshot_timeout_carries_connectivity_hint(

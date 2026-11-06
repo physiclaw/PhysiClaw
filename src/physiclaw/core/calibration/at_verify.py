@@ -19,18 +19,20 @@ import time
 import cv2
 import numpy as np
 
+from physiclaw.common.logger.evidence import record_event, record_upload
 from physiclaw.core.bridge import BridgeState, CalibrationState, PageState
 from physiclaw.core.bridge.nonce import NONCE_COUNT, generate_nonce, verify_nonce
 from physiclaw.core.hardware.arm import StylusArm
-from physiclaw.core.hardware.iphone import AssistiveTouch
+from physiclaw.core.hardware.iphone import SCREENSHOT_TIMEOUT_SECONDS, AssistiveTouch
 
 log = logging.getLogger(__name__)
 
 
-def _failed() -> dict:
+def _failed(reason: str) -> dict:
     """The screenshot-sub-step failure record: nothing matched, no clipboard."""
     return {
         "passed": False,
+        "reason": reason,
         "screenshot": {"passed": False, "matched": 0, "total": NONCE_COUNT},
         "clipboard": {"fetched": False, "text": None},
     }
@@ -86,6 +88,9 @@ def verify_assistive_touch(
     )
 
     nonce = generate_nonce()
+    record_event(
+        "assistive_touch.challenge", expected_nonce=nonce, at_screen=at.at_screen
+    )
     bridge.clear_screenshot()
 
     # Show the nonce grid for the screenshot sub-step, whatever mode the
@@ -96,22 +101,40 @@ def verify_assistive_touch(
     phone.set_mode("calibrate", "assistive_touch", nonce_bits=nonce)
     time.sleep(0.5)  # let the phone poll and render the grid before the shot
 
+    cal.flush_touches()
     log.info("  Single-tap AT (capture and upload)...")
+    record_event(
+        "assistive_touch.tap_requested",
+        at_screen=at.at_screen,
+        strike_seconds=at.TAP_DURATION,
+    )
     at.tap(arm, pct_to_grbl)
 
     log.info("  Waiting for screenshot upload...")
-    data = bridge.wait_screenshot(timeout=10.0)
+    started = time.monotonic()
+    data = bridge.wait_screenshot(timeout=SCREENSHOT_TIMEOUT_SECONDS)
+    record_event(
+        "assistive_touch.screenshot_wait",
+        received=data is not None,
+        timeout_seconds=SCREENSHOT_TIMEOUT_SECONDS,
+        elapsed_ms=round((time.monotonic() - started) * 1000),
+        bytes=len(data) if data is not None else 0,
+        bridge_connected=bridge.connected,
+        page_touches=cal.flush_touches(),
+    )
     if data is None:
         hint = bridge.connectivity_hint()
         log.warning(
-            "  Screenshot upload timed out" + (f" — {hint}" if hint else ""),
+            f"  Screenshot upload timed out after {SCREENSHOT_TIMEOUT_SECONDS:g}s"
+            + (f" — {hint}" if hint else ""),
             extra={
-                "console_message": "Phone screenshot timed out — "
+                "console_message": f"Phone screenshot timed out after {SCREENSHOT_TIMEOUT_SECONDS:g}s — "
                 + str(hint or "check the phone's screenshot shortcut")
             },
         )
-        return _failed()
+        return _failed("screenshot_timeout")
 
+    record_upload(data, purpose="assistive_touch")
     arr = np.frombuffer(data, dtype=np.uint8)
     img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
     if img is None:
@@ -121,11 +144,18 @@ def verify_assistive_touch(
                 "console_message": "Phone screenshot could not be decoded — retry shortcut verification"
             },
         )
-        return _failed()
+        return _failed("screenshot_decode_failed")
 
     log.info(f"  Screenshot received: {img.shape[1]}×{img.shape[0]}px")
 
     shot_passed, matched = verify_nonce(img, t, nonce, css_x=cal.nonce_x())
+    record_event(
+        "assistive_touch.nonce_checked",
+        passed=shot_passed,
+        matched=matched,
+        total=NONCE_COUNT,
+        viewport_shift=t,
+    )
 
     if shot_passed:
         log.info(
@@ -183,6 +213,12 @@ def verify_assistive_touch(
     bridge.clear_text()
 
     passed = shot_passed and clip_fetched
+    record_event(
+        "assistive_touch.verified",
+        screenshot_passed=shot_passed,
+        clipboard_fetched=clip_fetched,
+        passed=passed,
+    )
     if passed:
         log.info(
             "  ✓ AssistiveTouch done: single-tap + long-press verified",

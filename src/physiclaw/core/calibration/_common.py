@@ -16,6 +16,7 @@ import logging
 import time
 from collections.abc import Iterator
 
+from physiclaw.common.logger.evidence import record_event
 from physiclaw.core.bridge import CalibrationState
 from physiclaw.core.hardware.arm import StylusArm
 
@@ -69,8 +70,7 @@ def grid_positions(cal: "CalibrationState") -> Iterator[tuple[float, float]]:
 
 def _tap_once(arm: StylusArm) -> None:
     """Single calibration tap: fire the solenoid for CAL_STRIKE_DURATION."""
-    arm.solenoid.tap(CAL_STRIKE_DURATION)
-    arm.wait_idle()
+    arm.tap(duration=CAL_STRIKE_DURATION)
 
 
 def _tap_and_read(
@@ -89,10 +89,25 @@ def _tap_and_read(
     arm.rapid_to(gx, gy)
     arm.wait_idle()
     for attempt in range(max_retries + 1):
-        cal.flush_touches()
+        discarded = cal.flush_touches()
+        record_event(
+            "arm.tap_requested",
+            arm_mm=[gx, gy],
+            tap_attempt=attempt + 1,
+            max_attempts=max_retries + 1,
+            discarded_touches=discarded,
+            strike_seconds=CAL_STRIKE_DURATION,
+        )
         _tap_once(arm)
         time.sleep(0.3)
         got = cal.flush_touches()
+        record_event(
+            "arm.tap_observed",
+            arm_mm=[gx, gy],
+            tap_attempt=attempt + 1,
+            touches=got,
+            status="received" if got else "no_touch",
+        )
         if got:
             return got[-1]
         if attempt < max_retries:

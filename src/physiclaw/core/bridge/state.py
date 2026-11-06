@@ -251,8 +251,14 @@ class BridgeState:
     def poll(self):
         """Update last-seen timestamp (called on every phone poll)."""
         with self.lock:
+            now = time.monotonic()
+            resumed = self._last_poll is None or now - self._last_poll >= 0.5
             self.last_seen = time.time()
-            self._last_poll = time.monotonic()
+            self._last_poll = now
+        if resumed:
+            log.info(
+                "Phone bridge polling connected", extra={"event": "bridge.connected"}
+            )
 
     # ─── Screenshot upload ────────────────────────────────────
 

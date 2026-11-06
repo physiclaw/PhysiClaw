@@ -25,6 +25,7 @@ import numpy as np
 from physiclaw import port as platform
 from physiclaw.common.config import CONFIG
 from physiclaw.common.dumps import save_raw_camera, save_snapshot
+from physiclaw.common.logger.evidence import record_event, record_frame
 from physiclaw.core.hardware.device import DeviceNotFound, DeviceTimeout
 from physiclaw.core.hardware.frame_reader import FrameReader, PublishedFrame
 
@@ -479,6 +480,11 @@ class Camera:
             self._require_open()
             self._exposure_auto = True
             platform.camera_set_auto_exposure(self.cap)
+            record_event(
+                "camera.exposure_requested",
+                device_id=f"Camera-{self.index}",
+                mode="auto",
+            )
 
     def set_manual_exposure(self, value: int) -> None:
         """Hold a fixed exposure (log2 seconds). Remembered, so a
@@ -489,6 +495,13 @@ class Camera:
             self._exposure_auto = False
             self._exposure_value = value
             platform.camera_set_manual_exposure(self.cap, value)
+            record_event(
+                "camera.exposure_requested",
+                device_id=f"Camera-{self.index}",
+                mode="manual",
+                value=value,
+                units="log2_seconds",
+            )
 
     # ─── Focus control ──────────────────────────────────────────
 
@@ -537,6 +550,11 @@ class Camera:
             # An explicit refusal needs another hand-back attempt on close.
             # None preserves backends whose AF request remains best-effort.
             self._focus_needs_restore = platform.camera_unlock_focus(self.cap) is False
+            record_event(
+                "camera.autofocus_requested",
+                device_id=f"Camera-{self.index}",
+                restore_needed=self._focus_needs_restore,
+            )
 
     def read_focus(self) -> float | None:
         """Driver-reported focus value, or None when unavailable.
@@ -564,13 +582,23 @@ class Camera:
             self._focus_applied = _apply_focus(self.cap, value)
             if self._focus_applied:
                 self._focus_value = value
+            record_event(
+                "camera.focus_requested",
+                device_id=f"Camera-{self.index}",
+                value=value,
+                driver_accepted=self._focus_applied,
+            )
             return self._focus_applied
 
     def wait_frames(self, n: int, timeout: float = 5.0) -> bool:
         """Block until the reader publishes `n` MORE frames (or timeout).
         See ``FrameReader.wait_frames`` — the settle primitive for
         exposure tuning."""
-        return self._reader.wait_frames(n, timeout=timeout)
+        settled = self._reader.wait_frames(n, timeout=timeout)
+        record_event(
+            "camera.frames_waited", count=n, timeout_seconds=timeout, settled=settled
+        )
+        return settled
 
     # ─── Frame accessors ────────────────────────────────────────
 
@@ -584,8 +612,20 @@ class Camera:
         # Copy outside the reader's lock — a frame copy (~1 ms at 1080p,
         # ~8 ms at 4K) would otherwise stall the next publish for that long.
         if frame is None:
+            record_frame(None, device_id=f"Camera-{self.index}")
             return None
         out = frame.frame.copy()
+        record_frame(
+            out,
+            device_id=f"Camera-{self.index}",
+            published_at=frame.published_at,
+            requested_size=self._request_size,
+            exposure_auto=self._exposure_auto,
+            exposure_value=self._exposure_value,
+            focus_value=self._focus_value,
+            focus_driver_accepted=self._focus_applied,
+            publication_clock="host_unix_seconds_not_sensor_exposure_time",
+        )
         save_raw_camera(out)  # no-op unless --save-raw-camera
         return PublishedFrame(out, frame.published_at)
 

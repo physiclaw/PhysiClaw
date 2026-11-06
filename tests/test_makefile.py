@@ -128,8 +128,7 @@ def make_project(tmp_path, request):
     env = {
         key: value
         for key, value in os.environ.items()
-        if not key.startswith("PHYSICLAW_LIVE_")
-        and key
+        if key
         not in {
             "MAKEFLAGS",
             "MFLAGS",

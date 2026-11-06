@@ -227,6 +227,9 @@ class _ReportingArm:
     def wait_idle(self):
         pass
 
+    def tap(self, *, duration):
+        self.solenoid.tap(duration)
+
     def return_to_origin(self):
         self.rapid_to(0, 0)
 

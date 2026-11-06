@@ -1,28 +1,24 @@
-"""Hardware setup HTTP routes — register thin wrappers around hardware_setup.py."""
+"""Register hardware connection and preview endpoints backed by hardware_handlers."""
 
-import logging
+import asyncio
 from typing import TYPE_CHECKING
 
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse
 
-from physiclaw.common.ready import STATUS_PATH
 from physiclaw.core.bridge import PageState
-from physiclaw.core.server.hardware_setup import (
+from physiclaw.core.setup.hardware_handlers import (
     handle_camera_preview,
     handle_connect_arm,
     handle_connect_camera,
     handle_disconnect_camera,
-    handle_setup_page,
-    handle_status,
 )
+from physiclaw.core.setup.pages import handle_setup_page
 
 if TYPE_CHECKING:
     from mcp.server.mcpserver import MCPServer
 
     from physiclaw.core.orchestration import HardwareRig
-
-log = logging.getLogger(__name__)
 
 
 def register(mcp: "MCPServer", rig: "HardwareRig", phone: PageState) -> None:
@@ -30,13 +26,10 @@ def register(mcp: "MCPServer", rig: "HardwareRig", phone: PageState) -> None:
 
     @mcp.custom_route("/setup-hardware", methods=["GET"])
     async def _setup_page(request: Request) -> HTMLResponse:
+        recorder = getattr(rig, "setup_recording", None)
+        if recorder is not None:
+            await asyncio.to_thread(recorder.begin)
         return await handle_setup_page(request)
-
-    # The path constant is shared with every client-side reader
-    # (`common.ready`) — route and probes can't drift apart.
-    @mcp.custom_route(STATUS_PATH, methods=["GET"])
-    async def _status(request: Request) -> JSONResponse:
-        return await handle_status(request, rig)
 
     @mcp.custom_route("/api/connect-arm", methods=["POST"])
     async def _connect_arm(request: Request) -> JSONResponse:

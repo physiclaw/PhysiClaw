@@ -3,10 +3,9 @@
 Owns the "which USB index is the overhead camera?" logic: one-shot
 previews for the wizard's manual pick, and the RGBM-corner auto-pick
 that probes indices until it finds the camera that can actually see
-the phone. Lives in orchestration (next to the rig that will own the
-picked camera) because it composes hardware + vision — the hardware
-package itself knows nothing about vision, and the HTTP layer
-(`core/server/hardware.py`) stays a thin adapter over these functions.
+the phone. Setup composes hardware + vision here — the hardware package
+itself knows nothing about vision, and the HTTP layer
+(`core/setup/hardware_routes.py`) stays a thin adapter over these functions.
 """
 
 import logging
@@ -18,6 +17,7 @@ import numpy as np
 
 from physiclaw import port as platform
 from physiclaw.common.config import CONFIG
+from physiclaw.common.logger.evidence import record_event
 from physiclaw.core.hardware.camera import Camera
 from physiclaw.core.hardware.device import DeviceNotFound
 from physiclaw.core.vision.grid_detect import detect_bridge_corners
@@ -110,11 +110,19 @@ def _auto_pick_camera_index(connected: Camera | None = None) -> int | None:
     # missing-index opens fail fast on macOS.
     captured = False
     for idx in range(8):
+        record_event("camera.probe_started", camera_index=idx)
         frame = _capture_raw(idx, connected)
         if frame is None:
+            record_event("camera.probe_result", camera_index=idx, status="no_frame")
             continue
         captured = True
         corners = detect_bridge_corners(frame)
+        record_event(
+            "camera.probe_result",
+            camera_index=idx,
+            corners=corners,
+            status="matched" if corners is not None else "markers_missing",
+        )
         if corners is None:
             log.info(f"  cam {idx}: corners not detected")
             continue

@@ -46,6 +46,11 @@ and `physiclaw logs <id> --save` to export its complete debug bundle.
       macros/macro-run-<id>/
         events.jsonl             Macro step records
         images/                  Macro screenshots
+      setup/<run-id>/
+        run.json                 Setup environment and capture policy
+        summary.json             Latest outcomes and recording completeness
+        events.jsonl             Ordered setup and device diagnostics
+        steps/<step>/attempt-NNN/ Per-attempt events and exact input images
 
 ## Conventions
 
@@ -60,6 +65,7 @@ coordinate concurrent writers; live process/session markers belong in run/.
 
 Each session id is YYYYMMDD-HHMMSS-<6 hex digits>, safe on every platform.
 Its suffix is a short handle accepted by `physiclaw logs` and Studio.
+Setup run directories use the same id format, with server local time.
 Session logs are not size-rotated; whole session folders expire according
 to retention.trace_days. See sessions/README.md for the full artifact schema.
 session-stats.jsonl survives session-folder retention.

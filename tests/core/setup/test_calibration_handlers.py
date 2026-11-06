@@ -1,4 +1,4 @@
-"""Tests for `physiclaw.core.calibration.handler` — calibration HTTP routes."""
+"""Tests for `physiclaw.core.setup.calibration_handlers` — calibration HTTP handlers."""
 
 from __future__ import annotations
 
@@ -13,13 +13,14 @@ import numpy as np
 import pytest
 
 from physiclaw.core.bridge import BridgeState, CalibrationState, PageState
-from physiclaw.core.calibration import handler
 from physiclaw.core.calibration import validate as validate_mod
-from physiclaw.core.calibration.handler import (
+from physiclaw.core.calibration.transforms import ViewportShift
+from physiclaw.core.orchestration import rig as rig_mod
+from physiclaw.core.setup import calibration_handlers as handler
+from physiclaw.core.setup.calibration_handlers import (
     _err,
     _ok,
     _read_flag,
-    _run_blocking,
     handle_calibrate_arm,
     handle_calibrate_camera_frame,
     handle_compute_camera_mapping,
@@ -29,8 +30,6 @@ from physiclaw.core.calibration.handler import (
     handle_validate_calibration,
     handle_verify_assistive_touch,
 )
-from physiclaw.core.calibration.transforms import ViewportShift
-from physiclaw.core.orchestration import rig as rig_mod
 from tests.core.conftest import stream_request, wire_locked
 
 
@@ -39,7 +38,9 @@ def _rig_mock() -> MagicMock:
     ``release()`` (see ``wire_locked``), so the handler tests assert the real
     lock bracket (acquire → park-on-failure → release) rather than an inert
     context-manager mock."""
-    return wire_locked(MagicMock(name="rig"))
+    rig = wire_locked(MagicMock(name="rig"))
+    rig.setup_recording = None  # server assembly injects a recorder separately
+    return rig
 
 
 def _fake_request(json_obj: Any = None, *, body_bytes: bytes | None = None):
@@ -116,13 +117,6 @@ async def test_malformed_calibration_body_cannot_start_hardware(flag):
 
     assert response.status_code == 400
     assert rig.mock_calls == []
-
-
-@pytest.mark.asyncio
-async def test_run_blocking_runs_sync_callable() -> None:
-    out = await _run_blocking(lambda: "result")
-
-    assert out == "result"
 
 
 # ---------- handle_measure_viewport_shift ----------
@@ -729,7 +723,6 @@ async def test_validate_missing_camera_refuses_motion_and_preserves_page(mocker)
     assert cal.phase == "grid"
     rig.arm.rapid_to.assert_not_called()
     rig.arm.tap.assert_not_called()
-    rig.arm.solenoid.tap.assert_not_called()
     validate.assert_not_called()
 
 
@@ -1036,9 +1029,7 @@ async def test_regression_accurate_fallback_taps_do_not_save_calibration(
     mocker.patch.object(validate_mod.random, "random", return_value=0.5)
     rig, calib = _real_ready_rig(mocker)
     rig.cam.raw_frame.return_value = None
-    rig.arm.solenoid.tap.side_effect = lambda *_: calib.report_touch(
-        {"x": 0.5, "y": 0.5}
-    )
+    rig.arm.tap.side_effect = lambda **_: calib.report_touch({"x": 0.5, "y": 0.5})
     phone = PageState(BridgeState(), calib)
     save = mocker.patch.object(rig.calibration, "save")
 
@@ -1162,7 +1153,6 @@ async def test_regression_verification_refuses_reconnected_unpinned_arm(mocker, 
     assert "not pinned" in _read_json(response)["message"]
     rig.arm.rapid_to.assert_not_called()
     rig.arm.tap.assert_not_called()
-    rig.arm.solenoid.tap.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -1200,7 +1190,7 @@ async def test_verification_rechecks_origin_after_acquiring_lock(mocker, route):
     assert response.status_code == 409
     assert "not pinned" in _read_json(response)["message"]
     rig.arm.rapid_to.assert_not_called()
-    rig.arm.solenoid.tap.assert_not_called()
+    rig.arm.tap.assert_not_called()
 
 
 @pytest.mark.asyncio

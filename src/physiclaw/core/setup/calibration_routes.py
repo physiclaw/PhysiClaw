@@ -1,13 +1,12 @@
-"""Calibration HTTP routes — register thin wrappers around calibration/handler.py."""
+"""Register calibration endpoints backed by calibration_handlers."""
 
-import logging
 from typing import TYPE_CHECKING
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from physiclaw.core.bridge import BridgeState, CalibrationState, PageState
-from physiclaw.core.calibration.handler import (
+from physiclaw.core.setup.calibration_handlers import (
     handle_calibrate_arm,
     handle_calibrate_camera_frame,
     handle_compute_camera_mapping,
@@ -22,8 +21,6 @@ if TYPE_CHECKING:
     from mcp.server.mcpserver import MCPServer
 
     from physiclaw.core.orchestration import HardwareRig
-
-log = logging.getLogger(__name__)
 
 
 def register(

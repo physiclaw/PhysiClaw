@@ -1,5 +1,5 @@
 """HTTP marshalling for the studio — starlette routes over a `Session`
-and one `Job` (the `hardware_setup` handler precedent: thin JSON
+and one `Job` (the `core.setup.hardware_handlers` handler precedent: thin JSON
 shells, the brains live one module down).
 
 Three surfaces, one page: `/api/act` drives the phone by hand (one

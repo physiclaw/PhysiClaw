@@ -8,21 +8,17 @@ and report calibration touch events.
 import json
 import logging
 import math
-from pathlib import Path
+import time
 
 from starlette.exceptions import HTTPException
 from starlette.requests import ClientDisconnect, Request
-from starlette.responses import HTMLResponse, JSONResponse, PlainTextResponse
+from starlette.responses import JSONResponse, PlainTextResponse
 
-from physiclaw.common.text import read_text
 from physiclaw.core.bridge.calib import CalibrationState
-from physiclaw.core.bridge.lan import bridge_base_urls
 from physiclaw.core.bridge.page import PageState
 from physiclaw.core.bridge.state import BridgeState
 
 log = logging.getLogger(__name__)
-
-STATIC_DIR = Path(__file__).parent.parent / "static"
 
 # Upload guard rails (see handle_screenshot_upload). An iPhone screenshot
 # PNG is 2–8 MiB; 10 MiB is generous headroom, small enough that a
@@ -56,39 +52,13 @@ async def json_or_none(request: Request, *, allow_empty: bool = False) -> dict |
     return body if isinstance(body, dict) else None
 
 
-def _bad_request(msg: str) -> JSONResponse:
-    return JSONResponse({"error": msg}, status_code=400)
-
-
-def render_phone_page_html(filename: str, port: int) -> str:
-    """Read a static page and substitute the phone bridge URLs into it.
-
-    ``port`` is the CONTROL port serving the page; the substituted URLs
-    point at the LAN bridge listener (`bridge_port`). Shared by every
-    page that embeds the bridge URL (the QR page and the setup wizard)
-    so the placeholder convention lives in one place. Callers wrap the
-    result in their own ``HTMLResponse`` (so each picks its own cache
-    headers).
-    """
-    primary, fallback = bridge_base_urls(port)
-    return (
-        read_text(STATIC_DIR / filename)
-        .replace("__PHONE_URL__", f"{primary}/bridge")
-        .replace("__PHONE_URL_FALLBACK__", f"{fallback}/bridge")
+def _request_error(msg: str, status_code: int = 400) -> JSONResponse:
+    log.info(
+        "Phone bridge request rejected: %s",
+        msg,
+        extra={"event": "bridge.request_rejected", "http_status": status_code},
     )
-
-
-async def serve_bridge_page(request):
-    """Serve the bridge page for the phone browser.
-
-    ``Cache-Control: no-store`` so Safari always pulls the latest JS —
-    otherwise a stale cached copy can silently miss newly-added phases
-    and the phone renders nothing.
-    """
-    return HTMLResponse(
-        read_text(STATIC_DIR / "bridge.html"),
-        headers={"Cache-Control": "no-store"},
-    )
+    return JSONResponse({"error": msg}, status_code=status_code)
 
 
 async def handle_phone_state(request, phone: PageState):
@@ -112,9 +82,9 @@ async def handle_clipboard_copied(request, bridge: BridgeState):
     the text ID identifies the operation, not an authenticated sender."""
     body = await json_or_none(request)
     if body is None or type(body.get("text_id")) is not int:
-        return _bad_request("text_id must be an integer from the phone state")
+        return _request_error("text_id must be an integer from the phone state")
     if not bridge.mark_clipboard_copied(body["text_id"]):
-        return JSONResponse({"error": "clipboard text changed"}, status_code=409)
+        return _request_error("clipboard text changed", 409)
     log.debug("Clipboard copied", extra={"event": "bridge.clipboard_copied"})
     return JSONResponse({"ok": True})
 
@@ -123,7 +93,7 @@ async def handle_screen_dimension(request, cal: CalibrationState):
     """POST /api/bridge/screen-dimension — phone sends screen dimensions on load."""
     body = await json_or_none(request)
     if body is None:
-        return _bad_request("invalid JSON body")
+        return _request_error("invalid JSON body")
     try:
         if any(
             isinstance(body.get(k), bool)
@@ -144,12 +114,12 @@ async def handle_screen_dimension(request, cal: CalibrationState):
         if not all(math.isfinite(v) for v in dim.values()):
             raise ValueError("nonfinite dimension")
     except (TypeError, ValueError, OverflowError):
-        return _bad_request("dimension fields must be numbers")
+        return _request_error("dimension fields must be numbers")
     if any(v <= 0 for v in dim.values()):
         # A missing key int()s to 0 and a backgrounded tab reports a zero
         # viewport — either would overwrite valid calibration geometry
         # with zeros, stickily (has_device_info stays true). Reject.
-        return _bad_request("dimension fields must all be positive")
+        return _request_error("dimension fields must all be positive")
     with cal.lock:
         cal.screen_dimension = dim
     log.info(
@@ -177,9 +147,16 @@ async def handle_screenshot_upload(request, bridge: BridgeState):
     """
     ip = request.client.host if request.client else None
     upload_token = bridge.screenshot_upload_token()
+    started = time.monotonic()
+    log.debug(
+        "Screenshot upload started from %s | armed=%s",
+        ip,
+        upload_token is not None,
+        extra={"event": "bridge.screenshot_upload_started"},
+    )
     if upload_token is None:
         log.debug(f"Bridge: screenshot upload rejected — not armed (from {ip})")
-        return JSONResponse({"error": "no screenshot expected"}, status_code=403)
+        return _request_error("no screenshot expected", 403)
     if not bridge.upload_ip_allowed(ip):
         log.warning(
             f"Bridge: screenshot upload rejected — unpinned IP {ip}",
@@ -187,28 +164,35 @@ async def handle_screenshot_upload(request, bridge: BridgeState):
                 "console_message": "Screenshot from an unrecognized phone rejected — reconnect the phone bridge"
             },
         )
-        return JSONResponse({"error": "unrecognized sender"}, status_code=403)
+        return _request_error("unrecognized sender", 403)
 
     declared = request.headers.get("content-length")
     if declared and declared.isdigit() and int(declared) > MAX_UPLOAD_BYTES:
-        return JSONResponse({"error": "body too large"}, status_code=413)
+        return _request_error("body too large", 413)
     chunks: list[bytes] = []
     size = 0
     async for chunk in request.stream():
         size += len(chunk)
         if size > MAX_UPLOAD_BYTES:
             log.warning(f"Bridge: screenshot upload rejected — >{MAX_UPLOAD_BYTES}B")
-            return JSONResponse({"error": "body too large"}, status_code=413)
+            return _request_error("body too large", 413)
         chunks.append(chunk)
     data = b"".join(chunks)
 
     if not data:
-        return JSONResponse({"error": "empty body"}, status_code=400)
+        return _request_error("empty body")
     if not data.startswith(_IMAGE_MAGICS):
         log.warning("Bridge: screenshot upload rejected — not PNG/JPEG")
-        return JSONResponse({"error": "not a PNG/JPEG image"}, status_code=415)
+        return _request_error("not a PNG/JPEG image", 415)
     if not bridge.receive_screenshot(data, upload_token=upload_token):
-        return JSONResponse({"error": "screenshot request expired"}, status_code=409)
+        return _request_error("screenshot request expired", 409)
+    log.debug(
+        "Screenshot upload accepted from %s | bytes=%d elapsed_ms=%d",
+        ip,
+        len(data),
+        round((time.monotonic() - started) * 1000),
+        extra={"event": "bridge.screenshot_upload_accepted"},
+    )
     return JSONResponse({"ok": True, "size": len(data)})
 
 
@@ -266,31 +250,22 @@ async def handle_mode_switch(request, phone: PageState):
     """
     body = await json_or_none(request)
     if body is None:
-        return _bad_request("invalid JSON body")
+        return _request_error("invalid JSON body")
     mode = body.get("mode")
     if mode not in ("bridge", "calibrate"):
-        return JSONResponse(
-            {"error": "mode must be 'bridge' or 'calibrate'"}, status_code=400
-        )
+        return _request_error("mode must be 'bridge' or 'calibrate'")
     if mode == "calibrate":
         phase_name = body.get("phase")
         if not phase_name:
-            return JSONResponse(
-                {"error": "phase required for calibrate mode"}, status_code=400
-            )
+            return _request_error("phase required for calibrate mode")
         kwargs = {k: v for k, v in body.items() if k not in ("mode", "phase")}
         try:
             phone.set_mode(mode, phase_name, **kwargs)
         except ValueError as e:
-            return JSONResponse({"error": str(e)}, status_code=400)
+            return _request_error(str(e))
         return JSONResponse({"ok": True, "mode": mode, "phase": phase_name})
     phone.set_mode(mode)
     return JSONResponse({"ok": True, "mode": mode})
-
-
-async def serve_qr_page(request):
-    """Serve a QR code page for the phone bridge URL."""
-    return HTMLResponse(render_phone_page_html("qr.html", request.url.port or 8048))
 
 
 async def handle_calib_touch(request, cal: CalibrationState):
@@ -315,16 +290,14 @@ async def handle_calib_touch(request, cal: CalibrationState):
     touch_token = cal.touch_token()
     if touch_token is None:
         log.debug("Bridge: calibration touch rejected — no step waiting (idle)")
-        return JSONResponse(
-            {"error": "no calibration step waiting for touches"}, status_code=409
-        )
+        return _request_error("no calibration step waiting for touches", 409)
     body = await json_or_none(request)
     if body is None:
-        return _bad_request("invalid JSON body")
+        return _request_error("invalid JSON body")
     # Checked again when the touch is committed: a poll can show an older
     # target even when the HTTP request itself starts after the phase changed.
     if type(body.get("phase_id")) is not int:
-        return _bad_request("phase_id must be an integer from the phone state")
+        return _request_error("phase_id must be an integer from the phone state")
     try:
         if isinstance(body.get("clientX"), bool) or isinstance(
             body.get("clientY"), bool
@@ -334,15 +307,15 @@ async def handle_calib_touch(request, cal: CalibrationState):
         if not math.isfinite(cx) or not math.isfinite(cy):
             raise ValueError("nonfinite coordinate")
     except (KeyError, TypeError, ValueError, OverflowError):
-        return _bad_request("clientX/clientY must be numbers")
+        return _request_error("clientX/clientY must be numbers")
     try:
         body["x"], body["y"] = cal.viewport_to_screenshot_pct(cx, cy)
     except RuntimeError as e:
         # Touch arrived before pre-cal measured the shift — a state
         # conflict, not a malformed request.
-        return JSONResponse({"error": str(e)}, status_code=409)
+        return _request_error(str(e), 409)
     if not math.isfinite(body["x"]) or not math.isfinite(body["y"]):
-        return _bad_request("touch coordinates exceed the screenshot range")
+        return _request_error("touch coordinates exceed the screenshot range")
     if not cal.report_touch(body, touch_token=touch_token, phase_id=body["phase_id"]):
-        return JSONResponse({"error": "calibration step changed"}, status_code=409)
+        return _request_error("calibration step changed", 409)
     return JSONResponse({"ok": True})

@@ -23,6 +23,7 @@ import cv2
 import numpy as np
 
 from physiclaw.common import paths
+from physiclaw.common.logger.evidence import record_event, record_upload
 from physiclaw.core.bridge import BridgeState, CalibrationState
 from physiclaw.core.geometry import (
     SQUARE_CSS_SIZE,
@@ -83,6 +84,7 @@ def _decode_screenshot_square(
     doesn't decode or shows no square — callers holding a maybe-stale
     upload catch that and fall back to waiting for a fresh one.
     """
+    record_upload(data, purpose="viewport")
     try:
         img = cv2.imdecode(np.frombuffer(data, dtype=np.uint8), cv2.IMREAD_COLOR)
     except cv2.error as exc:
@@ -108,6 +110,12 @@ def _decode_screenshot_square(
 
     largest = max(contours, key=cv2.contourArea)
     x, y, w, h = cv2.boundingRect(largest)
+    record_event(
+        "viewport.square_detected",
+        screenshot_size=[sw, sh],
+        bounding_box=[x, y, w, h],
+        hsv_range=ORANGE_HSV_RANGE,
+    )
     return img, (x, y, w, h)
 
 
@@ -172,6 +180,9 @@ def measure_viewport_shift(
             cached = _find_viewport_cache()
             if cached is not None:
                 data = cached.read_bytes()
+                record_event(
+                    "viewport.screenshot_source", source="cache", path=str(cached)
+                )
                 decoded = _decode_screenshot_square(data)
                 log.info(f"  Using cached screenshot: {cached} ({len(data)} bytes)")
         except (OSError, RuntimeError) as exc:
@@ -185,6 +196,7 @@ def measure_viewport_shift(
         # (tapped mid-render) falls through to a fresh wait.
         data = bridge.take_pending_screenshot(received_after=cal.phase_since)
         if data is not None:
+            record_event("viewport.screenshot_source", source="pending_upload")
             try:
                 decoded = _decode_screenshot_square(data)
                 log.info(f"  Using already-uploaded screenshot: {len(data)} bytes")
@@ -210,6 +222,7 @@ def measure_viewport_shift(
                     "Tap AssistiveTouch once to upload."
                 )
             log.info(f"  Screenshot received: {len(data)} bytes")
+            record_event("viewport.screenshot_source", source="fresh_upload")
             decoded = _decode_screenshot_square(data)
     img, rect = decoded
 
@@ -256,4 +269,5 @@ def measure_viewport_shift(
     if cached is None and data is not None:
         _cache_viewport(data)
     cal.viewport_shift = transform
+    record_event("viewport.measured", transform=transform, screen_dimension=dim)
     return transform

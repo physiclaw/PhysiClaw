@@ -38,7 +38,7 @@ Object.defineProperties(prototype, {
 });
 
 async function createSetup({saved = true, language = 'en', initial = {}, responses = {}} = {}) {
-  const filename = path.join(__dirname, '../../src/physiclaw/core/static/setup-hardware.html');
+  const filename = path.join(__dirname, '../../src/physiclaw/core/setup/static/setup-hardware.html');
   const html = fs.readFileSync(filename, 'utf8');
   const document = documentFrom(html);
   document.body = document.querySelector('body');

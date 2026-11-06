@@ -19,8 +19,6 @@ def test_watch_register_wires_all_routes(fake_mcp) -> None:
     by_path = {(p, ms[0]) for p, ms, _ in fake_mcp.routes}
     assert by_path == {
         ("/api/phone/watch", "GET"),
-        ("/api/phone/home", "POST"),
-        ("/api/ready", "POST"),
     }
 
 
@@ -64,67 +62,3 @@ async def test_watch_route_unexpected_exception_returns_503(
     resp = await fake_mcp.get("/api/phone/watch")(async_request())
 
     assert resp.status_code == 503
-
-
-# ---------- /api/phone/home ----------
-
-
-@pytest.mark.asyncio
-async def test_home_screen_route_dispatches(fake_mcp, async_request) -> None:
-    pl = MagicMock()
-    watch_reg.register(fake_mcp, pl)
-
-    resp = await fake_mcp.get("/api/phone/home", "POST")(async_request())
-
-    pl.home_screen.assert_called_once()
-    assert json.loads(bytes(resp.body).decode()) == {"ok": True}
-
-
-@pytest.mark.asyncio
-async def test_home_screen_route_returns_503_on_failure(
-    fake_mcp,
-    async_request,
-) -> None:
-    pl = MagicMock()
-    pl.home_screen.side_effect = RuntimeError("arm jammed")
-    watch_reg.register(fake_mcp, pl)
-
-    resp = await fake_mcp.get("/api/phone/home", "POST")(async_request())
-
-    assert resp.status_code == 503
-
-
-# ---------- /api/ready ----------
-
-
-@pytest.mark.asyncio
-async def test_ready_route_returns_ok_immediately(
-    fake_mcp,
-    async_request,
-) -> None:
-    pl = MagicMock()
-    watch_reg.register(fake_mcp, pl)
-
-    resp = await fake_mcp.get("/api/ready", "POST")(async_request())
-
-    assert json.loads(bytes(resp.body).decode()) == {"ok": True}
-
-
-@pytest.mark.asyncio
-async def test_ready_route_fires_become_ready_off_thread(
-    fake_mcp, async_request
-) -> None:
-    # Fire-and-forget on the default executor: the response must not wait
-    # for the settle, but become_ready (settle THEN mark) must run.
-    import asyncio
-
-    pl = MagicMock()
-    watch_reg.register(fake_mcp, pl)
-
-    await fake_mcp.get("/api/ready", "POST")(async_request())
-
-    for _ in range(100):
-        if pl.become_ready.called:
-            break
-        await asyncio.sleep(0.01)
-    pl.become_ready.assert_called_once()

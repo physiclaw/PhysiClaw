@@ -34,13 +34,12 @@ def test_grid_positions_yields_15_in_outer_rows_inner_cols_order() -> None:
 # ---------- _tap_once ----------
 
 
-def test_tap_once_strikes_solenoid() -> None:
+def test_tap_once_uses_calibration_contact_duration() -> None:
     arm = MagicMock()
 
     _tap_once(arm)
 
-    arm.solenoid.tap.assert_called_once_with(common_mod.CAL_STRIKE_DURATION)
-    arm.wait_idle.assert_called_once()
+    arm.tap.assert_called_once_with(duration=common_mod.CAL_STRIKE_DURATION)
 
 
 # ---------- _tap_and_read ----------
@@ -55,7 +54,7 @@ def test_tap_and_read_succeeds_first_attempt(mocker) -> None:
     touch = _tap_and_read(arm, cal, gx=10, gy=10)
 
     assert touch == {"x": 0.5, "y": 0.5}
-    arm.solenoid.tap.assert_called_once()  # fired once, no retry
+    arm.tap.assert_called_once()  # fired once, no retry
 
 
 def test_tap_and_read_refires_on_miss(mocker) -> None:
@@ -72,7 +71,7 @@ def test_tap_and_read_refires_on_miss(mocker) -> None:
     touch = _tap_and_read(arm, cal, gx=0, gy=0, max_retries=3)
 
     assert touch == {"x": 1}
-    assert arm.solenoid.tap.call_count == 2  # re-fired once
+    assert arm.tap.call_count == 2  # re-fired once
 
 
 def test_tap_and_read_returns_none_after_max_retries(mocker) -> None:
@@ -84,7 +83,7 @@ def test_tap_and_read_returns_none_after_max_retries(mocker) -> None:
     touch = _tap_and_read(arm, cal, gx=0, gy=0, max_retries=2)
 
     assert touch is None
-    assert arm.solenoid.tap.call_count == 3  # initial + 2 retries
+    assert arm.tap.call_count == 3  # initial + 2 retries
 
 
 def test_grid_positions_yields_col_then_row_with_inner_col_outer_row() -> None:

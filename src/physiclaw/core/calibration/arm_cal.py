@@ -16,6 +16,7 @@ import time
 import cv2
 import numpy as np
 
+from physiclaw.common.logger.evidence import record_event
 from physiclaw.core.arm_geometry import X_TRAVEL, Y_TRAVEL
 from physiclaw.core.bridge import CalibrationState
 from physiclaw.core.calibration._common import (
@@ -138,6 +139,12 @@ def calibrate_arm(
     probe_grbl = np.array([[0, 0], [PROBE_D, 0], [0, PROBE_D]], dtype=np.float64)
     probe_affine, _ = cv2.estimateAffine2D(probe_screen, probe_grbl)
     probe_affine = _require_fit(probe_affine, "probe")
+    record_event(
+        "arm.probe_fit",
+        screen_points=probe_screen,
+        arm_mm=probe_grbl,
+        affine=probe_affine,
+    )
 
     grid = list(grid_positions(cal))
     grid_targets = [
@@ -191,6 +198,15 @@ def calibrate_arm(
     )
     pct_to_grbl = _require_fit(pct_to_grbl, "final")
     inliers = int(np.count_nonzero(mask)) if mask is not None else 0
+    record_event(
+        "arm.grid_fit",
+        screen_points=screen_pts,
+        arm_mm=grbl_pts,
+        affine=pct_to_grbl,
+        inlier_mask=mask,
+        inliers=inliers,
+        minimum_inliers=MIN_FIT_INLIERS,
+    )
     if inliers < MIN_FIT_INLIERS:
         raise RuntimeError(
             f"Arm calibration FAILED — only {inliers} inlier taps "
@@ -229,6 +245,13 @@ def calibrate_arm(
     arm.wait_idle()
     cal.set_phase("center")
     arm.set_origin()
+    record_event(
+        "arm.calibrated",
+        affine=rebased,
+        tilt_ratio=tilt,
+        tilt_threshold=TILT_ALIGNED_THRESHOLD,
+        center_rebase_mm=[center_gx, center_gy],
+    )
 
     log.info(
         f"  ✓ Arm calibration done: {len(grbl_pts)} pairs, tilt={tilt:.4f}",

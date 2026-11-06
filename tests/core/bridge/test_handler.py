@@ -9,7 +9,6 @@ instances.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -25,8 +24,6 @@ from physiclaw.core.bridge.handler import (
     handle_phone_state,
     handle_screen_dimension,
     handle_screenshot_upload,
-    serve_bridge_page,
-    serve_qr_page,
 )
 from physiclaw.core.bridge.page import PageState
 from physiclaw.core.bridge.state import BridgeState
@@ -126,24 +123,6 @@ def test_oversized_json_returns_http_413_without_mutating_bridge(monkeypatch):
 
     assert response.status_code == 413
     assert bundle.calib.screen_dimension is None
-
-
-# ---------- serve_bridge_page ----------
-
-
-@pytest.mark.asyncio
-async def test_serve_bridge_page_reads_html_and_sets_no_store(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    static = tmp_path / "static"
-    static.mkdir()
-    (static / "bridge.html").write_text("<html>bridge</html>", encoding="utf-8")
-    monkeypatch.setattr(handler, "STATIC_DIR", static)
-
-    resp = await serve_bridge_page(_fake_request())
-
-    assert resp.body == b"<html>bridge</html>"
-    assert resp.headers["cache-control"] == "no-store"
 
 
 # ---------- handle_phone_state ----------
@@ -518,50 +497,6 @@ async def test_mode_switch_400_on_unknown_phase() -> None:
     )
 
     assert resp.status_code == 400
-
-
-# ---------- serve_qr_page ----------
-
-
-@pytest.mark.asyncio
-async def test_serve_qr_page_substitutes_phone_url(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mocker
-) -> None:
-    static = tmp_path / "static"
-    static.mkdir()
-    (static / "qr.html").write_text(
-        "<html>__PHONE_URL__ / __PHONE_URL_FALLBACK__</html>", encoding="utf-8"
-    )
-    monkeypatch.setattr(handler, "STATIC_DIR", static)
-    mocker.patch.object(
-        handler,
-        "bridge_base_urls",
-        return_value=("http://mac.local:8048", "http://192.168.1.1:8048"),
-    )
-
-    resp = await serve_qr_page(_fake_request(url_port=8048))
-
-    body = resp.body.decode()
-    assert "http://mac.local:8048/bridge / http://192.168.1.1:8048/bridge" in body
-
-
-@pytest.mark.asyncio
-async def test_serve_qr_page_uses_default_port_when_url_port_none(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mocker
-) -> None:
-    static = tmp_path / "static"
-    static.mkdir()
-    (static / "qr.html").write_text("<html></html>", encoding="utf-8")
-    monkeypatch.setattr(handler, "STATIC_DIR", static)
-    base_urls = mocker.patch.object(
-        handler,
-        "bridge_base_urls",
-        return_value=("p", "f"),
-    )
-
-    await serve_qr_page(_fake_request(url_port=None))
-
-    base_urls.assert_called_once_with(8048)
 
 
 # ---------- handle_calib_touch ----------

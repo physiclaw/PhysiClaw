@@ -7,6 +7,8 @@ import serial
 import serial.tools.list_ports
 from serial.tools.list_ports_common import ListPortInfo
 
+from physiclaw.common.logger.evidence import record_event
+
 log = logging.getLogger(__name__)
 
 GRBL_BAUDRATE = 115200
@@ -57,14 +59,23 @@ def _probe_port(port: str, baudrate: int = GRBL_BAUDRATE) -> str | None:
             ser.write(b"$I\r\n")
             time.sleep(0.5)
             resp = ser.read(ser.in_waiting or 256).decode("utf-8", errors="ignore")
+            record_event(
+                "arm.serial_probe_reply", port=port, baudrate=baudrate, reply=resp
+            )
             if "grbl" in resp.lower() or "[VER:" in resp:
                 # Extract version line
                 for line in resp.splitlines():
                     if "grbl" in line.lower() or "[VER:" in line:
                         return line.strip()
                 return "GRBL"
-    except (serial.SerialException, OSError):
-        pass
+    except (serial.SerialException, OSError) as exc:
+        record_event(
+            "arm.serial_probe_failed",
+            port=port,
+            baudrate=baudrate,
+            exception_type=type(exc).__name__,
+            message=str(exc),
+        )
     return None
 
 
@@ -111,6 +122,18 @@ def detect_grbl() -> str | None:
     Skips Bluetooth/debug ports and probes likely USB-serial ports first.
     """
     ports = _candidate_port_infos()
+    record_event(
+        "arm.serial_candidates",
+        ports=[
+            {
+                "device": p.device,
+                "description": p.description,
+                "vid": p.vid,
+                "pid": getattr(p, "pid", None),
+            }
+            for p in ports
+        ],
+    )
     if not ports:
         log.warning(
             "[GRBL] no candidate serial ports found",

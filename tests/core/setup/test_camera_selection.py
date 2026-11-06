@@ -1,6 +1,4 @@
-"""Tests for `physiclaw.core.orchestration.camera_pick` — camera
-identification and preview algorithms (moved out of the old
-`core.hardware.handler`)."""
+"""Tests for `physiclaw.core.setup.camera_selection` — camera identification and previews."""
 
 from __future__ import annotations
 
@@ -11,8 +9,8 @@ import numpy as np
 import pytest
 
 from physiclaw.core.hardware.device import DeviceNotFound
-from physiclaw.core.orchestration import camera_pick
-from physiclaw.core.orchestration.camera_pick import (
+from physiclaw.core.setup import camera_selection
+from physiclaw.core.setup.camera_selection import (
     _auto_pick_camera_index,
     _capture_raw,
     camera_preview,
@@ -26,9 +24,11 @@ def test_camera_preview_returns_jpeg_bytes(mocker) -> None:
     fake_frame = np.zeros((10, 10, 3), dtype=np.uint8)
     fake_cam = MagicMock()
     fake_cam.raw_frame.return_value = fake_frame
-    mocker.patch.object(camera_pick, "Camera", return_value=fake_cam)
-    encode_spy = mocker.patch.object(camera_pick, "encode_jpeg", return_value=b"JPEG")
-    wm_spy = mocker.patch.object(camera_pick, "watermark_index")
+    mocker.patch.object(camera_selection, "Camera", return_value=fake_cam)
+    encode_spy = mocker.patch.object(
+        camera_selection, "encode_jpeg", return_value=b"JPEG"
+    )
+    wm_spy = mocker.patch.object(camera_selection, "watermark_index")
 
     out = camera_preview(0, watermark=False)
 
@@ -43,9 +43,11 @@ def test_camera_preview_applies_watermark_when_requested(mocker) -> None:
     wm_frame = np.ones((10, 10, 3), dtype=np.uint8)
     fake_cam = MagicMock()
     fake_cam.raw_frame.return_value = fake_frame
-    mocker.patch.object(camera_pick, "Camera", return_value=fake_cam)
-    mocker.patch.object(camera_pick, "watermark_index", return_value=wm_frame)
-    encode_spy = mocker.patch.object(camera_pick, "encode_jpeg", return_value=b"JPEG")
+    mocker.patch.object(camera_selection, "Camera", return_value=fake_cam)
+    mocker.patch.object(camera_selection, "watermark_index", return_value=wm_frame)
+    encode_spy = mocker.patch.object(
+        camera_selection, "encode_jpeg", return_value=b"JPEG"
+    )
 
     out = camera_preview(2, watermark=True)
 
@@ -58,7 +60,7 @@ def test_camera_preview_applies_watermark_when_requested(mocker) -> None:
 def test_camera_preview_raises_when_snapshot_returns_none(mocker) -> None:
     fake_cam = MagicMock()
     fake_cam.raw_frame.return_value = None
-    mocker.patch.object(camera_pick, "Camera", return_value=fake_cam)
+    mocker.patch.object(camera_selection, "Camera", return_value=fake_cam)
 
     with pytest.raises(RuntimeError, match="Camera 0 returned no frame"):
         camera_preview(0)
@@ -73,7 +75,7 @@ def test_capture_raw_returns_frame(mocker) -> None:
     frame = np.ones((4, 4, 3), dtype=np.uint8)
     fake_cam = MagicMock()
     fake_cam.raw_frame.return_value = frame
-    mocker.patch.object(camera_pick, "Camera", return_value=fake_cam)
+    mocker.patch.object(camera_selection, "Camera", return_value=fake_cam)
 
     assert _capture_raw(1) is frame
     fake_cam.close.assert_called_once()
@@ -84,11 +86,9 @@ def test_capture_raw_returns_none_and_logs_on_oserror(
 ) -> None:
     fake_cam = MagicMock()
     fake_cam.raw_frame.side_effect = OSError("can't open")
-    mocker.patch.object(camera_pick, "Camera", return_value=fake_cam)
+    mocker.patch.object(camera_selection, "Camera", return_value=fake_cam)
 
-    with caplog.at_level(
-        logging.DEBUG, logger="physiclaw.core.orchestration.camera_pick"
-    ):
+    with caplog.at_level(logging.DEBUG, logger="physiclaw.core.setup.camera_selection"):
         out = _capture_raw(3)
 
     assert out is None
@@ -100,7 +100,7 @@ def test_capture_raw_returns_none_and_logs_on_oserror(
 def test_capture_raw_returns_none_on_runtime_error(mocker) -> None:
     fake_cam = MagicMock()
     fake_cam.raw_frame.side_effect = RuntimeError("transient")
-    mocker.patch.object(camera_pick, "Camera", return_value=fake_cam)
+    mocker.patch.object(camera_selection, "Camera", return_value=fake_cam)
 
     assert _capture_raw(0) is None
     fake_cam.close.assert_called_once()
@@ -112,9 +112,9 @@ def test_capture_raw_returns_none_when_constructor_raises(
 ) -> None:
     """A missing USB index raises from Camera() itself — the auto-pick
     loop must treat it like any other capture failure, not crash."""
-    mocker.patch.object(camera_pick, "Camera", side_effect=error_type("no device"))
+    mocker.patch.object(camera_selection, "Camera", side_effect=error_type("no device"))
 
-    with caplog.at_level(logging.DEBUG, logger=camera_pick.__name__):
+    with caplog.at_level(logging.DEBUG, logger=camera_selection.__name__):
         assert _capture_raw(5) is None
 
     (record,) = caplog.records
@@ -128,7 +128,7 @@ def test_capture_raw_returns_none_when_constructor_raises(
 def test_auto_pick_camera_returns_first_match(mocker) -> None:
     frames = [None, np.zeros((4, 4, 3), dtype=np.uint8), None]
     capture_spy = mocker.patch.object(
-        camera_pick,
+        camera_selection,
         "_capture_raw",
         side_effect=lambda idx, connected: frames[idx] if idx < len(frames) else None,
     )
@@ -138,7 +138,7 @@ def test_auto_pick_camera_returns_first_match(mocker) -> None:
         return [(0, 0), (1, 0), (1, 1), (0, 1)] if f is not None else None
 
     mocker.patch.object(
-        camera_pick, "detect_bridge_corners", side_effect=detect_corners
+        camera_selection, "detect_bridge_corners", side_effect=detect_corners
     )
 
     out = _auto_pick_camera_index()
@@ -149,10 +149,12 @@ def test_auto_pick_camera_returns_first_match(mocker) -> None:
 
 
 def test_auto_pick_camera_reports_no_accessible_camera(mocker) -> None:
-    mocker.patch.object(camera_pick, "_capture_raw", return_value=None)
-    detect = mocker.patch.object(camera_pick, "detect_bridge_corners")
+    mocker.patch.object(camera_selection, "_capture_raw", return_value=None)
+    detect = mocker.patch.object(camera_selection, "detect_bridge_corners")
     mocker.patch.object(
-        camera_pick.platform, "camera_denied_hint", return_value="allow desktop apps"
+        camera_selection.platform,
+        "camera_denied_hint",
+        return_value="allow desktop apps",
     )
 
     with pytest.raises(DeviceNotFound, match="any camera.*allow desktop apps"):
@@ -165,12 +167,10 @@ def test_auto_pick_camera_skips_when_corners_not_detected(
     mocker, caplog: pytest.LogCaptureFixture
 ) -> None:
     frame = np.zeros((4, 4, 3), dtype=np.uint8)
-    mocker.patch.object(camera_pick, "_capture_raw", return_value=frame)
-    mocker.patch.object(camera_pick, "detect_bridge_corners", return_value=None)
+    mocker.patch.object(camera_selection, "_capture_raw", return_value=frame)
+    mocker.patch.object(camera_selection, "detect_bridge_corners", return_value=None)
 
-    with caplog.at_level(
-        logging.INFO, logger="physiclaw.core.orchestration.camera_pick"
-    ):
+    with caplog.at_level(logging.INFO, logger="physiclaw.core.setup.camera_selection"):
         out = _auto_pick_camera_index()
 
     assert out is None
@@ -186,8 +186,8 @@ def test_resolve_auto_index_happy_path(mocker) -> None:
     rig.require_bridge.return_value = rig.bridge
     rig.bridge.wait_for_connection.return_value = True
     phone = MagicMock()
-    mocker.patch.object(camera_pick, "_auto_pick_camera_index", return_value=4)
-    mocker.patch.object(camera_pick.time, "sleep")
+    mocker.patch.object(camera_selection, "_auto_pick_camera_index", return_value=4)
+    mocker.patch.object(camera_selection.time, "sleep")
 
     out = resolve_auto_index(rig, phone)
 
@@ -220,8 +220,8 @@ def test_resolve_auto_index_restores_bridge_mode_on_no_match(mocker) -> None:
     rig.require_bridge.return_value = rig.bridge
     rig.bridge.wait_for_connection.return_value = True
     phone = MagicMock()
-    mocker.patch.object(camera_pick, "_auto_pick_camera_index", return_value=None)
-    mocker.patch.object(camera_pick.time, "sleep")
+    mocker.patch.object(camera_selection, "_auto_pick_camera_index", return_value=None)
+    mocker.patch.object(camera_selection.time, "sleep")
 
     with pytest.raises(RuntimeError, match="no camera with all four RGBM corners"):
         resolve_auto_index(rig, phone)
@@ -234,8 +234,8 @@ def test_resolve_auto_index_restores_bridge_when_all_cameras_fail(mocker) -> Non
     rig = MagicMock()
     rig.assert_locked = MagicMock()
     phone = MagicMock()
-    mocker.patch.object(camera_pick, "_capture_raw", return_value=None)
-    mocker.patch.object(camera_pick.time, "sleep")
+    mocker.patch.object(camera_selection, "_capture_raw", return_value=None)
+    mocker.patch.object(camera_selection.time, "sleep")
 
     with pytest.raises(DeviceNotFound, match="any camera"):
         resolve_auto_index(rig, phone)
@@ -259,9 +259,11 @@ def test_regression_auto_pick_reuses_the_camera_already_owned_by_rig(mocker):
         return camera
 
     mocker.patch.object(rig_module, "Camera", side_effect=exclusive_camera)
-    mocker.patch.object(camera_pick, "Camera", side_effect=exclusive_camera)
-    mocker.patch.object(camera_pick, "detect_bridge_corners", return_value=[(0, 0)] * 4)
-    mocker.patch.object(camera_pick.time, "sleep")
+    mocker.patch.object(camera_selection, "Camera", side_effect=exclusive_camera)
+    mocker.patch.object(
+        camera_selection, "detect_bridge_corners", return_value=[(0, 0)] * 4
+    )
+    mocker.patch.object(camera_selection.time, "sleep")
     rig = HardwareRig()
     rig.attach_bridge(MagicMock())
     rig.connect_camera(0)
@@ -278,7 +280,7 @@ def test_regression_auto_pick_restores_page_if_render_wait_is_interrupted(mocker
     rig = MagicMock()
     rig.assert_locked = MagicMock()
     phone = MagicMock()
-    mocker.patch.object(camera_pick.time, "sleep", side_effect=KeyboardInterrupt)
+    mocker.patch.object(camera_selection.time, "sleep", side_effect=KeyboardInterrupt)
 
     with pytest.raises(KeyboardInterrupt):
         resolve_auto_index(rig, phone)
@@ -290,8 +292,8 @@ def test_camera_preview_borrows_raw_frame_without_closing_or_rotating(mocker):
     camera = MagicMock(index=2, rotation=0)
     frame = np.zeros((10, 20, 3), np.uint8)
     camera.raw_frame.return_value = frame
-    opener = mocker.patch.object(camera_pick, "Camera")
-    encoder = mocker.patch.object(camera_pick, "encode_jpeg", return_value=b"JPEG")
+    opener = mocker.patch.object(camera_selection, "Camera")
+    encoder = mocker.patch.object(camera_selection, "encode_jpeg", return_value=b"JPEG")
 
     result = camera_preview(2, connected=camera)
 
@@ -306,7 +308,7 @@ def test_camera_preview_other_index_closes_only_its_own_handle(mocker):
     connected = MagicMock(index=1)
     preview = MagicMock(index=2)
     preview.raw_frame.return_value = np.zeros((10, 20, 3), np.uint8)
-    mocker.patch.object(camera_pick, "Camera", return_value=preview)
+    mocker.patch.object(camera_selection, "Camera", return_value=preview)
 
     result = camera_preview(2, connected=connected)
 

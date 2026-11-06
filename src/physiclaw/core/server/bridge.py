@@ -1,4 +1,4 @@
-"""LAN bridge HTTP routes — register thin wrappers around bridge/handler.py.
+"""Bridge HTTP routes over bridge handlers and setup-owned pages.
 
 The MCP tools that talk to the bridge live in server/tools.py — every
 tool in the project is registered there. This module only wires up HTTP
@@ -28,10 +28,9 @@ from physiclaw.core.bridge.handler import (
     handle_recent_screenshots,
     handle_screen_dimension,
     handle_screenshot_upload,
-    serve_bridge_page,
-    serve_qr_page,
 )
 from physiclaw.core.server.planes import PhoneApp
+from physiclaw.core.setup.pages import serve_bridge_page, serve_qr_page
 
 if TYPE_CHECKING:
     from mcp.server.mcpserver import MCPServer
@@ -69,7 +68,7 @@ def register_phone(
     """Register the phone-facing routes on the LAN bridge app.
 
     ``app`` exposes the same ``custom_route`` decorator shape as MCPServer
-    (see ``apps.PhoneApp``) so both planes register identically.
+    (see ``planes.PhoneApp``) so both planes register identically.
     """
 
     @app.custom_route("/bridge", methods=["GET"])

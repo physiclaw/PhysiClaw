@@ -22,6 +22,7 @@ import time
 import cv2
 import numpy as np
 
+from physiclaw.common.logger.evidence import record_event
 from physiclaw.core.bridge import CalibrationState
 from physiclaw.core.calibration._common import (
     _tap_and_read,
@@ -32,6 +33,7 @@ from physiclaw.core.calibration.transforms import PARK_PCT, ScreenTransforms
 from physiclaw.core.geometry import apply_affine, invert_affine, validate_affine
 from physiclaw.core.hardware.arm import StylusArm
 from physiclaw.core.hardware.camera import Camera
+from physiclaw.core.vision.colors import ORANGE_HSV_RANGE
 from physiclaw.core.vision.grid_detect import (
     detect_orange_dot as _detect_orange_dot,
 )
@@ -121,6 +123,19 @@ def _run_validation_test(
     )
 
     camera_observed = detected is not None
+    record_event(
+        "validation.camera_observation",
+        test=i + 1,
+        viewport_target=[vp_x, vp_y],
+        expected_screen=[expected_x, expected_y],
+        expected_camera_pixels=expected_px,
+        detected_camera_pixels=detected,
+        maximum_match_distance_px=max_dist,
+        orange_hsv_range=ORANGE_HSV_RANGE,
+        rotation=rotation,
+        camera_size=cam_size,
+        fallback=detected is None,
+    )
     if detected is None:
         log.warning(
             "    2. Camera: no orange dot near the predicted spot — "
@@ -152,6 +167,12 @@ def _run_validation_test(
             )
             cam_pct_x, cam_pct_y = expected_x, expected_y
             camera_observed = False
+            record_event(
+                "validation.fallback",
+                test=i + 1,
+                reason="camera_back_projection_offscreen",
+                allowed_screen_range=[DOT_OFFSCREEN_LO, DOT_OFFSCREEN_HI],
+            )
 
     # 4. Mapping A: screen pct → GRBL mm
     gx, gy = apply_affine(pct_to_grbl, cam_pct_x, cam_pct_y)
@@ -163,6 +184,14 @@ def _run_validation_test(
     # 5. Arm taps — the same move/flush/tap/retry cycle every other
     # step uses (re-fire the solenoid on miss; no depth to bump).
     touch = _tap_and_read(arm, cal, gx, gy)
+    record_event(
+        "validation.touch",
+        test=i + 1,
+        screen_target=[cam_pct_x, cam_pct_y],
+        arm_target_mm=[gx, gy],
+        observed_touch=touch,
+        camera_observed=camera_observed,
+    )
 
     if touch is None:
         log.warning("    5. Tap: FAILED — no touch registered after 4 attempts")
@@ -173,6 +202,17 @@ def _run_validation_test(
     error = ((actual_x - expected_x) ** 2 + (actual_y - expected_y) ** 2) ** 0.5
     # A fallback tap can diagnose Mapping A, but cannot certify Mapping B.
     passed = camera_observed and error < max_error
+    record_event(
+        "validation.verdict",
+        test=i + 1,
+        expected_screen=[expected_x, expected_y],
+        actual_screen=[actual_x, actual_y],
+        error=error,
+        maximum_error=max_error,
+        camera_observed=camera_observed,
+        passed=passed,
+        coordinate_space="screenshot_normalized_0_1",
+    )
 
     log.info(f"    5. Tap: touch at screen ({actual_x:.3f}, {actual_y:.3f})")
     log.info(

@@ -1,4 +1,4 @@
-"""HTTP route handlers for the calibration plan.
+"""HTTP request handlers for setup calibration steps.
 
 Each handler runs the corresponding `calibrate` step in a thread
 executor, writes the result into ``rig.calibration`` (a typed
@@ -11,11 +11,12 @@ import asyncio
 import dataclasses
 import logging
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, cast
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from physiclaw.common.logger.evidence import record_event
 from physiclaw.core.bridge import BridgeState, CalibrationState, PageState
 from physiclaw.core.bridge.handler import json_or_none
 from physiclaw.core.bridge.nonce import generate_nonce
@@ -35,6 +36,9 @@ from physiclaw.core.calibration.calibrate import (
 )
 from physiclaw.core.calibration.state import Calibration
 from physiclaw.core.calibration.transforms import ViewportShift
+from physiclaw.core.setup.errors import ManualPositionRequired
+from physiclaw.core.setup.hardware_handlers import capture_setup_view
+from physiclaw.core.setup.run_log import record_rejection, run_setup_step
 
 if TYPE_CHECKING:
     from physiclaw.core.orchestration import HardwareRig
@@ -42,16 +46,7 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
-class _ManualPositionRequired(PreconditionError):
-    """The first arm calibration needs the operator to position the stylus."""
-
-
 # ─── Helpers ────────────────────────────────────────────────
-
-
-async def _run_blocking(do_func: Callable[[], Any]) -> Any:
-    """Run a sync callable off-thread (the repo's awaited-offload idiom)."""
-    return await asyncio.to_thread(do_func)
 
 
 def _ok(payload: dict) -> JSONResponse:
@@ -79,6 +74,8 @@ async def _run_locked_step(
     rig: "HardwareRig",
     do: Callable[[], dict],
     *,
+    step: str,
+    parameters: dict | None = None,
     precheck: Callable[[], None] | None = None,
     on_failure: Callable[[], None] | None = None,
     park_on_failure: bool = True,
@@ -107,7 +104,10 @@ async def _run_locked_step(
             if precheck is not None:
                 precheck()
             try:
-                return do()
+                capture_setup_view(rig, "before_step")
+                result = do()
+                capture_setup_view(rig, "after_step")
+                return result
             except BaseException:
                 # A mid-step failure must not leave the tip at the failure
                 # position — the retry's restore_park_origin would declare
@@ -124,12 +124,15 @@ async def _run_locked_step(
                         on_failure()
                     except Exception:
                         log.exception("calibration step failure cleanup failed")
+                capture_setup_view(rig, "after_failure_cleanup")
                 raise
 
     try:
-        result = await _run_blocking(_step)
+        result = await asyncio.to_thread(
+            run_setup_step, rig, step, _step, parameters=parameters
+        )
         return _ok(result)
-    except _ManualPositionRequired as e:
+    except ManualPositionRequired as e:
         log.info(
             "Arm calibration waiting for stylus positioning",
             extra={"event": "calibration.waiting_for_user"},
@@ -144,7 +147,7 @@ async def _run_locked_step(
         log.exception(
             "Calibration step failed: %s",
             e,
-            extra={"event": "calibration.failed", "step": do.__qualname__},
+            extra={"event": "calibration.failed", "step": step},
         )
         return _err(str(e))
 
@@ -168,6 +171,7 @@ async def handle_measure_viewport_shift(
     try:
         fresh = await _read_flag(request, "fresh")
     except ValueError as exc:
+        await asyncio.to_thread(record_rejection, rig, "viewport", str(exc))
         return _err(str(exc), status_code=400)
 
     def _precheck() -> None:
@@ -191,7 +195,14 @@ async def handle_measure_viewport_shift(
                 rig.assistive_touch.at_radius_screen = None
         return dataclasses.asdict(result)
 
-    return await _run_locked_step(rig, _do, precheck=_precheck, park_on_failure=False)
+    return await _run_locked_step(
+        rig,
+        _do,
+        step="viewport",
+        parameters={"fresh": fresh},
+        precheck=_precheck,
+        park_on_failure=False,
+    )
 
 
 # ─── Arm-side unified calibration ───────────────────────────
@@ -208,7 +219,7 @@ def _borrow_saved_affine(rig: "HardwareRig") -> bool:
         return False
     prior = Calibration.load()
     if prior is None or prior.pct_to_grbl is None:
-        raise _ManualPositionRequired(
+        raise ManualPositionRequired(
             "No saved arm calibration. Move the stylus tip above the orange "
             "center circle, then press Start."
         )
@@ -262,6 +273,7 @@ async def handle_calibrate_arm(
     try:
         from_park = await _read_flag(request, "from_park")
     except ValueError as exc:
+        await asyncio.to_thread(record_rejection, rig, "arm.calibrate", str(exc))
         return _err(str(exc), status_code=400)
 
     def _precheck() -> None:
@@ -324,7 +336,14 @@ async def handle_calibrate_arm(
         if borrowed:
             rig.uninstall_arm_calibration()
 
-    return await _run_locked_step(rig, _do, precheck=_precheck, on_failure=_undo_borrow)
+    return await _run_locked_step(
+        rig,
+        _do,
+        step="arm.calibrate",
+        parameters={"from_park": from_park},
+        precheck=_precheck,
+        on_failure=_undo_borrow,
+    )
 
 
 # ─── Camera frame calibration — setup check + rotation ──────
@@ -367,7 +386,7 @@ async def handle_calibrate_camera_frame(
         cam.rotation = result["rotation"]
         return result
 
-    return await _run_locked_step(rig, _do, precheck=_precheck)
+    return await _run_locked_step(rig, _do, step="camera.frame", precheck=_precheck)
 
 
 # ─── Camera mapping: screen → camera affine (Mapping B) ─────
@@ -402,7 +421,7 @@ async def handle_compute_camera_mapping(
             "cam_focus": cam_focus,
         }
 
-    return await _run_locked_step(rig, _do, precheck=_precheck)
+    return await _run_locked_step(rig, _do, step="camera.mapping", precheck=_precheck)
 
 
 # ─── Full-chain validation ──────────────────────────────────
@@ -460,6 +479,13 @@ async def handle_validate_calibration(
             cam_size=cal_state.cam_size,
         )
         passed = sum(1 for r in results if r["passed"])
+        record_event(
+            "validation.acceptance",
+            passed=passed,
+            total=len(results),
+            minimum_passed=2,
+            calibrated=passed >= 2,
+        )
         if passed >= 2:
             phone.set_mode("bridge")
             # Capture the phone's current screen_dimension so warm-start
@@ -476,7 +502,7 @@ async def handle_validate_calibration(
             "calibrated": passed >= 2,
         }
 
-    return await _run_locked_step(rig, _do, precheck=_precheck)
+    return await _run_locked_step(rig, _do, step="validate", precheck=_precheck)
 
 
 # ─── Edge-trace verification ────────────────────────────────
@@ -510,7 +536,7 @@ async def handle_trace_edge(
         rig.park()
         return {"ok": True}
 
-    return await _run_locked_step(rig, _do, precheck=_precheck)
+    return await _run_locked_step(rig, _do, step="trace_edge", precheck=_precheck)
 
 
 # ─── AssistiveTouch screenshot verification ─────────────────
@@ -538,7 +564,13 @@ async def handle_show_assistive_touch(
             "nonce_count": len(nonce),
         }
 
-    return await _run_locked_step(rig, _do, precheck=_precheck, park_on_failure=False)
+    return await _run_locked_step(
+        rig,
+        _do,
+        step="assistive_touch.show",
+        precheck=_precheck,
+        park_on_failure=False,
+    )
 
 
 async def handle_verify_assistive_touch(
@@ -577,4 +609,6 @@ async def handle_verify_assistive_touch(
             phone,
         )
 
-    return await _run_locked_step(rig, _do, precheck=_precheck)
+    return await _run_locked_step(
+        rig, _do, step="assistive_touch.verify", precheck=_precheck
+    )

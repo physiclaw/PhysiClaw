@@ -345,6 +345,10 @@ def test_screenshot_raises_on_timeout(pc: PhysiClaw, wire_rig, bridge_double) ->
     with pytest.raises(TimeoutError, match="check the iOS Shortcut"):
         pc.screenshot()
 
+    pc.rig._assistive_touch.take_screenshot.assert_called_once_with(
+        pc.rig._arm, bridge, pc.rig.transforms.pct_to_grbl, timeout=5.0
+    )
+
 
 def test_screenshot_timeout_carries_connectivity_hint(
     pc: PhysiClaw, wire_rig, bridge_double

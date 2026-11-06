@@ -280,7 +280,7 @@ def test_tap_moves_then_taps(caplog: pytest.LogCaptureFixture) -> None:
         at.tap(arm, _identity_pct_to_grbl())
 
     arm.rapid_to.assert_called_once()
-    arm.tap.assert_called_once()
+    arm.tap.assert_called_once_with(duration=0.15)
     assert any("single-tap" in r.getMessage() for r in caplog.records)
 
 
@@ -387,7 +387,7 @@ def test_take_screenshot_accepts_immediate_upload_from_one_tap(mocker) -> None:
     bridge = BridgeState()
     bridge.receive_screenshot(b"stale screenshot")
 
-    def upload():
+    def upload(*, duration):
         token = bridge.screenshot_upload_token()
         assert token is not None
         assert bridge.receive_screenshot(b"current screenshot", upload_token=token)
@@ -403,7 +403,7 @@ def test_take_screenshot_accepts_immediate_upload_from_one_tap(mocker) -> None:
     sleep.assert_not_called()
 
 
-def test_take_screenshot_default_timeout_is_10s() -> None:
+def test_take_screenshot_default_timeout_is_5s() -> None:
     at = AssistiveTouch()
     at.compute_at_screen_pos(_shift())
     arm = MagicMock()
@@ -412,4 +412,4 @@ def test_take_screenshot_default_timeout_is_10s() -> None:
 
     at.take_screenshot(arm, bridge, _identity_pct_to_grbl())
 
-    bridge.wait_screenshot.assert_called_once_with(timeout=10.0)
+    bridge.wait_screenshot.assert_called_once_with(timeout=5.0)

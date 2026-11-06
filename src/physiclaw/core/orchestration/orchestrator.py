@@ -159,7 +159,7 @@ class PhysiClaw:
         phone's own screenshot instead of the camera.
         """
         with self.rig.engaged(wait_seconds=TOOL_LOCK_WAIT_SECONDS):
-            data = self.rig.take_screenshot(timeout=60.0)
+            data = self.rig.take_screenshot()
             if data is None:
                 hint = self.rig.require_bridge().connectivity_hint()
                 raise TimeoutError(

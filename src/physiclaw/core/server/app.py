@@ -17,10 +17,9 @@ from starlette.applications import Starlette
 
 from physiclaw.core import PhysiClaw
 from physiclaw.core.bridge import BridgeState, CalibrationState, PageState
+from physiclaw.core.server.assets import register as _register_assets
 from physiclaw.core.server.bridge import register as _register_bridge
 from physiclaw.core.server.bridge import register_phone as _register_bridge_phone
-from physiclaw.core.server.calibration import register as _register_calibration
-from physiclaw.core.server.hardware import register as _register_hardware
 from physiclaw.core.server.mcp import build_mcp, mcp
 from physiclaw.core.server.planes import (
     ControlGate,
@@ -28,8 +27,13 @@ from physiclaw.core.server.planes import (
     build_bridge_app,
     build_control_app,
 )
+from physiclaw.core.server.status import register as _register_status
 from physiclaw.core.server.tools import register as _register_tools
 from physiclaw.core.server.watch import register as _register_watch
+from physiclaw.core.setup.calibration_routes import register as _register_calibration
+from physiclaw.core.setup.completion_routes import register as _register_completion
+from physiclaw.core.setup.hardware_routes import register as _register_hardware
+from physiclaw.core.setup.run_log import SetupRecorder
 
 if TYPE_CHECKING:
     from mcp.server.mcpserver import MCPServer
@@ -72,16 +76,26 @@ def build_server(mcp_instance: "MCPServer | None" = None) -> ServerBundle:
     calib = CalibrationState()
     phone = PageState(bridge, calib)
     pl.rig.attach_bridge(bridge)
+    pl.rig.setup_recording = SetupRecorder(
+        lambda: {
+            "hardware": pl.rig.status(),
+            "calibration": pl.rig.calibration.to_dict(),
+            "assistive_touch_position": pl.rig.assistive_touch.at_screen,
+        }
+    )
 
     # Control plane on `mcp_` (loopback), phone-facing routes on
     # `phone_app` (LAN) — see core/server/planes.py for the split and
     # its gates.
     phone_app = PhoneApp()
+    _register_assets(mcp_)
     _register_tools(mcp_, pl)
+    _register_status(mcp_, pl.rig)
     _register_bridge(mcp_, bridge, phone)
     _register_bridge_phone(phone_app, bridge, calib, phone)
     _register_hardware(mcp_, pl.rig, phone)
     _register_calibration(mcp_, pl.rig, bridge, calib, phone)
+    _register_completion(mcp_, pl)
     _register_watch(mcp_, pl)
     return ServerBundle(
         physiclaw=pl,
@@ -108,7 +122,11 @@ _phone_app = default_bundle.phone_app
 
 def shutdown() -> None:
     """Clean up hardware resources."""
-    physiclaw.shutdown()
+    try:
+        physiclaw.shutdown()
+    finally:
+        if physiclaw.rig.setup_recording is not None:
+            physiclaw.rig.setup_recording.close()
 
 
 def build_apps(host: str = "127.0.0.1") -> tuple[ControlGate, Starlette]:

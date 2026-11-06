@@ -15,6 +15,7 @@ import time
 import cv2
 import numpy as np
 
+from physiclaw.common.logger.evidence import record_event
 from physiclaw.core.bridge import CalibrationState
 from physiclaw.core.hardware.camera import Camera
 from physiclaw.core.vision.blobs import find_largest_hsv_blob
@@ -48,9 +49,16 @@ def _pick_rotation_from_markers(frame: np.ndarray) -> tuple[int, str]:
     # 0/180 hue seam — red_ranges covers both ends, since the camera commonly
     # renders the on-screen red near the high end (H≈175), not near 0.
     up = _blob([100, 80, 80], [130, 255, 255])
+    record_event(
+        "camera.up_marker",
+        detected=up,
+        hsv_lower=[100, 80, 80],
+        hsv_upper=[130, 255, 255],
+    )
     if up is None:
         raise RuntimeError("UP (blue) marker not found")
     right = _blob(red_ranges(80, 80))
+    record_event("camera.right_marker", detected=right, hsv_ranges=red_ranges(80, 80))
     if right is None:
         raise RuntimeError("RIGHT (red) marker not found")
     up_x, up_y = up
@@ -95,6 +103,7 @@ def calibrate_camera_frame(cam: Camera, cal: CalibrationState) -> dict:
         raise RuntimeError("Camera read failed — is the camera connected?")
 
     checks = check_phone_in_frame(frame)
+    record_event("camera.frame_checks", checks=checks)
     rotation, rot_label = _pick_rotation_from_markers(frame)
     # The CLI/browser setup surfaces the returned issues as warnings. Keep
     # advisory checks in server diagnostics instead of duplicating them as

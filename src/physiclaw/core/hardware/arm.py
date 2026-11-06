@@ -344,9 +344,9 @@ class StylusArm:
         mag = (mx**2 + my**2) ** 0.5 or 1
         self.jog(mx / mag * d, my / mag * d)
 
-    def tap(self) -> None:
-        """Single tap at current position."""
-        self.solenoid.tap(self.TAP_DURATION)
+    def tap(self, duration: float | None = None) -> None:
+        """Single tap at current position, optionally overriding the press time."""
+        self.solenoid.tap(self.TAP_DURATION if duration is None else duration)
         self.wait_idle()
 
     def double_tap(self) -> None:

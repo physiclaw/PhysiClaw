@@ -5,7 +5,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const {setImmediate} = require('node:timers/promises');
 const {documentFrom} = require('../studio/ui_fixture.cjs');
-const qrcode = require('../../src/physiclaw/cli/static/vendor/qrcode-1.4.4.min.js');
+const qrcode = require('../../src/physiclaw/common/static/vendor/qrcode-1.4.4.min.js');
 
 async function createTestPage(initialSequence = 0, sharedState = null, reducedMotion = false, phonePage = false) {
   const filename = path.join(__dirname, '../../src/physiclaw/cli/static/test-assistive-touch.html');
