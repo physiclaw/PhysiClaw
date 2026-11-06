@@ -311,211 +311,219 @@ const STR = {
   docTitle: { en: "PhysiClaw · Hardware Setup", zh: "PhysiClaw · 硬件设置" },
   brandSub: { en: "Hardware Setup", zh: "硬件设置" },
   langName: { en: "中文", zh: "EN" },  // shown on the toggle = the language you switch TO
-  foot: { en: `Press <code>↵ Enter</code> to confirm each step.`, zh: `按 <code>↵ Enter</code> 确认每一步。` },
+  foot: { en: `You can also press <code>↵ Enter</code> to confirm each step.`, zh: `也可以按 <code>↵ Enter</code> 键确认当前操作。` },
+  langLabel: { en: "Switch to Chinese", zh: "切换到英文" },
+  themeLabel: { en: "Switch between light and dark themes", zh: "切换浅色或深色主题" },
+  noResponse: { en: "no response received", zh: "未收到响应" },
+  noCameraMatch: { en: "no matching camera found", zh: "未找到匹配的摄像头" },
+  requestTimeout: { en: "the request timed out", zh: "请求超时" },
+  networkError: { en: "couldn't reach the PhysiClaw server", zh: "无法连接到 PhysiClaw 服务器" },
+  requestFailed: { en: "the request failed", zh: "请求失败" },
   back: { en: "Back", zh: "返回" },
   cont: { en: "Continue", zh: "继续" },
   working: { en: "Working…", zh: "处理中…" },
   autoBtn: { en: "Auto mode", zh: "自动模式" },
   autoHint: {
-    en: "Calibrated before and nothing's moved? Turn on Auto mode, then press Continue. PhysiClaw runs every step for you and stops only when it needs you.",
-    zh: "如果之前校准过、硬件位置没有变动，可以开启「自动模式」，再点「继续」。PhysiClaw 会自动跑完全部步骤，需要你时才停下。",
+    en: "If you've calibrated before and haven't moved the equipment, turn on Auto mode and click Continue. Setup will run on its own and pause when it needs your help.",
+    zh: "如果之前校准过，设备也没有挪动，可以开启「自动模式」，再点击「继续」。校准会自动进行，需要你操作时会暂停。",
   },
-  stepOf: { en: (n) => `Step ${n} of ${STEPS.length}`, zh: (n) => `第 ${n} / ${STEPS.length} 步` },
+  stepOf: { en: (n) => `Step ${n} of ${STEPS.length}`, zh: (n) => `第 ${n} 步，共 ${STEPS.length} 步` },
   finalStep: { en: "Final step", zh: "最后一步" },
   nav_phone: { en: "Connect phone", zh: "连接手机" },
-  nav_position: { en: "Position rig", zh: "摆放设备" },
+  nav_position: { en: "Position equipment", zh: "摆放设备" },
   nav_arm: { en: "Connect arm", zh: "连接机械臂" },
-  nav_camera: { en: "Connect camera", zh: "连接相机" },
+  nav_camera: { en: "Connect camera", zh: "连接摄像头" },
   nav_viewport: { en: "Locate screen", zh: "定位屏幕" },
   nav_armcal: { en: "Calibrate arm", zh: "校准机械臂" },
-  nav_camcal: { en: "Calibrate camera", zh: "校准相机" },
-  nav_validate: { en: "Validate", zh: "验证" },
+  nav_camcal: { en: "Calibrate camera", zh: "校准摄像头" },
+  nav_validate: { en: "Check calibration", zh: "验证校准结果" },
   nav_at: { en: "AssistiveTouch", zh: "辅助触控" },
   nav_finish: { en: "Finish", zh: "完成" },
-  s_phone_title: { en: "Connect your phone", zh: "连接你的手机" },
+  s_phone_title: { en: "Connect your phone", zh: "连接手机" },
   s_phone_lede: {
-    en: "Let's set up your PhysiClaw hardware. Calibration lines up the arm's movement, the phone's screen, and the camera's view, so PhysiClaw's eye and hand work as one.",
-    zh: "我们来设置 PhysiClaw 的硬件。校准会让机械臂的动作、手机屏幕和相机画面对齐，使 PhysiClaw 眼手同步。",
+    en: "Connect your phone, get the equipment in place, then calibrate the arm and camera. Calibration helps PhysiClaw find the right spot on the screen and tap it accurately.",
+    zh: "先连接手机、摆好设备，再校准机械臂和摄像头。校准后，PhysiClaw 才能找到屏幕上的目标并准确点击。",
   },
   s_phone_scan: {
-    en: `First make sure your phone is on the same WiFi as your computer, then scan with your iPhone camera and open the link in <b style="color:var(--strong)">Safari</b> or <b style="color:var(--strong)">Chrome</b>. The page should say <b style="color:var(--strong)">PhysiClaw</b>.`,
-    zh: `先确认手机和电脑连的是同一个 WiFi，然后用 iPhone 相机扫码，在 <b style="color:var(--strong)">Safari</b> 或 <b style="color:var(--strong)">Chrome</b> 里打开链接。页面上会显示 <b style="color:var(--strong)">PhysiClaw</b>。`,
+    en: `Connect your iPhone and computer to the same Wi-Fi network. Scan the QR code with your iPhone's Camera app, then open the link in <b style="color:var(--strong)">Safari</b> or <b style="color:var(--strong)">Chrome</b>. You should see the <b style="color:var(--strong)">PhysiClaw</b> bridge page.`,
+    zh: `把 iPhone 和电脑连到同一个 Wi-Fi。用 iPhone 的「相机」扫描二维码，再用 <b style="color:var(--strong)">Safari</b> 或 <b style="color:var(--strong)">Chrome</b> 打开链接，手机上就会显示 <b style="color:var(--strong)">PhysiClaw</b> bridge 页面。`,
   },
-  s_phone_qroff: { en: "QR unavailable offline.<br>Type the URL on your phone", zh: "离线状态下二维码不可用，<br>请在手机上手动输入网址" },
+  s_phone_qroff: { en: "Couldn't display the QR code.<br>Type the address shown on this page into your phone's browser.", zh: "二维码未能显示。<br>请在手机浏览器中输入页面上的网址。" },
+  s_phone_altUrl: { en: "Try this address if the main address won't open on your phone", zh: "如果手机无法打开上方的网址，请试试这个地址" },
   s_phone_doneBadge: { en: "Phone connected", zh: "手机已连接" },
   s_phone_waiting: { en: "Waiting for phone…", zh: "等待手机连接…" },
-  s_phone_ok: { en: "Phone connected. The bridge page is live.", zh: "手机已连接，bridge 页面已就绪。" },
-  s_position_title: { en: "Position the rig", zh: "摆放设备" },
-  s_position_lede: { en: "Get the phone and arm physically in place.", zh: "把手机和机械臂摆放到位。" },
-  s_position_li1: { en: `<b>Connect the control board</b>: USB cable to the computer, plus 12 V power.`, zh: `<b>连接控制板</b>：USB 线接电脑，再插上 12 V 电源。` },
-  s_position_li2: { en: `<b>Connect the camera</b> to the computer over USB.`, zh: `<b>连接相机</b>：用 USB 接到电脑。` },
+  s_phone_ok: { en: "Phone connected. Leave the bridge page open on your phone.", zh: "手机已连接。请让手机停留在 bridge 页面。" },
+  s_position_title: { en: "Position the equipment", zh: "摆放设备" },
+  s_position_lede: { en: "Connect the hardware and place the phone securely in its holder.", zh: "接好硬件，把手机平稳地放入支架。" },
+  s_position_li1: { en: `<b>Connect the arm's control board.</b> Plug it into your computer with a USB cable, then connect the 12 V power supply.`, zh: `<b>连接机械臂控制板。</b>用 USB 线连接电脑，再接上 12 V 电源。` },
+  s_position_li2: { en: `<b>Connect the camera</b> to your computer with a USB cable.`, zh: `<b>连接摄像头。</b>用 USB 线将摄像头连接到电脑。` },
   s_position_li3: {
-    en: `<b>Seat the phone in the holder</b>, its top-left corner against the holder's inner corner.<small>Keep the screen level and facing straight up. The camera bump on the back makes it rock, so cut a thin pad or soft mat to fit under the back and keep the screen flat and steady.</small>`,
-    zh: `<b>把手机放进支架</b>，左上角顶住支架的内角。<small>屏幕要放平、正面朝上。背面的摄像头凸起会让手机放不平，可以裁一小块薄垫或软垫塞在背面，让屏幕平稳不晃。</small>`,
+    en: `<b>Place the phone in the holder</b> with its top-left corner against the holder's inner corner.<small>Keep the screen level and facing up. If the rear camera bump makes the phone tilt or rock, place a thin pad under the back to keep it level and steady.</small>`,
+    zh: `<b>把手机放进支架，</b>左上角靠紧支架内角。<small>屏幕朝上，保持水平。如果背面的摄像头凸起导致手机放不平，可以在背面垫一小块薄垫，让手机放稳、不晃动。</small>`,
   },
-  s_position_li4: { en: `<b>Keep the phone unlocked</b>, with the bridge page open in the foreground.`, zh: `<b>保持手机解锁</b>，让 bridge 页面留在前台。` },
-  s_position_btn: { en: "Everything's in place", zh: "都摆好了" },
+  s_position_li4: { en: `<b>Keep the phone unlocked and the screen on.</b> Leave the bridge page open without switching to another app.`, zh: `<b>保持手机解锁，屏幕常亮。</b>停留在 bridge 页面，不要切换到其他应用。` },
+  s_position_btn: { en: "Everything is in place", zh: "已摆放到位" },
   s_arm_title: { en: "Connect the arm", zh: "连接机械臂" },
-  s_arm_lede: { en: "Detect the arm over USB. Make sure its control board is flashed with FluidNC firmware.", zh: "通过 USB 检测机械臂。请先确认控制板已刷入 FluidNC 固件。" },
+  s_arm_lede: { en: "The arm connects over USB. Make sure its control board has FluidNC firmware installed.", zh: "机械臂通过 USB 连接电脑。请先确认控制板已刷入 FluidNC 固件。" },
   s_arm_card: {
-    en: `Make sure the control board is connected over USB, with its 12 V power plugged in and switched on. PhysiClaw scans the computer's serial ports to find it automatically.`,
-    zh: `确认控制板已接好 USB，12 V 电源已插好、开关已打开。PhysiClaw 会扫描电脑的串口，自动找到它。`,
+    en: `Check the USB cable and 12 V power supply, and make sure the power is on. Then click <b>Connect arm</b>. PhysiClaw will find and connect the arm automatically.`,
+    zh: `确认 USB 线和 12 V 电源都已接好，电源开关已打开。然后点击<b>「连接机械臂」</b>，PhysiClaw 会自动查找并连接。`,
   },
   s_arm_btn: { en: "Connect arm", zh: "连接机械臂" },
   s_arm_busy: { en: "Connecting…", zh: "连接中…" },
   s_arm_ok: { en: "Arm connected.", zh: "机械臂已连接。" },
   s_arm_err: {
-    en: (r) => `Couldn't connect: ${msg(r)}. Check the USB cable and 12 V power, then try again.`,
-    zh: (r) => `连接失败：${msg(r)}。请检查 USB 线和 12 V 电源，然后重试。`,
+    en: (r) => `Couldn't connect the arm: ${msg(r)}. Check the USB cable and 12 V power supply, then try again.`,
+    zh: (r) => `机械臂连接失败：${msg(r)}。请检查 USB 线和 12 V 电源，然后重试。`,
   },
-  s_camera_title: { en: "Connect the camera", zh: "连接相机" },
-  s_camera_lede: { en: "Detect the overhead camera pointed at the phone.", zh: "检测正对手机的俯拍相机。" },
+  s_camera_title: { en: "Connect the camera", zh: "连接摄像头" },
+  s_camera_lede: { en: "PhysiClaw will find the overhead camera by looking for markers on your phone's screen.", zh: "PhysiClaw 会通过手机屏幕上的标记，自动识别俯拍摄像头。" },
   s_camera_card: {
-    en: `Preview with your computer's camera app and aim the overhead camera so it looks straight down at the phone, with the screen filling as much of the frame as possible. PhysiClaw draws colored corner markers on the <b style="color:var(--strong)">/bridge</b> page, then scans each camera. The one that sees the markers is the overhead camera.`,
-    zh: `先用电脑上的相机软件预览画面，把俯拍相机调整到正对手机、屏幕尽量占满画面。接着 PhysiClaw 会在 <b style="color:var(--strong)">/bridge</b> 页面画出彩色角标，再逐一扫描各路相机。能看到这些角标的那一台，就是俯拍相机。`,
+    en: `Use your computer's camera app to check the view. Point the camera straight down at the phone. Keep all four screen corners visible and let the screen fill as much of the image as possible. Close the camera app, then click <b>Connect camera</b>. PhysiClaw will display colored markers on the phone's bridge page to find the right camera.`,
+    zh: `先用电脑上的相机应用查看画面。把摄像头放在手机正上方，镜头垂直朝下。屏幕的四个角都要拍到，同时让屏幕尽量占满画面。调整好后，关闭相机应用，再点击<b>「连接摄像头」</b>。PhysiClaw 会根据屏幕上的彩色标记找到这台摄像头。`,
   },
-  s_camera_btn: { en: "Connect camera", zh: "连接相机" },
+  s_camera_btn: { en: "Connect camera", zh: "连接摄像头" },
   s_camera_busy: { en: "Detecting…", zh: "检测中…" },
-  s_camera_ok: { en: (r) => `Camera ${r.body.index} connected.`, zh: (r) => `相机 ${r.body.index} 已连接。` },
+  s_camera_ok: { en: (r) => `Camera ${r.body.index} connected.`, zh: (r) => `摄像头 ${r.body.index} 已连接。` },
   s_camera_err: {
-    en: (r) => `Couldn't find the camera: ${msg(r, "no match")}. Make sure the bridge page is open and awake on the phone, then try again.`,
-    zh: (r) => `没找到相机：${msg(r, "no match")}。请确认手机上的 bridge 页面开着、屏幕亮着，然后重试。`,
+    en: (r) => `Couldn't find the camera: ${msg(r, t("noCameraMatch"))}. Leave the bridge page open on your phone and keep the screen on. Check that the camera can see all four screen corners, then try again.`,
+    zh: (r) => `未找到摄像头：${msg(r, t("noCameraMatch"))}。请让手机停留在 bridge 页面，保持屏幕常亮。确认摄像头能拍到屏幕的四个角后，再试一次。`,
   },
   s_viewport_title: { en: "Locate the screen", zh: "定位屏幕" },
   s_viewport_lede: {
-    en: "PhysiClaw knows where elements sit relative to the page's viewport, but not where that viewport actually sits on the screen (it can scale and shift). A screenshot lets it line the two up and work out the viewport's offset on screen.",
-    zh: "PhysiClaw 知道每个元素在网页 viewport 里的位置，却不知道 viewport 本身落在屏幕的什么地方（viewport 会缩放，也会移动）。只要有一张截图，PhysiClaw 就能把两套坐标对上，算出 viewport 在屏幕上的实际位置。",
+    en: "A screenshot of the orange square tells PhysiClaw where the web page sits on your phone's screen.",
+    zh: "这一步要确定网页在手机屏幕上的位置。截一张带有橙色方块的截图，就能完成测量。",
   },
   s_viewport_li1: {
-    en: `<b>PhysiClaw is showing an orange square</b> on the phone.<small>It's drawn at a known spot, so a screenshot tells PhysiClaw the spot's real coordinates on screen.</small>`,
-    zh: `<b>PhysiClaw 已经在手机上显示了一个橙色方块</b>。<small>方块在页面上的位置是已知的，再拿到一张截图，PhysiClaw 就能算出它在屏幕上的真实坐标。</small>`,
+    en: `<b>Check that an orange square is visible</b> on your phone.<small>Keep the bridge page open and the screen on.</small>`,
+    zh: `<b>确认手机屏幕上出现了橙色方块。</b><small>让手机停留在 bridge 页面，保持屏幕常亮。</small>`,
   },
-  s_viewport_li2: { en: `<b>Tap AssistiveTouch once</b> to capture and upload a screenshot.`, zh: `<b>单点辅助触控</b>，截屏并上传。` },
-  s_viewport_li3: { en: `Press <b>Measure</b>.`, zh: `点击<b>「测量」</b>。` },
+  s_viewport_li2: { en: `<b>Tap the AssistiveTouch button once.</b> The shortcut you set up earlier will take and upload a screenshot.`, zh: `<b>轻点一次辅助触控按钮。</b>之前设置好的快捷指令会自动截屏并上传。` },
+  s_viewport_li3: { en: `Click <b>Measure</b> on this page.`, zh: `在本页面点击<b>「测量」</b>。` },
   s_viewport_btn: { en: "Measure", zh: "测量" },
   s_viewport_busy: { en: "Measuring…", zh: "测量中…" },
   s_viewport_ok: { en: "Screen located.", zh: "屏幕已定位。" },
   s_viewport_err: {
-    en: (r) => `Screen location failed: ${msg(r)}`,
-    zh: (r) => `屏幕定位失败：${msg(r)}`,
+    en: (r) => `Couldn't locate the screen: ${msg(r)}.`,
+    zh: (r) => `屏幕定位失败：${msg(r)}。`,
   },
-  s_viewport_warn: { en: "Couldn't show the square. Is the bridge page open and awake on the phone?", zh: "方块没能显示出来。手机上的 bridge 页面还开着、屏幕还亮着吗？" },
+  s_viewport_warn: { en: "Couldn't display the orange square. Leave the bridge page open on your phone, keep the screen on, then try again.", zh: "橙色方块未能显示。请让手机停留在 bridge 页面，保持屏幕亮着，然后重试。" },
   s_armcal_title: { en: "Calibrate the arm", zh: "校准机械臂" },
   s_armcal_lede: {
-    en: "Now PhysiClaw learns how the arm's movement maps to the screen. It taps a grid of known points and records the page coordinate each tap lands on.",
-    zh: "接下来，PhysiClaw 要学会机械臂的动作如何对应到屏幕上。它会控制机械臂依次点击一组预设位置，记录每一下落在页面上的坐标。",
+    en: "The arm will tap 18 points on the screen. PhysiClaw records where each tap lands so it can move the stylus to the right place.",
+    zh: "机械臂会依次点击屏幕上的 18 个位置，记录实际落点，用来校准点击位置。",
   },
   s_armcal_li1: {
-    en: `<b>Move the stylus tip over the orange circle</b> at screen center.<small>This gives the arm a starting point right over the screen.</small>`,
-    zh: `<b>把触控笔尖移到屏幕中央橙色圆圈的正上方。</b><small>这是机械臂的起点，正好悬在屏幕上方。</small>`,
+    en: `<b>Move the stylus tip directly above the orange circle</b> in the center of the screen.<small>Calibration will start from here.</small>`,
+    zh: `<b>把触控笔尖移到屏幕中央橙色圆圈的正上方。</b><small>校准会从这里开始。</small>`,
   },
   s_armcal_li2: {
-    en: `<b>Press Start, then don't touch the rig.</b> The arm taps 18 points (~30&nbsp;s) to map its movement to the screen's coordinates.`,
-    zh: `<b>点击「开始」，然后不要碰设备。</b>机械臂会依次点击 18 个位置（约 30 秒），把自己的动作和屏幕坐标一一对应起来。`,
+    en: `<b>Click Start and leave the equipment in place.</b> Calibration takes about 30 seconds.`,
+    zh: `<b>点击「开始」，等待约 30 秒。</b>机械臂会自动点击屏幕，校准期间请不要挪动设备。`,
   },
   s_armcal_btn: { en: "Start", zh: "开始" },
   s_armcal_busy: { en: "Tapping 18 points…", zh: "正在点击 18 个位置…" },
   s_armcal_input: {
-    en: "No saved arm calibration. Move the stylus tip above the orange center circle, then press Start.",
-    zh: "首次校准机械臂，请把笔尖移到屏幕中央橙色圆圈正上方，然后点击「开始」。",
+    en: "No saved arm calibration was found. Move the stylus tip directly above the orange circle in the center of the screen, then click Start.",
+    zh: "没有找到之前的机械臂校准记录。请把触控笔尖移到屏幕中央橙色圆圈的正上方，再点击「开始」。",
   },
-  s_armcal_ok: { en: (r) => `Arm calibrated. Mapped ${r.body.pairs} points.`, zh: (r) => `机械臂校准完成，已映射 ${r.body.pairs} 个位置。` },
+  s_armcal_ok: { en: (r) => `Arm calibrated using ${r.body.pairs} tap positions.`, zh: (r) => `机械臂校准完成，已记录 ${r.body.pairs} 个点击位置。` },
   s_armcal_warnSkew: {
-    en: (pct) => `The phone looks slightly rotated relative to the arm (${pct}%). If validation fails later, straighten the phone and run this step again.`,
-    zh: (pct) => `手机相对机械臂似乎放歪了（倾斜约 ${pct}%）。如果后面验证不通过，请把手机摆正，再重做这一步。`,
+    en: "The phone appears slightly rotated relative to the arm. If the calibration check fails later, straighten the phone and repeat this step.",
+    zh: "手机和机械臂没有完全对齐。如果稍后的验证不通过，请把手机摆正后重新校准机械臂。",
   },
   s_armcal_err: {
-    en: (r) => `Arm calibration failed: ${msg(r)}`,
-    zh: (r) => `机械臂校准失败：${msg(r)}`,
+    en: (r) => `Arm calibration failed: ${msg(r)}.`,
+    zh: (r) => `机械臂校准失败：${msg(r)}。`,
   },
-  s_armcal_warn: { en: "Couldn't show the center circle. Is the bridge page open and awake on the phone?", zh: "中心圆圈没能显示出来。手机上的 bridge 页面还开着、屏幕还亮着吗？" },
-  s_camcal_title: { en: "Calibrate the camera", zh: "校准相机" },
+  s_armcal_warn: { en: "Couldn't display the center circle. Leave the bridge page open on your phone, keep the screen on, then try again.", zh: "中心圆圈未能显示。请让手机停留在 bridge 页面，保持屏幕亮着，然后重试。" },
+  s_camcal_title: { en: "Calibrate the camera", zh: "校准摄像头" },
   s_camcal_lede: {
-    en: "PhysiClaw locks the camera's focus on a checkerboard, then shows dots at known spots and finds each one in the camera image, mapping screen position to camera pixel.",
-    zh: "PhysiClaw 会先用黑白棋盘锁定相机焦点，再在已知位置显示圆点并在相机画面里找出它们，把屏幕位置和相机像素对应起来。",
+    en: "Your phone will show a checkerboard to help the camera focus, followed by 15 dots. PhysiClaw uses the dots to work out where each part of the camera image falls on the phone's screen.",
+    zh: "手机会先显示黑白棋盘格，让摄像头对焦，再显示 15 个圆点。找到这些圆点后，PhysiClaw 就知道摄像头画面中的位置对应屏幕上的哪里。",
   },
   s_camcal_li1: {
-    en: `<b>Keep the whole phone screen in view</b>, evenly lit and free of glare.<small>The camera has to spot every dot in its photo.</small>`,
-    zh: `<b>让整个手机屏幕都在画面里</b>，光线均匀、没有反光。<small>相机要在照片里认出每一个圆点。</small>`,
+    en: `<b>Make sure the camera can see the entire screen.</b> Keep the lighting even and avoid glare.<small>All 15 dots must be clearly visible to the camera.</small>`,
+    zh: `<b>让整个手机屏幕都在摄像头画面里。</b>光线要均匀，屏幕上不要有反光。<small>15 个圆点都需要拍清楚。</small>`,
   },
   s_camcal_li2: {
-    en: `<b>Press Calibrate</b> and keep everything still. The phone shows a checkerboard (focus), then a grid of dots (mapping).`,
-    zh: `<b>点击「校准」</b>，保持一切静止。手机会先显示棋盘（对焦），再显示一组圆点（映射）。`,
+    en: `<b>Click Calibrate and leave the equipment in place.</b> The checkerboard and dots will appear automatically.`,
+    zh: `<b>点击「校准」，不要挪动设备。</b>手机会依次显示棋盘格和圆点。`,
   },
   s_camcal_btn: { en: "Calibrate", zh: "校准" },
-  s_camcal_busyFrame: { en: "Reading frame…", zh: "读取画面…" },
-  s_camcal_busyDots: { en: "Locking focus, finding 15 dots…", zh: "正在对焦并识别 15 个圆点…" },
-  s_camcal_kvRot: { en: "rotation", zh: "旋转" },
-  s_camcal_kvCov: { en: "coverage", zh: "覆盖" },
-  s_camcal_errCam: { en: (r) => `Couldn't read the camera: ${msg(r)}.`, zh: (r) => `读不到相机画面：${msg(r)}。` },
+  s_camcal_busyFrame: { en: "Checking camera view…", zh: "正在检查摄像头画面…" },
+  s_camcal_busyDots: { en: "Focusing and finding 15 dots…", zh: "正在对焦并识别 15 个圆点…" },
+  s_camcal_kvRot: { en: "Image rotation", zh: "画面旋转" },
+  s_camcal_kvCov: { en: "Screen coverage", zh: "屏幕占画面比例" },
+  s_camcal_errCam: { en: (r) => `Couldn't read the camera image: ${msg(r)}.`, zh: (r) => `无法读取摄像头画面：${msg(r)}。` },
   s_camcal_errMap: {
-    en: (r) => `Couldn't detect the dots: ${msg(r)}. Reduce glare, fix the lighting, and try again.`,
-    zh: (r) => `没能识别出圆点：${msg(r)}。请减少反光、调整好光线，然后重试。`,
+    en: (r) => `Couldn't detect the dots: ${msg(r)}. Reduce screen glare, make sure the lighting is even, and try again.`,
+    zh: (r) => `没能识别出圆点：${msg(r)}。请调整光线，避开屏幕反光后重试。`,
   },
-  s_camcal_ok: { en: (dots) => `Camera calibrated. Found all ${dots} dots.`, zh: (dots) => `相机校准完成，${dots} 个圆点全部找到。` },
-  s_validate_title: { en: "Validate calibration", zh: "验证校准" },
+  s_camcal_ok: { en: (dots) => `Camera calibrated. Detected all ${dots} dots.`, zh: (dots) => `摄像头校准完成，已识别全部 ${dots} 个圆点。` },
+  s_validate_title: { en: "Check the calibration", zh: "验证校准结果" },
   s_validate_lede: {
-    en: "A final end-to-end check that the arm, screen, and camera all line up. Pass it and your calibration is saved.",
-    zh: "最后做一次端到端检查，确认机械臂、屏幕和相机完全对齐。通过后，校准结果就会保存下来。",
+    en: "The arm will tap a few targets to check its accuracy. The calibration is saved if the check passes.",
+    zh: "机械臂会点击几个目标，检查落点是否准确。通过后会自动保存校准结果。",
   },
   s_validate_li1: {
-    en: `<b>Keep the rig still</b> and the screen free of glare.<small>The arm taps a few dots. Don't bump it while it runs.</small>`,
-    zh: `<b>保持设备不动</b>，屏幕上不要有反光。<small>机械臂会点几个圆点，运行时别碰它。</small>`,
+    en: `<b>Leave the equipment in place and avoid screen glare.</b><small>The arm will tap several targets during this check.</small>`,
+    zh: `<b>不要挪动设备，屏幕上不要有反光。</b><small>机械臂会依次点击几个目标。</small>`,
   },
   s_validate_li2: {
-    en: `<b>Press Validate.</b> For each dot, PhysiClaw finds it with the camera, taps it with the arm, and compares the tap to where the dot was drawn, saving if they line up.`,
-    zh: `<b>点击「验证」。</b>每个圆点，PhysiClaw 都会先用相机找到它，再用机械臂点它，然后比对落点和圆点的位置是否对得上。`,
+    en: `<b>Click Check calibration.</b> PhysiClaw will locate each target with the camera, tap it with the arm, and check how close the tap lands to the target.`,
+    zh: `<b>点击「验证校准结果」。</b>PhysiClaw 会用摄像头找到每个目标，再让机械臂点击，并检查落点是否准确。`,
   },
-  s_validate_btn: { en: "Validate", zh: "验证" },
-  s_validate_busy: { en: "Tapping & checking…", zh: "正在点击并核对…" },
+  s_validate_btn: { en: "Check calibration", zh: "验证校准结果" },
+  s_validate_busy: { en: "Checking tap accuracy…", zh: "正在检查点击精度…" },
   s_validate_ok: {
-    en: (r) => `Validated: ${r.body.passed}/${r.body.total} taps on target. Calibration saved.`,
-    zh: (r) => `验证通过：${r.body.passed}/${r.body.total} 次点击命中目标。校准已保存。`,
+    en: (r) => `Calibration check passed. ${r.body.passed} of ${r.body.total} taps were on target. Calibration saved.`,
+    zh: (r) => `验证通过。共点击 ${r.body.total} 次，${r.body.passed} 次命中目标。校准结果已保存。`,
   },
   s_validate_err: {
-    en: (r) => { const p = r.body || {}; return `Validation failed${p.passed != null ? ` (only ${p.passed} of ${p.total} taps landed)` : ""}. Check the lighting and try again, or go back and redo the camera or arm calibration.`; },
-    zh: (r) => { const p = r.body || {}; return `验证未通过${p.passed != null ? `（${p.passed}/${p.total} 个圆点命中）` : ""}。请检查光线后重试，或者退回前面的步骤，重做相机或机械臂的校准。`; },
+    en: (r) => { const p = r.body || {}; return `Calibration check failed${p.passed != null ? ` (${p.passed} of ${p.total} taps on target)` : ""}. Check for glare and uneven lighting, then try again. If it still fails, go back and recalibrate the arm or camera.`; },
+    zh: (r) => { const p = r.body || {}; return `验证未通过${p.passed != null ? `（共点击 ${p.total} 次，${p.passed} 次命中目标）` : ""}。请调整光线，避开屏幕反光后重试。如果还是不通过，请返回前面的步骤，重新校准机械臂或摄像头。`; },
   },
   s_at_title: { en: "Verify AssistiveTouch", zh: "验证辅助触控" },
   s_at_lede: {
-    en: "PhysiClaw uses AssistiveTouch to upload screenshots and copy text to your iPhone's clipboard.",
-    zh: "PhysiClaw 通过辅助触控上传截图，并将文字拷贝到 iPhone 剪贴板。",
+    en: "The AssistiveTouch button runs two shortcuts: tap once to take and upload a screenshot, or press and hold to copy text to your iPhone's clipboard.",
+    zh: "辅助触控按钮用来触发两个快捷指令：轻点一次，截屏并上传；长按，把文字复制到 iPhone 剪贴板。",
   },
   s_at_li1: {
-    en: `<b>Drag the AssistiveTouch button over the orange circle</b> on the phone.<small>That's the spot the arm taps to trigger the iOS Shortcuts.</small>`,
-    zh: `<b>把辅助触控按钮拖到屏幕上的橙色圆圈上。</b><small>机械臂就是点这个位置来触发 iOS 快捷指令的。</small>`,
+    en: `<b>Drag the AssistiveTouch button onto the orange circle</b> on your phone.<small>Center the button on the circle so the arm can tap it.</small>`,
+    zh: `<b>把辅助触控悬浮按钮拖到橙色圆圈上。</b><small>让按钮的中心对准圆圈，方便机械臂点击。</small>`,
   },
   s_at_li2: {
-    en: `<b>Press Verify.</b> The arm taps AssistiveTouch once to capture and upload a screenshot, then long-presses it to copy text to the clipboard.`,
-    zh: `<b>点击「验证」。</b>机械臂会单点辅助触控截屏并上传，再长按将文字拷贝到剪贴板。`,
+    en: `<b>Click Verify.</b> The arm will tap the button to check screenshot uploads, then press and hold it to check the clipboard shortcut.`,
+    zh: `<b>点击「验证」。</b>机械臂会先轻点按钮，检查截图上传，再长按按钮，检查文字复制。`,
   },
   s_at_btn: { en: "Verify", zh: "验证" },
   s_at_busy: { en: "Verifying…", zh: "验证中…" },
   s_at_ok: {
-    en: (clip) => `Screenshot + clipboard verified.${clip != null ? ` Clipboard text: <b>${clip}</b>.` : ""}`,
-    zh: (clip) => `截屏和剪贴板都验证通过了。${clip != null ? `剪贴板内容：<b>${clip}</b>。` : ""}`,
+    en: (clip) => `Both shortcuts are working.${clip != null ? ` Test text: <b>${clip}</b>.` : ""}`,
+    zh: (clip) => `两个快捷指令都正常。${clip != null ? `测试文本：<b>${clip}</b>。` : ""}`,
   },
   s_at_err: {
-    en: "Couldn't verify. Re-position the AssistiveTouch button over the circle, check the iOS Shortcuts, and try again.",
-    zh: "验证未通过，请把辅助触控按钮重新对准圆圈，并确认 iOS 快捷指令设置正确，然后重试。",
+    en: "AssistiveTouch check failed. Center the button on the orange circle and check that its single-tap and long-press actions run the correct iOS shortcuts, then try again.",
+    zh: "辅助触控验证未通过。请把按钮中心对准橙色圆圈，检查「单点」和「长按」是否设置为对应的快捷指令，然后重试。",
   },
-  s_finish_finishingTitle: { en: "Calibration complete…", zh: "校准完成…" },
-  s_finish_finishingLede: { en: "Sending the phone home and checking camera readiness.", zh: "正在让手机返回主屏幕，并检查相机是否就绪。" },
-  s_finish_err: { en: "Readiness was not confirmed. Check the server and retry once hardware is idle.", zh: "尚未确认设备就绪。请检查服务器，待硬件空闲后重试。" },
-  s_finish_homeErr: { en: (r) => `Couldn't return the phone home: ${msg(r)}`, zh: (r) => `返回手机主屏幕失败：${msg(r)}` },
+  s_finish_finishingTitle: { en: "Finishing setup…", zh: "正在完成设置…" },
+  s_finish_finishingLede: { en: "Returning your phone to the Home Screen and checking that the camera is ready.", zh: "正在让手机返回主屏幕，并检查摄像头是否就绪。" },
+  s_finish_err: { en: "Couldn't confirm that PhysiClaw is ready. Check that the PhysiClaw server is running, wait for the equipment to stop moving, then click Retry.", zh: "暂时无法确认设备状态。请确认电脑上的 PhysiClaw 服务正常运行，等设备停止运动后，再点击「重试」。" },
+  s_finish_homeErr: { en: (r) => `Couldn't return the phone to the Home Screen: ${msg(r)}.`, zh: (r) => `无法让手机返回主屏幕：${msg(r)}。` },
   s_finish_retry: { en: "Retry", zh: "重试" },
   s_finish_readyTitle: { en: "PhysiClaw is ready", zh: "PhysiClaw 已就绪" },
-  s_finish_readyLedeShort: { en: "The arm, camera, and screen are calibrated and working together.", zh: "机械臂、相机和屏幕已全部校准，正在协同工作。" },
+  s_finish_readyLedeShort: { en: "Calibration is complete. The arm and camera are ready to use.", zh: "硬件已校准，可以开始使用了。" },
   s_finish_readyLede: {
-    en: (when) => `The arm, camera, and screen are all calibrated${when}. PhysiClaw can now see and tap the phone.`,
-    zh: (when) => `机械臂、相机和屏幕已全部校准${when}。PhysiClaw 现在可以操作这部手机了。`,
+    en: (when) => `Setup completed${when}. The arm and camera are ready to use.`,
+    zh: (when) => `硬件设置已完成${when}，现在可以使用 PhysiClaw 了。`,
   },
   s_finish_when: { en: (mm, ss) => ` in ${mm}m ${ss}s`, zh: (mm, ss) => `（用时 ${mm} 分 ${ss} 秒）` },
   s_finish_learning: {
-    en: "On first run, PhysiClaw now spends a few minutes learning the chat app you use and your keyboard layout. Please keep your chat app in the bottom Dock so the agent can find it easily.",
-    zh: "首次运行时，PhysiClaw 会花几分钟熟悉你的聊天软件和键盘布局。请把聊天软件固定在底部 Dock 栏，方便它找到。",
+    en: "On the first run, PhysiClaw needs a few minutes to learn your chat app and keyboard layout. Put your chat app in the Dock at the bottom of your iPhone's Home Screen so it's easy to find.",
+    zh: "首次使用时，PhysiClaw 还需要几分钟来熟悉聊天应用和键盘布局。请把聊天应用放在 iPhone 主屏幕底部的 Dock 栏，方便后续打开。",
   },
-  s_finish_close: { en: "You can close this tab safely.", zh: "现在可以放心关闭这个标签页了。" },
+  s_finish_close: { en: "You can now close this setup tab on your computer.", zh: "现在可以关闭这个标签页了。" },
 };
 const normLang = (l) => (l === "zh" ? "zh" : "en");
 let LANG = "en";
@@ -531,7 +539,17 @@ function setStaticText() {
   document.title = t("docTitle");
   const sub = document.getElementById("brandSub"); if (sub) sub.textContent = t("brandSub");
   const foot = document.getElementById("sideFoot"); if (foot) foot.innerHTML = t("foot");
-  const lb = document.getElementById("langToggle"); if (lb) lb.textContent = t("langName");
+  const lb = document.getElementById("langToggle");
+  if (lb) {
+    lb.textContent = t("langName");
+    lb.setAttribute("aria-label", t("langLabel"));
+    lb.title = t("langLabel");
+  }
+  const tb = document.getElementById("themeToggle");
+  if (tb) {
+    tb.setAttribute("aria-label", t("themeLabel"));
+    tb.title = t("themeLabel");
+  }
 }
 function applyLang(l) {
   if (WORKING) return;
@@ -583,7 +601,7 @@ async function api(method, path, body, timeoutMs = 60000) {
     let json = null; try { json = txt ? JSON.parse(txt) : {}; } catch { json = { _raw: txt }; }
     return { ok: r.ok, status: r.status, body: json };
   } catch (e) {
-    return { ok: false, status: 0, body: { message: e.name === "AbortError" ? "timed out" : (e.message || "network error") } };
+    return { ok: false, status: 0, body: { message: e.name === "AbortError" ? t("requestTimeout") : t("networkError") } };
   } finally {
     clearTimeout(to);
   }
@@ -722,7 +740,7 @@ function shell({ n, eyebrow, title, lede, cards = [] }) {
 function card(inner) { const c = $(`<div class="card"></div>`); if (typeof inner === "string") c.innerHTML = inner; else c.appendChild(inner); return c; }
 function note(kind, html) { return $(`<div class="note ${kind}"><span class="ic">${{ info: "ℹ", ok: "✓", warn: "⚠", err: "✕" }[kind]}</span><span>${html}</span></div>`); }
 function busy(btn, on, label) {
-  if (on) { if (!btn.disabled) btn._t = btn.innerHTML; btn.disabled = true; btn.innerHTML = `<span class="spin"></span>${label || "Working…"}`; }
+  if (on) { if (!btn.disabled) btn._t = btn.innerHTML; btn.disabled = true; btn.innerHTML = `<span class="spin"></span>${label || t("working")}`; }
   else { btn.disabled = false; btn.innerHTML = btn._t; }
 }
 
@@ -760,7 +778,7 @@ function footer(ctx, { back, primary } = {}) {
 }
 
 const ADVANCE_DELAY = 700;  // ms — let the success note linger before advancing
-const msg = (r, fallback = "no response") => (r.body && (r.body.message || r.body.error)) || fallback;
+const msg = (r, fallback = t("noResponse")) => String((r.body && (r.body.message || r.body.error)) || fallback).trim().replace(/[.。]+$/, "");
 
 /* Wire the primary button to a one-shot async action and own the lifecycle
    every action step shares: toggle busy, clear the result area `st`, run
@@ -803,7 +821,7 @@ function runAction(ctx, go, st, { busy: label, prepare, call, ok = isOk, onOk, e
       if (!hold) { await sleep(delay); next = true; }
     } catch (e) {
       stopAuto();
-      if (ctx.active()) st.appendChild(note("err", err({body: {message: e.message || "Request failed"}})));
+      if (ctx.active()) st.appendChild(note("err", err({body: {message: e.message || t("requestFailed")}})));
       return false;
     } finally {
       if (!next) busy(go, false);
@@ -823,7 +841,7 @@ function runAction(ctx, go, st, { busy: label, prepare, call, ok = isOk, onOk, e
 /* ── 1. Connect phone ──────────────────────────────── */
 function connectPhone(ctx) {
   const altUrl = (PHONE_URL_FALLBACK && PHONE_URL_FALLBACK !== PHONE_URL)
-    ? `<div class="url alt" title="Fallback if mDNS is blocked">${PHONE_URL_FALLBACK}</div>` : "";
+    ? `<div class="url alt" title="${t("s_phone_altUrl")}">${PHONE_URL_FALLBACK}</div>` : "";
   const body = card(`<div class="qrwrap">
       <div class="qrcard"><canvas id="qr"></canvas>
         <div class="qr-done" id="qrDone"><div class="check">✓</div><div class="lbl">${t("s_phone_doneBadge")}</div></div>
@@ -968,7 +986,7 @@ function calibrateArm(ctx) {
     call: () => api("POST", "/api/calibrate/arm", AUTO ? { from_park: true } : null, 130000),
     onOk: r => {
       st.appendChild(note("ok", t("s_armcal_ok", r)));
-      if (!r.body.aligned) st.appendChild(note("warn", t("s_armcal_warnSkew", (r.body.tilt_ratio * 100).toFixed(1))));
+      if (!r.body.aligned) st.appendChild(note("warn", t("s_armcal_warnSkew")));
     },
     input: () => t("s_armcal_input"),
     err: r => t("s_armcal_err", r),

@@ -89,7 +89,7 @@ for (const language of ['en', 'zh']) {
     assert.equal(ui.state().auto, false);
     assert.equal(calls(ui, '/api/calibrate/arm').length, 1);
     assert.equal(ui.el('panel').querySelectorAll('.note.err').length, 0);
-    assert.match(ui.el('panel').textContent, language === 'en' ? /No saved arm calibration.*press Start/ : /首次校准机械臂.*开始/);
+    assert.match(ui.el('panel').textContent, language === 'en' ? /No saved arm calibration.*click Start/ : /没有找到之前的机械臂校准记录.*开始/);
     assert.equal(ui.current().textContent, language === 'en' ? 'Start' : '开始');
 
     await ui.current().click();
@@ -285,7 +285,7 @@ test('readiness acknowledgement alone does not show success', async () => {
   await ui.startAuto();
 
   assert.equal(ui.status.ready, false);
-  assert.match(ui.el('panel').querySelector('.note.err').textContent, /Readiness was not confirmed/);
+  assert.match(ui.el('panel').querySelector('.note.err').textContent, /Couldn't confirm that PhysiClaw is ready/);
 });
 
 test('an arm request timeout stops Auto mode without another probe', async () => {
