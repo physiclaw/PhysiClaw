@@ -19,6 +19,7 @@ The original source file is never modified."""
 from __future__ import annotations
 
 import json
+import re
 import sys
 import threading
 import traceback
@@ -48,15 +49,45 @@ INDEX_HTML = (Path(__file__).parent / "index.html").read_bytes()
 # would otherwise each read the same entries, upsert their own op, and the
 # last write_patch would clobber the other op.
 _SAVE_LOCK = threading.Lock()
+MAX_SAVE_BYTES = 1 << 20
 
 
 class Handler(BaseHTTPRequestHandler):
     src_path: Path  # populated by make_server() before the loop runs.
 
+    def setup(self):
+        # An incomplete HTTP request must not occupy a worker indefinitely.
+        self.request.settimeout(15)
+        super().setup()
+
+    def _local_request(self) -> bool:
+        """Reject foreign websites and DNS rebinding before reading local files."""
+        host, port = self.server.server_address[:2]
+        hosts = {host}
+        if host in {"127.0.0.1", "::1", "localhost"}:
+            hosts.update({"127.0.0.1", "localhost"})
+        authority = self.headers.get("Host", "").lower()
+        allowed = {f"{name}:{port}" for name in hosts}
+        expected_origins = {f"http://{authority}"}
+        if port == 80:
+            # Browsers omit HTTP's default port from the serialized origin.
+            allowed.update(hosts)
+            origin_base = f"http://{authority.removesuffix(':80')}"
+            expected_origins = {origin_base, f"{origin_base}:80"}
+        origin = self.headers.get("Origin")
+        if authority not in allowed or (
+            origin is not None and origin.lower() not in expected_origins
+        ):
+            self._send_json(403, {"error": "request must come from this editor"})
+            return False
+        return True
+
     def log_message(self, format, *args):  # noqa: A002 - stdlib signature
         buildlog.event("http_request", format % args, level="debug")
 
     def do_GET(self):  # noqa: N802
+        if not self._local_request():
+            return
         if self.path in ("/", "/index.html"):
             self._send(200, "text/html; charset=utf-8", INDEX_HTML)
             return
@@ -96,19 +127,39 @@ class Handler(BaseHTTPRequestHandler):
         self._send(404, "text/plain; charset=utf-8", b"not found")
 
     def do_POST(self):  # noqa: N802
+        if not self._local_request():
+            return
         if self.path != "/save":
             self._send(404, "text/plain; charset=utf-8", b"not found")
             return
-        length = int(self.headers.get("Content-Length", "0"))
-        body = self.rfile.read(length) if length else b""
+        length_header = self.headers.get("Content-Length", "")
+        if self.headers.get("Transfer-Encoding") or not re.fullmatch(
+            r"[0-9]{1,10}", length_header
+        ):
+            self._send_json(400, {"error": "valid Content-Length is required"})
+            return
+        length = int(length_header)
+        if length > MAX_SAVE_BYTES:
+            self._send_json(413, {"error": "save payload is too large"})
+            return
+        try:
+            body = self.rfile.read(length)
+        except TimeoutError:
+            self._send_json(408, {"error": "save payload timed out"})
+            return
+        if len(body) != length:
+            self._send_json(400, {"error": "incomplete save payload"})
+            return
         try:
             payload = json.loads(body.decode("utf-8") or "{}")
+            if not isinstance(payload, dict):
+                raise ValueError("save payload must be an object")
             shapes = validate_shapes(payload.get("shapes", []))
             viewbox = validate_viewbox(payload.get("viewBox"))
             preop = validate_preop(payload.get("preop", ORIG_SENTINEL))
             if not shapes and viewbox is None:
                 raise ValueError("no shapes or viewBox to save")
-        except (ValueError, json.JSONDecodeError) as exc:
+        except (ValueError, RecursionError) as exc:
             self._send_json(400, {"error": f"{type(exc).__name__}: {exc}"})
             return
 
@@ -198,5 +249,9 @@ DEFAULT_PORT = 52281
 def make_server(
     src: Path, host: str = "127.0.0.1", port: int = DEFAULT_PORT
 ) -> ThreadingHTTPServer:
-    Handler.src_path = src
-    return ThreadingHTTPServer((host, port), Handler)
+    # Each listener owns its source; opening a second editor must not redirect
+    # an existing listener's reads and writes to the second drawing.
+    class SourceHandler(Handler):
+        src_path = src
+
+    return ThreadingHTTPServer((host, port), SourceHandler)

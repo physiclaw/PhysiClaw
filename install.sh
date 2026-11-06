@@ -74,8 +74,13 @@ DRY_RUN=0
 usage_err() { err "$*"; usage >&2; exit 2; }
 while (( $# > 0 )); do
   case "$1" in
-    --version)   VERSION="${2:-}"; shift 2 ;;
-    --version=*) VERSION="${1#*=}"; shift ;;
+    --version)
+      [[ $# -ge 2 && -n "$2" && "$2" != -* ]] || usage_err "--version requires a version"
+      VERSION="$2"; shift 2 ;;
+    --version=*)
+      VERSION="${1#*=}"
+      [[ -n "$VERSION" && "$VERSION" != -* ]] || usage_err "--version requires a version"
+      shift ;;
     --dry-run)   DRY_RUN=1; shift ;;
     -h|--help)   usage; exit 0 ;;
     *) usage_err "unknown option: $1" ;;

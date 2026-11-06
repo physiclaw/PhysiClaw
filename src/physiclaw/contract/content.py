@@ -56,6 +56,11 @@ def mcp_blocks_to_content_blocks(blocks: list[dict]) -> str | list[ContentBlock]
                 new_b64 = (
                     b["data"] if scaled is raw else base64.b64encode(scaled).decode()
                 )
+            except image.ImageSizeError as exc:
+                # The tool already ran. Preserve its outcome without forwarding
+                # rejected pixels or turning an image failure into an action failure.
+                texts.append(f"[Image omitted: {exc}]")
+                continue
             except Exception:
                 log.info("scale failed; forwarding original image", exc_info=True)
                 new_b64 = b["data"]

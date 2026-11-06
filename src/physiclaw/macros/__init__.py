@@ -31,7 +31,8 @@ before dispatch do not count. The result uses this distinction to tell
 callers whether retrying could repeat an action. Taps use their authored
 boxes; labels describe targets rather than relocating them.
 
-The package depends on common utilities, never on the agent engine.
+The package depends on common utilities and the public process-lock API for
+statistics persistence, never on the agent engine.
 Consumers import the submodule they need; nothing is re-exported here,
 so importing a data type need not load YAML parsing or the runner.
 """

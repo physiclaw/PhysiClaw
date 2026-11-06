@@ -13,7 +13,6 @@ alongside any schema change.
 
 import datetime as dt
 import hashlib
-import json
 import logging
 import secrets
 from pathlib import Path
@@ -23,6 +22,7 @@ from physiclaw.common import paths
 from physiclaw.common.config import CONFIG
 from physiclaw.common.logger import save_image
 from physiclaw.common.logger.retention import purge_old_sessions
+from physiclaw.common.text import json_object, read_text
 
 log = logging.getLogger(__name__)
 
@@ -317,12 +317,15 @@ sensitive.
 
 def load_summary(d: Path) -> dict[str, Any] | None:
     """A session dir's summary.json, or None when it has none (killed or
-    still running) or it is not a JSON object."""
+    still running) or it is not a finite JSON object."""
+
     try:
-        summary = json.loads((d / "summary.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError):  # ValueError covers JSON + UTF-8 decode errors
+        path = (d / "summary.json").resolve()
+        if not path.is_relative_to(d.resolve()):
+            return None
+        return json_object(read_text(path))
+    except (OSError, ValueError, RuntimeError):  # UTF-8, path or symlink errors
         return None
-    return summary if isinstance(summary, dict) else None
 
 
 def stub_summary(d: Path) -> dict[str, Any]:

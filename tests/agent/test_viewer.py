@@ -541,6 +541,22 @@ def test_viewer_keeps_artifact_links_within_the_selected_session(tmp_path):
     assert {row["name"] for row in model["files"]} == {"actual.txt", "notes.md"}
 
 
+def test_viewer_write_replaces_external_output_symlink_without_touching_target(
+    tmp_path,
+):
+    session = tmp_path / "session"
+    session.mkdir()
+    private = tmp_path / "private.txt"
+    private.write_text("preserve private contents", encoding="utf-8")
+    symlink_to(session / viewer.VIEWER_FILE, private)
+
+    page = viewer.write(session)
+
+    assert private.read_text(encoding="utf-8") == "preserve private contents"
+    assert not page.is_symlink()
+    assert json.loads(_embedded(page.read_text(encoding="utf-8")))["sid"] == "session"
+
+
 @pytest.mark.parametrize(
     "error",
     [
@@ -568,6 +584,16 @@ def test_viewer_skips_files_when_their_location_cannot_be_verified(
 @pytest.mark.parametrize("number", ["NaN", "Infinity", "-Infinity", "1e999"])
 def test_regression_nonfinite_record_stays_visible_as_unparsed_text(tmp_path, number):
     line = '{"event":"usage","input":' + number + "}"
+    (tmp_path / "events.jsonl").write_text(line + "\n", encoding="utf-8")
+
+    model = viewer.load(tmp_path)
+
+    assert _records(model, None)[0]["rec"] == {"unparsed": line}
+    assert json.loads(_embedded(viewer.render(model))) == model
+
+
+def test_regression_deep_record_stays_visible_as_unparsed_text(tmp_path):
+    line = '{"event":"other","nested":' + "[" * 10000 + "0" + "]" * 10000 + "}"
     (tmp_path / "events.jsonl").write_text(line + "\n", encoding="utf-8")
 
     model = viewer.load(tmp_path)

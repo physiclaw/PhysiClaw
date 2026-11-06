@@ -30,6 +30,8 @@ dependencies = [
     # https://github.com/opencv/opencv/issues/28370.
     "opencv-python>=4.14,<5",
     "numpy>=1.26,<3",
+    # Probe supported image headers before OpenCV can allocate decoded pixels.
+    "pillow>=13,<14",
     # Our MCPServer/ToolError APIs require SDK 2. Version 2.2 fixes unbounded
     # StreamableHTTP sessions (GHSA-84m7-p3x7-pcfv).
     "mcp>=2.2,<3",
@@ -38,6 +40,11 @@ dependencies = [
     "httpx[socks]>=0.28.1,<0.29",
     # The MCP transport receives an httpx2 client; keep it on SDK 2's major.
     "httpx2>=2.12,<3",
+    # Security floors for transitive dependencies also protect wheel installs:
+    # certifi removes compromised emSign trust roots (GHSA-6q48-6c7w-9gw2);
+    # OpenTelemetry bounds tracestate parsing (GHSA-xcq7-p3pf-p88h).
+    "certifi>=2026.10.19",
+    "opentelemetry-api>=1.45.1,<2",
     "croniter>=6.2.2,<7",
     # RapidOCR 3.10 switched to opencv-python-headless, which shares cv2
     # with our opencv-python dependency. Keep only one OpenCV distribution.

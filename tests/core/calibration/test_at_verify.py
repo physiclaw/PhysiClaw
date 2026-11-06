@@ -156,6 +156,27 @@ def test_verify_assistive_touch_returns_failed_dict_on_decode_error(mocker) -> N
     assert out["passed"] is False
 
 
+def test_at_rejects_oversized_metadata_before_pixel_decode(monkeypatch, mocker) -> None:
+    from physiclaw.common import image
+
+    mocker.patch.object(at_verify_mod.time, "sleep")
+    ok, encoded = cv2.imencode(".png", np.zeros((20, 20, 3), dtype=np.uint8))
+    assert ok
+    monkeypatch.setattr(image, "MAX_IMAGE_PIXELS", 100)
+    decode = mocker.patch.object(
+        cv2, "imdecode", side_effect=AssertionError("pixel decode")
+    )
+    at, bridge = MagicMock(), MagicMock()
+    at.at_screen = (0.05, 0.1)
+    bridge.wait_screenshot.return_value = encoded.tobytes()
+
+    with pytest.raises(image.ImageSizeError, match="decode limit"):
+        at_verify_mod.verify_assistive_touch(
+            MagicMock(), at, bridge, _make_cal(), _identity_pct_to_grbl(), MagicMock()
+        )
+    decode.assert_not_called()
+
+
 def test_verify_assistive_touch_raises_when_viewport_shift_unset(mocker) -> None:
     mocker.patch.object(at_verify_mod.time, "sleep")
     arm = MagicMock()

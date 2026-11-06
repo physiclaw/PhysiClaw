@@ -26,9 +26,22 @@ def sessions(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "payload", [b"[1]", b'"text"', b"1", b"true", b"null", b"{", b"\xff"]
+    "payload",
+    [
+        b"[1]",
+        b'"text"',
+        b"1",
+        b"true",
+        b"null",
+        b"{",
+        b"\xff",
+        b'{"outcome":{"recap":NaN}}',
+        b'{"outcome":{"recap":Infinity}}',
+        b'{"outcome":{"recap":-Infinity}}',
+        b'{"outcome":{"recap":1e999}}',
+    ],
 )
-def test_regression_load_summary_rejects_non_objects(tmp_path, payload):
+def test_regression_load_summary_rejects_unusable_json(tmp_path, payload):
     (tmp_path / "summary.json").write_bytes(payload)
 
     summary = store.load_summary(tmp_path)
@@ -55,6 +68,28 @@ def test_load_summary_missing_file_returns_none(tmp_path):
     summary = store.load_summary(tmp_path)
 
     assert summary is None
+
+
+def test_recent_sessions_does_not_read_external_summary_symlink(sessions, tmp_path):
+    session = sessions / "session-abc123"
+    session.mkdir()
+    outside = tmp_path / "private.json"
+    outside.write_text('{"outcome":{"recap":"private contents"}}', encoding="utf-8")
+    symlink_to(session / "summary.json", outside)
+
+    assert store.load_summary(session) is None
+    assert store.recent_sessions(sessions, 10) == [store.stub_summary(session)]
+
+
+def test_load_summary_allows_internal_alias_in_symlinked_session(sessions, tmp_path):
+    session = sessions / "session-abc123"
+    session.mkdir()
+    (session / "saved.json").write_text('{"turns":7}', encoding="utf-8")
+    symlink_to(session / "summary.json", session / "saved.json")
+    linked = tmp_path / "session-alias"
+    symlink_to(linked, session, target_is_directory=True)
+
+    assert store.load_summary(linked) == {"turns": 7}
 
 
 def test_regression_recent_sessions_keeps_bad_summary_as_stub(sessions):

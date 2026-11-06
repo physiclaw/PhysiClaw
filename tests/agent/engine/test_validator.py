@@ -46,6 +46,28 @@ def test_top_level_empty_dict_against_no_required_passes() -> None:
     validate_arguments({}, {"type": "object", "properties": {}})
 
 
+@pytest.mark.parametrize(
+    "args,schema",
+    [
+        ({}, {"minProperties": 1}),
+        ({"a": 1, "b": 2}, {"maxProperties": 1}),
+        ({"a": 1}, {"const": {"a": 2}}),
+        ({"a": 1}, {"enum": [{"a": 2}]}),
+        ({}, {"anyOf": [{"required": ["a"]}, {"required": ["b"]}]}),
+        ({"a": 1, "b": 2}, {"oneOf": [{"required": ["a"]}, {"required": ["b"]}]}),
+        ({"a": 1}, {"allOf": [{"required": ["a"]}, {"required": ["b"]}]}),
+    ],
+)
+def test_argument_root_constraints_cannot_be_bypassed(args, schema) -> None:
+    with pytest.raises(ValidationError, match=r"^arguments:"):
+        validate_arguments(args, schema)
+
+
+@pytest.mark.parametrize("keyword", ["anyOf", "oneOf", "allOf"])
+def test_argument_root_accepts_matching_union_branch(keyword) -> None:
+    validate_arguments({"a": 1}, {keyword: [{"required": ["a"]}]})
+
+
 def test_top_level_missing_required_field_raises_with_field_name() -> None:
     schema = {
         "type": "object",

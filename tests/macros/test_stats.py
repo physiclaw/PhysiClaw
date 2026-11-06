@@ -4,12 +4,18 @@ counter folding, consecutive-abort streaks, pruning, and fail-open IO."""
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
 
 import pytest
 from freezegun import freeze_time
 
 from physiclaw.common import paths
 from physiclaw.macros import stats
+from physiclaw.port.locks import exclusive_file_lock
 
 
 def _record_ok(name: str = "demo", known: set[str] | None = None) -> None:
@@ -242,6 +248,93 @@ def test_record_write_failure_does_not_raise(mocker) -> None:
     )
 
     _record_ok()  # must not raise
+
+
+def test_busy_stats_lock_skips_the_update_before_reading(monkeypatch, mocker) -> None:
+    def no_wait(path, *, timeout):
+        assert timeout == stats._LOCK_TIMEOUT_SECONDS
+        return exclusive_file_lock(path)
+
+    monkeypatch.setattr(stats, "exclusive_file_lock", no_wait)
+    read = mocker.patch.object(stats, "load")
+    write = mocker.patch.object(stats, "write_json_atomic")
+    with exclusive_file_lock(stats.stats_file().with_suffix(".lock")):
+        _record_ok()  # bounded diagnostic contention must not fail the run
+
+    read.assert_not_called()
+    write.assert_not_called()
+
+
+def test_stats_lock_io_failure_does_not_fail_a_completed_run(mocker) -> None:
+    mocker.patch.object(
+        stats, "exclusive_file_lock", side_effect=PermissionError("read-only home")
+    )
+    read = mocker.patch.object(stats, "load")
+
+    _record_ok()
+
+    read.assert_not_called()
+
+
+def test_concurrent_processes_preserve_every_run_counter(tmp_path) -> None:
+    program = """
+import sys, time
+from pathlib import Path
+from physiclaw.macros import stats
+directory, worker = Path(sys.argv[1]), sys.argv[2]
+original_load = stats.load
+def slow_load():
+    snapshot = original_load()
+    # Widen the read/write race; the whole pause must stay inside the lock.
+    time.sleep(0.01)
+    return snapshot
+stats.load = slow_load
+(directory / ('ready-' + worker)).touch()
+deadline = time.monotonic() + 10
+while not (directory / 'start').exists():
+    if time.monotonic() > deadline:
+        raise TimeoutError('stats writer start barrier')
+    time.sleep(0.005)
+for _ in range(12):
+    stats.record('shared', ok=worker == 'success', known_names={'shared'},
+                 step=1, reason='guard_failed')
+"""
+    env = {
+        **os.environ,
+        "PYTHONPATH": str(Path(__file__).resolve().parents[2] / "src"),
+    }
+    processes = []
+    try:
+        for worker in ("success", "abort"):
+            processes.append(
+                subprocess.Popen(
+                    [sys.executable, "-c", program, str(tmp_path), worker],
+                    env=env,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+            )
+        deadline = time.monotonic() + 10
+        while not all((tmp_path / f"ready-{w}").exists() for w in ("success", "abort")):
+            assert time.monotonic() < deadline, (
+                "stats writers did not reach the barrier"
+            )
+            time.sleep(0.005)
+        (tmp_path / "start").touch()
+        for process in processes:
+            _, errors = process.communicate(timeout=10)
+            assert process.returncode == 0, errors
+    finally:
+        for process in processes:
+            if process.poll() is None:
+                process.kill()
+                process.communicate(timeout=5)
+
+    saved = stats.load()["shared"]
+    assert saved["total_runs"] == 24
+    assert saved["total_successes"] == 12
+    assert saved["total_aborts"] == 12
 
 
 def test_stats_file_is_valid_json_on_disk() -> None:

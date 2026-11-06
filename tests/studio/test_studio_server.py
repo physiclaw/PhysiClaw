@@ -105,6 +105,19 @@ async def test_act_rejects_malformed_bodies(body, match) -> None:
     assert match in _payload(resp)["message"]
 
 
+@pytest.mark.parametrize("raw", [b"\xff", b"[" * 10_000 + b"0" + b"]" * 10_000])
+async def test_act_refuses_invalid_encoding_and_excessive_json_depth(raw):
+    async def body():
+        return raw
+
+    session = FakeSession()
+    response = await server.handle_act(SimpleNamespace(body=body), session)
+
+    assert response.status_code == 400
+    assert _payload(response)["message"] == "body must be JSON"
+    assert session.acted == []
+
+
 @pytest.mark.parametrize("args", [False, 0, "", [], [1], "text"])
 async def test_regression_non_mapping_args_never_execute_a_tool(args):
     session = FakeSession()

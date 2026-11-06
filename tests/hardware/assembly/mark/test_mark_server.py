@@ -31,7 +31,8 @@ def make_handler(body: bytes) -> server.Handler:
     h.client_address = ("127.0.0.1", 0)
     h.rfile = io.BytesIO(body)
     h.wfile = io.BytesIO()
-    h.headers = {"Content-Length": str(len(body))}
+    h.headers = {"Content-Length": str(len(body)), "Host": "127.0.0.1:52281"}
+    h.server = SimpleNamespace(server_address=("127.0.0.1", 52281))
     return h
 
 
@@ -86,6 +87,157 @@ def test_save_appends_the_op_and_replies_with_its_id(store):
     assert b" 200 " in response.splitlines()[0]
     assert b"X-Op-Id: aaaa" in response
     assert [e["id"] for e in store.entries] == ["aaaa"]
+
+
+@pytest.mark.parametrize("method", ["GET", "POST"])
+@pytest.mark.parametrize(
+    "headers",
+    [
+        {"Host": "attacker.example:52281"},
+        {"Host": "127.0.0.1:52282"},
+        {"Host": ""},
+        {"Origin": "https://attacker.example"},
+        {"Origin": "null"},
+    ],
+)
+def test_editor_rejects_foreign_requests_before_reading_or_writing(
+    store, headers, method
+):
+    handler = make_handler(SAVE_BODY)
+    handler.headers.update(headers)
+    handler.path = "/svg" if method == "GET" else "/save"
+
+    getattr(handler, f"do_{method}")()
+
+    assert b" 403 " in handler.wfile.getvalue().splitlines()[0]
+    assert handler.rfile.tell() == 0
+    assert store.entries == []
+
+
+def test_editor_accepts_same_origin_browser_save(store):
+    handler = make_handler(SAVE_BODY)
+    handler.headers["Origin"] = "http://127.0.0.1:52281"
+
+    handler.do_POST()
+
+    assert b" 200 " in handler.wfile.getvalue().splitlines()[0]
+    assert len(store.entries) == 1
+
+
+@pytest.mark.parametrize("hostname", ["127.0.0.1", "localhost"])
+@pytest.mark.parametrize("host_port", ["", ":80"])
+@pytest.mark.parametrize("origin_port", ["", ":80"])
+def test_editor_accepts_same_origin_default_http_port(
+    store, hostname, host_port, origin_port
+):
+    handler = make_handler(SAVE_BODY)
+    handler.server.server_address = ("127.0.0.1", 80)
+    handler.headers["Host"] = hostname + host_port
+    handler.headers["Origin"] = f"http://{hostname}{origin_port}"
+
+    handler.do_POST()
+
+    assert b" 200 " in handler.wfile.getvalue().splitlines()[0]
+    assert len(store.entries) == 1
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [{"Host": "attacker.example"}, {"Origin": "http://127.0.0.1:8080"}],
+)
+def test_default_http_port_still_rejects_foreign_requests(store, headers):
+    handler = make_handler(SAVE_BODY)
+    handler.server.server_address = ("127.0.0.1", 80)
+    handler.headers["Host"] = "127.0.0.1"
+    handler.headers.update(headers)
+
+    handler.do_POST()
+
+    assert b" 403 " in handler.wfile.getvalue().splitlines()[0]
+    assert handler.rfile.tell() == 0
+    assert store.entries == []
+
+
+@pytest.mark.parametrize("length", ["", "invalid", "-1", "1.0", "9" * 100])
+def test_save_rejects_invalid_content_length_without_reading(store, length):
+    handler = make_handler(SAVE_BODY)
+    handler.headers["Content-Length"] = length
+
+    handler.do_POST()
+
+    assert b" 400 " in handler.wfile.getvalue().splitlines()[0]
+    assert handler.rfile.tell() == 0
+    assert store.entries == []
+
+
+def test_save_bounds_payload_before_reading(store):
+    handler = make_handler(SAVE_BODY)
+    handler.headers["Content-Length"] = str(server.MAX_SAVE_BYTES + 1)
+
+    handler.do_POST()
+
+    assert b" 413 " in handler.wfile.getvalue().splitlines()[0]
+    assert handler.rfile.tell() == 0
+    assert store.entries == []
+
+
+def test_save_rejects_incomplete_payload(store):
+    handler = make_handler(SAVE_BODY)
+    handler.headers["Content-Length"] = str(len(SAVE_BODY) + 1)
+
+    handler.do_POST()
+
+    assert b" 400 " in handler.wfile.getvalue().splitlines()[0]
+    assert store.entries == []
+
+
+def test_save_rejects_deeply_nested_json_without_mutating_patch(store):
+    # Twenty KiB fits comfortably under the body limit but exceeds the JSON
+    # decoder's nesting limit, which raises RecursionError rather than ValueError.
+    body = b'{"shapes":' + b"[" * 10000 + b"0" + b"]" * 10000 + b"}"
+    handler = make_handler(body)
+
+    handler.do_POST()
+
+    assert b" 400 " in handler.wfile.getvalue().splitlines()[0]
+    assert b"RecursionError" in handler.wfile.getvalue()
+    assert store.entries == []
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        [],
+        None,
+        {"shapes": [{"type": []}]},
+        {"shapes": [{"type": "circle", "geom": {"cx": 0, "cy": 0, "r": 1e999}}]},
+        {"shapes": [{"type": "circle", "geom": {"cx": 0, "cy": 0, "r": True}}]},
+        {"shapes": [{"type": "circle", "geom": {"cx": 0, "cy": 0, "r": 10**400}}]},
+        {"shapes": [{"type": "polygon", "geom": {"points": [[None, 0]] * 3}}]},
+    ],
+)
+def test_save_rejects_malformed_shapes_without_mutating_patch(store, payload):
+    handler = make_handler(json.dumps(payload).encode())
+
+    handler.do_POST()
+
+    assert b" 400 " in handler.wfile.getvalue().splitlines()[0]
+    assert store.entries == []
+
+
+def test_each_editor_keeps_its_own_source(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        server,
+        "ThreadingHTTPServer",
+        lambda address, handler: SimpleNamespace(RequestHandlerClass=handler),
+    )
+    first_source, second_source = tmp_path / "first.svg", tmp_path / "second.svg"
+
+    first = server.make_server(first_source, port=1234)
+    second = server.make_server(second_source, port=5678)
+
+    assert first.RequestHandlerClass.src_path == first_source
+    assert second.RequestHandlerClass.src_path == second_source
 
 
 @pytest.mark.parametrize("preop", ["orig", "aaaa"])

@@ -64,6 +64,21 @@ def test_invalid_duration_cannot_energize_coil(rec, sol, method, duration):
     assert rec.calls == []
 
 
+@pytest.mark.parametrize("method", ["tap", "double_tap"])
+@pytest.mark.parametrize("duration", [0.151, 1.2, 60, 1e100])
+def test_long_taps_cannot_sustain_strike_current(rec, sol, method, duration):
+    with pytest.raises(ValueError, match="press_and_hold"):
+        getattr(sol, method)(duration)
+    assert rec.calls == []
+
+
+@pytest.mark.parametrize("method", ["tap", "double_tap"])
+def test_calibrated_assistive_touch_duration_is_allowed(rec, sol, method):
+    getattr(sol, method)(0.15)
+    assert ("dwell", 0.15) in rec.calls
+    assert rec.sends[-1] == "M5"
+
+
 # ---------- configure ----------
 
 

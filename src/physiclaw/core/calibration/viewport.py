@@ -23,6 +23,7 @@ import cv2
 import numpy as np
 
 from physiclaw.common import paths
+from physiclaw.common.image import ImageSizeError, checked_image_size
 from physiclaw.common.logger.evidence import record_event, record_upload
 from physiclaw.core.bridge import BridgeState, CalibrationState
 from physiclaw.core.geometry import (
@@ -80,11 +81,13 @@ def _decode_screenshot_square(
 ) -> tuple[np.ndarray, tuple[int, int, int, int]]:
     """Decode screenshot bytes and locate the orange pre-cal square.
 
-    Returns (image, bounding rect). Raises RuntimeError when the data
-    doesn't decode or shows no square — callers holding a maybe-stale
-    upload catch that and fall back to waiting for a fresh one.
+    Returns (image, bounding rect). Raises ImageSizeError for oversized data,
+    RuntimeError if it doesn't decode or shows no square. Callers holding a
+    maybe-stale upload catch these and wait for a fresh one.
     """
     record_upload(data, purpose="viewport")
+    if checked_image_size(data) is None:
+        raise RuntimeError("Failed to decode screenshot image")
     try:
         img = cv2.imdecode(np.frombuffer(data, dtype=np.uint8), cv2.IMREAD_COLOR)
     except cv2.error as exc:
@@ -185,7 +188,7 @@ def measure_viewport_shift(
                 )
                 decoded = _decode_screenshot_square(data)
                 log.info(f"  Using cached screenshot: {cached} ({len(data)} bytes)")
-        except (OSError, RuntimeError) as exc:
+        except (OSError, RuntimeError, ImageSizeError) as exc:
             log.warning(f"  Viewport cache unusable ({exc}) — waiting for an upload")
             cached = None
     if decoded is None:
@@ -200,7 +203,7 @@ def measure_viewport_shift(
             try:
                 decoded = _decode_screenshot_square(data)
                 log.info(f"  Using already-uploaded screenshot: {len(data)} bytes")
-            except RuntimeError as e:
+            except (RuntimeError, ImageSizeError) as e:
                 log.info(f"  Pending upload unusable ({e}) — waiting for a fresh one")
         if data is None or decoded is None:
             bridge.clear_screenshot()

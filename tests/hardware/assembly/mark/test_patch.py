@@ -113,6 +113,39 @@ def test_load_patch_round_trips_write_patch(patch_dir):
     assert patch.load_patch(Path("x.svg")) == entries
 
 
+@pytest.mark.parametrize("stage", ["write", "replace"])
+def test_failed_patch_update_preserves_previous_file_and_removes_staging(
+    patch_dir, monkeypatch, stage
+):
+    src = Path("x.svg")
+    entries = [{"id": "abcd", "preop": "orig", "shapes": [], "viewBox": None}]
+    path = patch.write_patch(src, entries)
+    before = path.read_bytes()
+    write_text = Path.write_text
+
+    def partial_write(self, text, *args, **kwargs):
+        write_text(self, text[:8], *args, **kwargs)
+        raise OSError("partial write failed")
+
+    def failed_replace(self, destination):
+        assert path.read_bytes() == before
+        assert json.loads(self.read_text(encoding="utf-8")) == []
+        raise OSError("replace failed")
+
+    monkeypatch.setattr(
+        Path,
+        "write_text" if stage == "write" else "replace",
+        partial_write if stage == "write" else failed_replace,
+    )
+
+    with pytest.raises(OSError, match="failed"):
+        patch.write_patch(src, [])
+
+    assert path.read_bytes() == before
+    assert patch.load_patch(src) == entries
+    assert list(patch_dir.iterdir()) == [path]
+
+
 def test_load_patch_with_invalid_json_raises(patch_dir):
     (patch_dir / "x.json").write_text("{nope", encoding="utf-8")
 

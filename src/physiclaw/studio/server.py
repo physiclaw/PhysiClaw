@@ -95,7 +95,7 @@ async def _json_body(request: Request) -> dict:
     # studio process must not import the core server's modules.
     try:
         body = json.loads(await request.body())
-    except json.JSONDecodeError:
+    except (ValueError, RecursionError):
         raise ValueError("body must be JSON") from None
     if not isinstance(body, dict):
         raise ValueError("body must be a JSON mapping")

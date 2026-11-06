@@ -374,7 +374,9 @@ _EDGE_ALLOWLISTS = {
     # contract may name macro types (SessionSetup.gated_macros) — data
     # shapes only, never agent or conductor (both import contract).
     "contract": ("physiclaw.common", "physiclaw.macros.model"),
-    "macros": ("physiclaw.common",),
+    # Stats writers serialize their read/modify/write through the public
+    # process-lock API; native backend selection remains inside port.
+    "macros": ("physiclaw.common", "physiclaw.port.locks"),
     "provider": (
         "physiclaw.common",
         "physiclaw.contract",

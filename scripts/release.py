@@ -92,12 +92,16 @@ class Release:
                 print(result.stdout, end="", file=sys.stderr)
             raise ReleaseError("Couldn't check release tag", result.returncode)
 
-    def bump(self) -> None:
+    def check_checkout(self) -> None:
+        """Apply the same source guard to full releases and standalone publish."""
         if self.run("git", "status", "--porcelain", capture=True).stdout.strip():
             raise ReleaseError("Working tree dirty - commit or stash first")
         branch = self.run("git", "rev-parse", "--abbrev-ref", "HEAD", capture=True)
         if branch.stdout.strip() != "main":
             raise ReleaseError("Not on main branch")
+
+    def bump(self) -> None:
+        self.check_checkout()
         current = read_version()
         new = os.environ.get("VERSION")
         if not new:
@@ -179,6 +183,7 @@ class Release:
                 raise ReleaseError(
                     f"{path.as_posix()} not found - run make build first"
                 )
+        self.check_checkout()
         self.check_tag(current)
         self.stage(3, f"Publish to PyPI - {current}")
         self.run("uv", "publish", *(path.as_posix() for path in artifacts))

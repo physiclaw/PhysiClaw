@@ -21,7 +21,6 @@ session dir with no server.
 from __future__ import annotations
 
 import json
-import math
 import re
 from pathlib import Path
 from typing import Any
@@ -37,7 +36,7 @@ from physiclaw.agent.trace.format import (
 from physiclaw.agent.trace.store import recent_sessions
 from physiclaw.agent.trace.trace import WARNING_EVENTS, WARNING_WORDS
 from physiclaw.common.logger.session_artifacts import iso_now
-from physiclaw.common.text import json_span, read_text, write_text
+from physiclaw.common.text import json_object, json_span, read_text, write_text_atomic
 from physiclaw.contract.wire import image_ref, leaf_blocks, reply_gist
 
 VIEWER_FILE = "session.html"
@@ -79,7 +78,7 @@ def load(
             r["warn"] = True
     narrative = {name: _read(session_dir / name) for name in _NARRATIVE}
     by_turn = _runtime_by_turn(narrative["runtime.log"])
-    summary = _json_object(narrative["summary.json"])
+    summary = json_object(narrative["summary.json"])
     usage = (summary or {}).get("usage") or {}
     if not isinstance(usage, dict):
         usage = {}
@@ -127,7 +126,7 @@ def write(session_dir: Path) -> Path:
     """Write the static viewer page into the session dir and return its
     path."""
     out = session_dir / VIEWER_FILE
-    write_text(out, render(load(session_dir)))
+    write_text_atomic(out, render(load(session_dir)))
     return out
 
 
@@ -177,24 +176,6 @@ def _stamp(r: dict[str, Any]) -> None:
             r["reason"] = str(reason)
 
 
-def _finite_number(text: str) -> float:
-    number = float(text)
-    if not math.isfinite(number):
-        raise ValueError("non-finite JSON number")
-    return number
-
-
-def _json_object(text: str) -> dict[str, Any] | None:
-    """Only objects that can be embedded in the browser's strict JSON parser."""
-    try:
-        value = json.loads(
-            text, parse_float=_finite_number, parse_constant=_finite_number
-        )
-    except ValueError:
-        return None
-    return value if isinstance(value, dict) else None
-
-
 def _records(path: Path, src: str) -> list[dict[str, Any]]:
     """Every line of one stream as `{src, line, rec}`; a line that is not
     JSON stays in as `{"unparsed": ...}` rather than vanishing. `at` is
@@ -210,7 +191,7 @@ def _records(path: Path, src: str) -> list[dict[str, Any]]:
                 line = line.rstrip("\n")
                 if not line.strip():
                     continue
-                rec = _json_object(line)
+                rec = json_object(line)
                 if rec is None:
                     rec = {"unparsed": line}
                 at = str(rec.get("t") or at)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import re
 from typing import List, Tuple
 
@@ -34,9 +35,15 @@ def validate_color(raw) -> Color | None:
 
 
 def _num(raw, name: str) -> float:
-    if not isinstance(raw, (int, float)):
-        raise ValueError(f"{name} must be a number")
-    return float(raw)
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        raise ValueError(f"{name} must be a finite number")
+    try:
+        number = float(raw)
+    except OverflowError:
+        raise ValueError(f"{name} must be a finite number") from None
+    if not math.isfinite(number):
+        raise ValueError(f"{name} must be a finite number")
+    return number
 
 
 def _validate_polygon(c: dict) -> dict | None:
@@ -47,7 +54,7 @@ def _validate_polygon(c: dict) -> dict | None:
     for pt in points:
         if not (isinstance(pt, (list, tuple)) and len(pt) == 2):
             raise ValueError("polygon vertex must be [x, y]")
-        verts.append(vertex_from_click(float(pt[0]), float(pt[1])))
+        verts.append(vertex_from_click(_num(pt[0], "x"), _num(pt[1], "y")))
     return {"points": verts}
 
 
@@ -124,7 +131,7 @@ def validate_shapes(raw) -> List[dict]:
         if not isinstance(s, dict):
             raise ValueError("each shape must be an object")
         t = s.get("type")
-        if t not in _VALID_TYPES:
+        if not isinstance(t, str) or t not in _VALID_TYPES:
             raise ValueError(f"unknown shape type {t!r}")
         geom_raw = s.get("geom")
         if not isinstance(geom_raw, dict):

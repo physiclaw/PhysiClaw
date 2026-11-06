@@ -12,6 +12,7 @@ file handle in a helper would be more indirection than it's worth.
 """
 
 import json
+import math
 import tempfile
 import unicodedata
 from collections.abc import Iterator
@@ -20,6 +21,24 @@ from pathlib import Path
 from typing import Any
 
 from physiclaw.port import filesystem
+
+
+def _finite_json_number(text: str) -> float:
+    number = float(text)
+    if not math.isfinite(number):
+        raise ValueError("non-finite JSON number")
+    return number
+
+
+def json_object(text: str) -> dict[str, Any] | None:
+    """Read a finite JSON object; None for malformed or non-object data."""
+    try:
+        value = json.loads(
+            text, parse_float=_finite_json_number, parse_constant=_finite_json_number
+        )
+    except (ValueError, RecursionError):
+        return None
+    return value if isinstance(value, dict) else None
 
 
 def json_span(text: str, opener: str, closer: str) -> Any | None:

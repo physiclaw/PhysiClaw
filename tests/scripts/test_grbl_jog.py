@@ -91,16 +91,61 @@ def test_main_runs_balanced_motion_phases_and_closes_port(
 
     assert result == 0
     assert [command for command in serial.writes if command.startswith(b"G91")] == [
-        b"G91 G0 X2.000 F1000\n",
-        b"G91 G0 X-2.000 F1000\n",
-        b"G91 G0 Y2.000 F1000\n",
-        b"G91 G0 Y-2.000 F1000\n",
-        b"G91 G0 X2.000 Y2.000 F1000\n",
-        b"G91 G0 X-2.000 Y-2.000 F1000\n",
-        b"G91 G0 X2.000 Y-2.000 F1000\n",
-        b"G91 G0 X-2.000 Y2.000 F1000\n",
+        b"G91 G1 X2.000 F1000\n",
+        b"G91 G1 X-2.000 F1000\n",
+        b"G91 G1 Y2.000 F1000\n",
+        b"G91 G1 Y-2.000 F1000\n",
+        b"G91 G1 X2.000 Y2.000 F1000\n",
+        b"G91 G1 X-2.000 Y-2.000 F1000\n",
+        b"G91 G1 X2.000 Y-2.000 F1000\n",
+        b"G91 G1 X-2.000 Y2.000 F1000\n",
     ]
+    assert b"G94\n" in serial.writes
     assert serial.closed
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["--dist", "nan"],
+        ["--dist", "inf"],
+        ["--dist", "0"],
+        ["--feed", "0"],
+        ["--feed", "-1"],
+        ["--loops", "0"],
+    ],
+)
+def test_invalid_motion_options_fail_before_opening_a_port(monkeypatch, mocker, args):
+    connect = mocker.patch.object(jog, "connect")
+    monkeypatch.setattr(jog.sys, "argv", ["diagnostic", *args])
+
+    with pytest.raises(SystemExit) as exc:
+        jog.main()
+
+    assert exc.value.code == 2
+    connect.assert_not_called()
+
+
+def test_slow_requested_feed_gets_enough_time_to_finish(
+    diagnostic_device, monkeypatch, mocker
+):
+    serial = diagnostic_device(
+        jog, responder=lambda command: [b"<Idle>\n"] if command == b"?" else [b"ok\n"]
+    )
+    mocker.patch.object(jog, "connect", return_value=serial)
+    mocker.patch.object(jog, "configure_console")
+    idle = mocker.patch.object(jog, "wait_idle")
+    monkeypatch.setattr(
+        jog.sys,
+        "argv",
+        ["diagnostic", "--port", "FAKE", "--loops", "1", "--dist", "2", "--feed", "1"],
+    )
+
+    assert jog.main() == 0
+
+    assert idle.call_args_list[0].kwargs["timeout"] == pytest.approx(125)
+    assert idle.call_args_list[4].kwargs["timeout"] == pytest.approx(2**0.5 * 120 + 5)
+    assert b"G91 G1 X2.000 F1\n" in serial.writes
 
 
 @pytest.mark.parametrize(

@@ -104,7 +104,7 @@ def validate_arguments(args: Any, schema: dict[str, Any]) -> None:
             raise ValidationError(str(e)) from e
 
     try:
-        _check_object(args, schema)
+        _check_value("", args, schema)
     except RecursionError as e:
         raise ValidationError("arguments or schema are too deeply nested") from e
 
@@ -121,8 +121,9 @@ def _check_object(value: dict, schema: dict[str, Any], prefix: str = "") -> None
 
 
 def _check_value(key: str, value: Any, prop: dict[str, Any] | bool) -> None:
+    label = key or "arguments"
     if prop is False:
-        raise ValidationError(f"{key}: value is not allowed by the schema")
+        raise ValidationError(f"{label}: value is not allowed by the schema")
     if prop is True:
         prop = {}
     for keyword in ("anyOf", "oneOf", "allOf"):
@@ -138,34 +139,34 @@ def _check_value(key: str, value: Any, prop: dict[str, Any] | bool) -> None:
             if (keyword == "anyOf" and matches == 0) or (
                 keyword != "anyOf" and matches != required
             ):
-                raise ValidationError(f"{key}: does not match {keyword}")
+                raise ValidationError(f"{label}: does not match {keyword}")
     if "const" in prop and not _json_equal(value, prop["const"]):
-        raise ValidationError(f"{key}: does not match const")
+        raise ValidationError(f"{label}: does not match const")
     if isinstance(value, float) and not math.isfinite(value):
-        raise ValidationError(f"{key}: number must be finite, got {value!r}")
+        raise ValidationError(f"{label}: number must be finite, got {value!r}")
 
     enum = prop.get("enum")
     if enum is not None and not any(_json_equal(value, choice) for choice in enum):
-        raise ValidationError(f"{key}: value {value!r} is not one of {enum}")
+        raise ValidationError(f"{label}: value {value!r} is not one of {enum}")
 
     if _is_number(value):
         minimum = prop.get("minimum")
         if minimum is not None and value < minimum:
-            raise ValidationError(f"{key}: {value} < minimum {minimum}")
+            raise ValidationError(f"{label}: {value} < minimum {minimum}")
         maximum = prop.get("maximum")
         if maximum is not None and value > maximum:
-            raise ValidationError(f"{key}: {value} > maximum {maximum}")
+            raise ValidationError(f"{label}: {value} > maximum {maximum}")
 
     if isinstance(value, str):
         min_len = prop.get("minLength")
         if min_len is not None and len(value) < min_len:
             raise ValidationError(
-                f"{key}: string length {len(value)} < minLength {min_len}"
+                f"{label}: string length {len(value)} < minLength {min_len}"
             )
         max_len = prop.get("maxLength")
         if max_len is not None and len(value) > max_len:
             raise ValidationError(
-                f"{key}: string length {len(value)} > maxLength {max_len}"
+                f"{label}: string length {len(value)} > maxLength {max_len}"
             )
 
     expected_type = prop.get("type")
@@ -177,19 +178,19 @@ def _check_value(key: str, value: Any, prop: dict[str, Any] | bool) -> None:
         if not any(_matches_type(value, name) for name in types_to_check):
             got = type(value).__name__
             want = "|".join(types_to_check)
-            raise ValidationError(f"{key}: expected {want}, got {got} ({value!r})")
+            raise ValidationError(f"{label}: expected {want}, got {got} ({value!r})")
 
     # Constraints apply to the instance's shape, independently of `type`.
     if isinstance(value, list):
         min_items = prop.get("minItems")
         if isinstance(min_items, int) and len(value) < min_items:
             raise ValidationError(
-                f"{key}: array has {len(value)} items, min {min_items}"
+                f"{label}: array has {len(value)} items, min {min_items}"
             )
         max_items = prop.get("maxItems")
         if isinstance(max_items, int) and len(value) > max_items:
             raise ValidationError(
-                f"{key}: array has {len(value)} items, max {max_items}"
+                f"{label}: array has {len(value)} items, max {max_items}"
             )
         items_schema = prop.get("items", True)
         for i, elem in enumerate(value):
@@ -199,8 +200,8 @@ def _check_value(key: str, value: Any, prop: dict[str, Any] | bool) -> None:
         if len(value) < prop.get("minProperties", 0) or len(value) > prop.get(
             "maxProperties", len(value)
         ):
-            raise ValidationError(f"{key}: invalid number of properties")
-        _check_object(value, prop, prefix=key + ".")
+            raise ValidationError(f"{label}: invalid number of properties")
+        _check_object(value, prop, prefix=key + "." if key else "")
 
 
 def validate_value(value: Any, schema: dict | bool) -> None:

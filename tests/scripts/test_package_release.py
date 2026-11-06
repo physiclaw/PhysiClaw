@@ -89,6 +89,8 @@ def test_full_release_uses_new_version_and_runs_in_order(commands, monkeypatch, 
         ("git", "add", "pyproject.toml", "uv.lock"),
         ("git", "commit", "-m", "chore: bump version to 0.8.5"),
         ("uv", "build"),
+        ("git", "status", "--porcelain"),
+        ("git", "rev-parse", "--abbrev-ref", "HEAD"),
         ("git", "rev-parse", "--verify", "--quiet", "refs/tags/v0.8.5"),
         (
             "uv",
@@ -304,18 +306,54 @@ def test_publish_stops_on_existing_tag_or_git_error(
     for path in release.artifact_paths("0.8.4"):
         path.parent.mkdir(exist_ok=True)
         path.write_bytes(b"package")
-    commands.side_effect = None
-    commands.return_value = subprocess.CompletedProcess([], code, "tag diagnostics\n")
+    original = commands.side_effect
+
+    def guard(args, **kwargs):
+        if args[:3] == ("git", "rev-parse", "--verify"):
+            return subprocess.CompletedProcess(args, code, "tag diagnostics\n")
+        return original(args, **kwargs)
+
+    commands.side_effect = guard
 
     assert release.main(["publish"]) != 0
 
-    assert len(invoked(commands)) == 1
-    assert invoked(commands)[0][:3] == ("git", "rev-parse", "--verify")
+    assert len(invoked(commands)) == 3
+    assert invoked(commands)[-1][:3] == ("git", "rev-parse", "--verify")
     output = capsys.readouterr()
     assert (
         "already exists" in output.err if code == 0 else "Couldn't check" in output.err
     )
     assert "Released physiclaw" not in output.out
+
+
+@pytest.mark.parametrize(
+    "command,output,error",
+    [
+        (("git", "status", "--porcelain"), " M README.md\n", "Working tree dirty"),
+        (("git", "rev-parse", "--abbrev-ref", "HEAD"), "feature\n", "Not on main"),
+    ],
+)
+def test_standalone_publish_checks_checkout_before_upload(
+    project, commands, monkeypatch, capsys, command, output, error
+):
+    monkeypatch.setenv("UV_PUBLISH_TOKEN", "test-token")
+    for path in release.artifact_paths("0.8.4"):
+        path.parent.mkdir(exist_ok=True)
+        path.write_bytes(b"package")
+    original = commands.side_effect
+
+    def guard(args, **kwargs):
+        if args == command:
+            return subprocess.CompletedProcess(args, 0, output)
+        return original(args, **kwargs)
+
+    commands.side_effect = guard
+
+    assert release.main(["publish"]) == 1
+
+    assert error in capsys.readouterr().err
+    assert invoked(commands)[-1] == command
+    assert not any(args[0] == "uv" for args in invoked(commands))
 
 
 def test_interrupted_release_does_not_continue(commands, capsys):

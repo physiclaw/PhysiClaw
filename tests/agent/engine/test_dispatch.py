@@ -81,6 +81,36 @@ async def test_regression_debug_dispatch_preserves_aborted_channel_send(mocker):
 
 
 @pytest.mark.parametrize("local", [False, True])
+async def test_root_schema_constraint_blocks_execution(mocker, local):
+    from physiclaw.agent.engine.policy import Policies
+
+    handler = mocker.AsyncMock(return_value="must not run")
+    mcp = mocker.Mock(call_tool=mocker.AsyncMock())
+    schema = {
+        "type": "object",
+        "oneOf": [{"required": ["first"]}, {"required": ["second"]}],
+    }
+    run = _mk_run(
+        mcp=mcp,
+        schema_by_name={"probe": {"input_schema": schema}},
+        local_registry={"probe": LocalTool("probe", "probe", schema, handler)}
+        if local
+        else {},
+        policies=Policies(turn_gates=[], dispatch_guards=[], result_observers=[]),
+    )
+    session = Session()
+    call = _tc("probe", {"first": "yes", "second": "yes"})
+
+    result = await dispatch(run, session, call, 0)
+
+    assert result.is_error and result.tool_call_id == call.id
+    assert "does not match oneOf" in result.content
+    handler.assert_not_awaited()
+    mcp.call_tool.assert_not_awaited()
+    assert session.facts.events[-1].executed is False
+
+
+@pytest.mark.parametrize("local", [False, True])
 async def test_closed_session_refuses_calls_without_execution(mocker, local):
     from physiclaw.agent.engine.policy import Policies
 
@@ -277,6 +307,48 @@ async def test_result_observer_failure_preserves_one_actual_receipt(mocker, tool
     receipt = session.facts.events[0]
     assert receipt.call_id == call.id and receipt.executed
     assert receipt.is_error is tool_fails
+
+
+@pytest.mark.parametrize("local", [False, True])
+async def test_rejected_result_image_preserves_the_completed_action(mocker, local):
+    from physiclaw.common.image import ImageSizeError
+
+    action = "Action completed | screen: changed"
+    blocks = [
+        {"type": "text", "text": action},
+        {"type": "image", "data": "aGk=", "mime_type": "image/png"},
+    ]
+    handler = mocker.AsyncMock(return_value=blocks)
+    mcp = mocker.Mock(call_tool=mocker.AsyncMock(return_value=blocks))
+    run = _mk_run(
+        mcp=mcp,
+        schema_by_name={"probe": {}},
+        local_registry={
+            "probe": LocalTool("probe", "probe", {}, handler, returns_blocks=True)
+        }
+        if local
+        else {},
+    )
+    mocker.patch(
+        "physiclaw.common.image.scale_image_bytes",
+        side_effect=ImageSizeError("image dimensions exceed the decode limit"),
+    )
+    session = Session()
+
+    result = await dispatch(run, session, _tc("probe"), 0)
+
+    assert result.is_error is False
+    assert isinstance(result.content, str)
+    assert action in result.content and "Image omitted:" in result.content
+    assert "aGk=" not in result.content
+    (handler if local else mcp.call_tool).assert_awaited_once()
+    assert len(session.facts.events) == 1
+    receipt = session.facts.events[0]
+    assert receipt.executed and not receipt.is_error
+    assert receipt.result_text == action and receipt.changed is True
+    assert not any(
+        c.args[0]["event"] == "tool_error" for c in run.tr.write.call_args_list
+    )
 
 
 async def test_debug_transform_failure_retains_the_real_action_result(mocker):

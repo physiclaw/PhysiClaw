@@ -26,6 +26,7 @@ import json
 import random
 import re
 import string
+import tempfile
 from pathlib import Path
 from typing import Iterable
 
@@ -98,11 +99,18 @@ def load_patch(source_svg: Path) -> list[dict]:
 
 
 def write_patch(source_svg: Path, entries: list[dict]) -> Path:
-    """Overwrite the patch file with ``entries``. The caller owns
-    validation — this just persists what it's handed."""
+    """Atomically replace the patch file after serialization and writing succeed.
+
+    The caller owns validation. Stage beside the destination so replacement is
+    atomic on the same filesystem, and close the file before replacing on Windows.
+    """
     path = patch_path(source_svg)
+    serialized = json.dumps(entries, indent=2)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(entries, indent=2), encoding="utf-8")
+    with tempfile.TemporaryDirectory(prefix=f".{path.stem}-", dir=path.parent) as tmp:
+        pending = Path(tmp) / path.name
+        pending.write_text(serialized, encoding="utf-8")
+        pending.replace(path)
     return path
 
 

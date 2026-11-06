@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
+from symlink_helpers import symlink_to
 from typer.testing import CliRunner
 
 from physiclaw.cli import app
@@ -651,6 +652,31 @@ def test_regression_save_refuses_to_replace_session_source(sessions):
     assert source.read_bytes() == original
 
 
+def test_save_excludes_files_linked_outside_session(sessions, tmp_path):
+    directory = _write_session(sessions, "save-abc123")
+    _populate(directory)
+    private = tmp_path / "private.txt"
+    private.write_text("private credential", encoding="utf-8")
+    linked = directory / "images" / "linked.jpg"
+    symlink_to(linked, private)
+    symlink_to(directory / "local-link.json", directory / "summary.json")
+    out = tmp_path / "session.zip"
+
+    result = runner.invoke(app, ["logs", "abc123", "--save", str(out)])
+
+    assert result.exit_code == 0, result.output
+    with zipfile.ZipFile(out) as archive:
+        assert "save-abc123/images/linked.jpg" not in archive.namelist()
+        assert (
+            archive.read("save-abc123/local-link.json")
+            == (directory / "summary.json").read_bytes()
+        )
+        assert archive.read("save-abc123/images/090000_000_t0.jpg") == b"jpeg"
+        assert all(
+            b"private credential" not in archive.read(n) for n in archive.namelist()
+        )
+
+
 @pytest.mark.parametrize("operation", ["read", "replace"])
 def test_regression_save_failure_preserves_previous_archive(
     sessions, tmp_path, mocker, operation
@@ -687,7 +713,7 @@ def test_logs_rejects_conflicting_modes(sessions, flags):
 
 
 @pytest.mark.parametrize("mode", [[], ["abc123"], ["abc123", "--usage"]])
-def test_logs_json_rejects_nonfinite_data_without_partial_stdout(sessions, mode):
+def test_logs_json_handles_nonfinite_artifacts_without_invalid_stdout(sessions, mode):
     directory = _write_session(sessions, "finite-abc123")
     (directory / "summary.json").write_text(
         '{"duration_s": Infinity}', encoding="utf-8"
@@ -704,9 +730,14 @@ def test_logs_json_rejects_nonfinite_data_without_partial_stdout(sessions, mode)
         assert result.exit_code == 0
         assert json.loads(result.output) == []
         return
-    assert result.exit_code == 1
-    assert result.stdout == ""
-    assert "cannot render log data as JSON" in result.stderr
+    # Summary loading treats nonfinite numbers as damaged JSON, so callers
+    # receive the same safe stub as a missing or truncated summary.
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.stdout)
+    summary = data[0] if isinstance(data, list) else data
+    assert summary["sid"] == "finite-abc123"
+    assert "duration_s" not in summary
+    assert "Infinity" not in result.stdout and "NaN" not in result.stdout
 
 
 def test_save_includes_one_current_format_readme(sessions, tmp_path):

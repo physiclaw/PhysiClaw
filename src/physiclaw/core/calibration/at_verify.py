@@ -19,6 +19,7 @@ import time
 import cv2
 import numpy as np
 
+from physiclaw.common.image import checked_image_size
 from physiclaw.common.logger.evidence import record_event, record_upload
 from physiclaw.core.bridge import BridgeState, CalibrationState, PageState
 from physiclaw.core.bridge.nonce import NONCE_COUNT, generate_nonce, verify_nonce
@@ -135,8 +136,11 @@ def verify_assistive_touch(
         return _failed("screenshot_timeout")
 
     record_upload(data, purpose="assistive_touch")
-    arr = np.frombuffer(data, dtype=np.uint8)
-    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    img = (
+        cv2.imdecode(np.frombuffer(data, dtype=np.uint8), cv2.IMREAD_COLOR)
+        if checked_image_size(data) is not None
+        else None
+    )
     if img is None:
         log.warning(
             "  Failed to decode screenshot",

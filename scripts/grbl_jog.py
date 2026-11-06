@@ -20,6 +20,7 @@ Usage:
 
 import argparse
 import logging
+import math
 import sys
 import time
 from pathlib import Path
@@ -197,12 +198,19 @@ def main() -> int:
     )
     add_log_arguments(ap)
     args = ap.parse_args()
+    if not math.isfinite(args.dist) or args.dist <= 0:
+        ap.error("--dist must be finite and positive")
+    if args.feed <= 0:
+        ap.error("--feed must be positive")
+    if args.loops <= 0:
+        ap.error("--loops must be positive")
     configure_console("diagnostic", verbose=args.verbose, log_format=args.log_format)
 
     with connect(args.port) as ser:
         send(ser, "$I")
         unlock_if_alarmed(ser)
         send(ser, "G21")  # mm
+        send(ser, "G94")  # feed is mm/min even after a prior G93 job
         send(ser, "G90")  # absolute
         send(ser, "G92 X0 Y0 Z0")  # zero work coords here
         send(ser, "$10=0")  # report WPos in '?'
@@ -215,9 +223,11 @@ def main() -> int:
                 parts.append(f"Y{dy:.3f}")
             move = " ".join(parts)
             log.debug("Jog %s at F%d", move, args.feed)
-            send(ser, f"G91 G0 {move} F{args.feed}")
+            # G0 ignores F and moves at the controller's rapid rate.
+            send(ser, f"G91 G1 {move} F{args.feed}")
             send(ser, "G90")
-            wait_idle(ser, timeout=15)
+            travel_seconds = math.hypot(dx, dy) * 60 / args.feed
+            wait_idle(ser, timeout=max(15.0, travel_seconds + 5.0))
 
         for name, (sx, sy) in PHASES:
             fx, fy = sx * args.dist, sy * args.dist

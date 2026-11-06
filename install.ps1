@@ -96,6 +96,7 @@ try {
         Write-Host "    physiclaw setup local-vision-model"
         if ($useColor) { Write-Host "[OK] Dry run complete. No changes made." -ForegroundColor Green }
         else           { Write-Host "[OK] Dry run complete. No changes made." }
+        $global:LASTEXITCODE = 0
         return
     }
 
@@ -108,12 +109,15 @@ try {
         # otherwise tear down our host - and the user's shell, if our script
         # was loaded via ``iwr | iex``. Download to a temp file, run with
         # `-File`, capture the child's exit code.
-        $uvScript = Join-Path $env:TEMP "physiclaw-uv-install.ps1"
+        $uvTempDir = Join-Path ([IO.Path]::GetTempPath()) ("physiclaw-uv-" + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $uvTempDir | Out-Null
+        $uvScript = Join-Path $uvTempDir 'install.ps1'
         try {
-            Invoke-WebRequest -Uri https://astral.sh/uv/install.ps1 `
-                              -OutFile $uvScript -UseBasicParsing
-        } catch {
-            Die @"
+            try {
+                Invoke-WebRequest -Uri https://astral.sh/uv/install.ps1 `
+                                  -OutFile $uvScript -UseBasicParsing
+            } catch {
+                Die @"
 Could not download the uv installer from astral.sh.
   Cause: $($_.Exception.Message)
 
@@ -124,13 +128,15 @@ Likely causes:
 Fix the connection and retry, or install uv manually first:
   https://docs.astral.sh/uv/getting-started/installation/
 "@
-        }
+            }
 
-        # Use the same PowerShell host that's running this script.
-        $psHost = (Get-Process -Id $PID).Path
-        & $psHost -NoProfile -ExecutionPolicy ByPass -File $uvScript
-        $uvExit = $LASTEXITCODE
-        Remove-Item $uvScript -ErrorAction SilentlyContinue
+            # Use the same PowerShell host that's running this script.
+            $psHost = (Get-Process -Id $PID).Path
+            & $psHost -NoProfile -ExecutionPolicy ByPass -File $uvScript
+            $uvExit = $LASTEXITCODE
+        } finally {
+            Remove-Item -LiteralPath $uvTempDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
 
         if ($uvExit -ne 0) {
             Die @"
@@ -185,36 +191,38 @@ stable will resume where it stopped.
     # `--refresh` invalidates uv's cached PyPI metadata so re-runs always
     # resolve to the actual latest version, not whatever was in the cache
     # from a previous `uv tool install` an hour ago.
-    # Don't redirect uv's output to $null - on Windows, uv may exit
-    # non-zero even when the install succeeds (Defender briefly locking
-    # the new physiclaw.exe shim, or a stderr write failing on a non-UTF8
-    # console codepage). Showing uv's actual output is the most reliable
-    # diagnostic for users.
+    # Keep uv's diagnostics visible and treat its failure as authoritative:
+    # a previously installed CLI may still run after an unsuccessful update.
     & uv tool install $specPlain --python 3.12 --force --refresh
     $installExit = $LASTEXITCODE
+    if ($installExit -ne 0) {
+        Die "``uv tool install $specPlain`` failed (exit $installExit). See uv output above and retry. A previous installation may still be available."
+    }
 
-    # Trust the binary, not the exit code. uv may have reported failure
-    # while the package is in fact installed and working - verify by
-    # actually invoking it.
+    # Also verify that the newly installed shim is on PATH and runnable.
     $physiclawCmd = Get-Command physiclaw -ErrorAction SilentlyContinue
     $verifiedVersion = $null
+    $versionFailure = 'No version output was returned.'
     if ($physiclawCmd) {
         try {
             $verOutput = & physiclaw --version 2>&1
-            if ($LASTEXITCODE -eq 0) { $verifiedVersion = ($verOutput | Select-Object -First 1).ToString() }
+            $versionExit = $LASTEXITCODE
+            if ($versionExit -eq 0 -and $verOutput) {
+                $verifiedVersion = ($verOutput | Select-Object -First 1).ToString()
+            } elseif ($versionExit -ne 0) {
+                $versionFailure = "Exit code: $versionExit`n$($verOutput | Out-String)"
+            }
         } catch {
-            $verifiedVersion = $null
+            $versionFailure = $_.Exception.Message
         }
     }
 
     if (-not $verifiedVersion) {
-        # Genuine failure: either the shim never appeared, or running it
-        # errors out. Surface uv's exit code in the diagnostic.
+        # Installation succeeded, but the CLI is missing or could not be verified.
         if (-not $physiclawCmd) {
-            Warn "Install reported exit $installExit and ``physiclaw`` isn't on PATH for this session."
+            Warn "uv installed $specPlain, but ``physiclaw`` isn't on PATH for this session."
             Warn ""
-            Warn "If uv's output above shows a successful install, the binary may"
-            Warn "exist but PATH isn't refreshed. Add this to your PowerShell profile"
+            Warn "PATH may not be refreshed. Add this to your PowerShell profile"
             Warn "(`$PROFILE`), then open a new shell:"
             Warn "    `$env:PATH = `"`$env:USERPROFILE\.local\bin;`$env:PATH`""
             Warn ""
@@ -223,30 +231,19 @@ stable will resume where it stopped.
             Die "``physiclaw`` not on PATH after install. See uv output above + the fixes above."
         }
 
-        $verHint = if ([string]::IsNullOrEmpty($version)) { 'physiclaw' } else { "physiclaw==$version" }
         Die @"
-``uv tool install $specPlain`` failed (exit $installExit) and the installed
-``physiclaw`` shim isn't runnable.
+uv installed $specPlain, but ``physiclaw --version`` could not be verified.
 
-Likely causes:
-  - Pinned version does not exist. Check available versions:
-      https://pypi.org/project/physiclaw/#history
-  - Network blip while downloading wheels - retry.
-  - A native build dep (e.g. opencv-python) failed to install. uv's
-    output above should show the real error.
+$versionFailure
 
-To debug, run manually with verbose output:
-  uv tool install $verHint --python 3.12 --force --verbose
+To diagnose, run the CLI directly:
+  physiclaw --version
+
+To reinstall with verbose output:
+  uv tool install $specPlain --python 3.12 --force --verbose
 "@
     }
 
-    if ($installExit -ne 0) {
-        # uv claimed failure but the binary works - common on Windows when
-        # Defender briefly locks the shim or a stderr write hits a bad
-        # codepage. Tell the user we noticed, but don't bail.
-        Warn "uv reported exit $installExit, but ``physiclaw`` is installed and runs."
-        Warn "Continuing - likely a Defender / codepage false positive."
-    }
     Info "Installed: $verifiedVersion"
 
     # Step 5: install the icon-detector model - fetch the prebuilt ONNX, or
@@ -274,6 +271,7 @@ To debug, run manually with verbose output:
         Write-Host ""
         Warn "Open a new PowerShell window so uv is on PATH in your interactive shell."
     }
+    $global:LASTEXITCODE = 0
 }
 catch {
     # Single, clean failure block. Don't dump PowerShell's script-position

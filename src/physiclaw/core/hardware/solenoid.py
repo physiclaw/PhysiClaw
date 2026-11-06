@@ -78,6 +78,9 @@ class Solenoid:
     # window; chaining two full taps pushed it to ~280ms, so timing jitter
     # intermittently split the gesture into two single taps.
     DOUBLE_TAP_GAP_MS = 100
+    # The longest strike-only contact used by calibration/AssistiveTouch.
+    # Longer contacts must use hit-and-keep rather than sustain peak current.
+    MAX_TAP_SECONDS = 0.15
     SPINDLE_MODE = 0  # $32=0 — spindle mode; laser mode emits PWM only while moving
     PWM_MAX = 1000  # $30 — S-value range ceiling
 
@@ -189,6 +192,14 @@ class Solenoid:
 
     # ─── Taps ────────────────────────────────────────────────
 
+    def _validate_tap_duration(self, duration: float) -> None:
+        validate_dwell(duration)
+        if duration > self.MAX_TAP_SECONDS:
+            raise ValueError(
+                f"tap duration must not exceed {self.MAX_TAP_SECONDS}s at strike "
+                "current; use press_and_hold for longer contact"
+            )
+
     def tap(self, duration: float) -> None:
         """Momentary tap: press at ``HIT_S``, hold ``duration`` s, release.
 
@@ -197,7 +208,7 @@ class Solenoid:
         forced off if the dwell or release fails, so a tap can never leave it
         hot. :meth:`release` adds the spring-rebound dwell on the clean path.
         """
-        validate_dwell(duration)
+        self._validate_tap_duration(duration)
         with self._energized():
             self._send(self.GCODE_ON.format(s=self.HIT_S))
             self._dwell(duration)
@@ -214,7 +225,7 @@ class Solenoid:
         :meth:`tap` calls, each with its 200ms release) holds down-to-down
         under the iOS double-tap window so the strikes don't read as two taps.
         """
-        validate_dwell(duration)
+        self._validate_tap_duration(duration)
         with self._energized():
             self._send(self.GCODE_ON.format(s=self.HIT_S))
             self._dwell(duration)

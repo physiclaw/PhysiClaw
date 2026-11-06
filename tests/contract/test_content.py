@@ -43,6 +43,30 @@ def test_mcp_image_soft_scale_failure_defaults_missing_mime_to_jpeg(mocker) -> N
     assert out == [ImageBlock(media_type="image/jpeg", data_b64="aGk=")]
 
 
+def test_rejected_image_preserves_other_text_and_images(mocker) -> None:
+    from physiclaw.common.image import ImageSizeError
+
+    mocker.patch(
+        "physiclaw.common.image.scale_image_bytes",
+        side_effect=[ImageSizeError("decode limit"), (b"scaled", "image/jpeg")],
+    )
+
+    out = mcp_blocks_to_content_blocks(
+        [
+            {"type": "text", "text": "Action completed"},
+            {"type": "image", "data": "bGFyZ2U="},
+            {"type": "image", "data": "c21hbGw="},
+        ]
+    )
+
+    assert out == [
+        TextBlock(text="Action completed\n[Image omitted: decode limit]"),
+        ImageBlock(
+            media_type="image/jpeg", data_b64=base64.b64encode(b"scaled").decode()
+        ),
+    ]
+
+
 # ---------- mcp_blocks_to_content_blocks ----------
 
 

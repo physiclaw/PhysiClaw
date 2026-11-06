@@ -49,6 +49,10 @@ class CalibrationState:
     # them off the state object; the source of truth is geometry.
     GRID_COLS_PCT = geometry.GRID_COLS_PCT
     GRID_ROWS_PCT = geometry.GRID_ROWS_PCT
+    # Calibration consumes the latest touch after each physical tap. Keep a
+    # short diagnostic history while bounding memory if a phone keeps sending
+    # events during a paused step (the LAN endpoint is deliberately public).
+    MAX_PENDING_TOUCHES = 128
 
     # Valid calibration phases (server → page display commands).
     # Phases are visual primitives — each renders one thing on the
@@ -150,6 +154,7 @@ class CalibrationState:
             ):
                 return False
             self.touches.append(touch)
+            del self.touches[: -self.MAX_PENDING_TOUCHES]
             self._touch_event.set()
         log.debug(f"Calibration touch: ({touch.get('x')}, {touch.get('y')})")
         return True

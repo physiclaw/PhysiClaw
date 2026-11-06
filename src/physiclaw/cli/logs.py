@@ -331,14 +331,19 @@ def _save_session(d: Path, dest: Path | None) -> None:
         viewer.write(d)  # the archive reviews itself, beside its frames
         out.parent.mkdir(parents=True, exist_ok=True)
         resolved_out = out.resolve()
+        session_root = d.resolve()
         files = sorted(
             p
             for p in d.rglob("*")
-            if p.is_file() and p.resolve() != resolved_out and p != d / "README.md"
+            if p.is_file()
+            and (resolved := p.resolve()).is_relative_to(session_root)
+            and resolved != resolved_out
+            and p != d / "README.md"
         )
         # Snapshot inputs before creating the temporary archive. Re-exporting
         # inside the session must not include the archive in itself, and a
-        # failed write must leave an existing backup intact.
+        # failed write must leave an existing backup intact. Linked files
+        # outside the session must never become part of a shared debug bundle.
         with tempfile.TemporaryDirectory(
             prefix=".physiclaw-session-", dir=out.parent
         ) as tmp:

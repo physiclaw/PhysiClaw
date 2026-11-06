@@ -11,7 +11,8 @@ stay byte-stable across wakes.
 
 Never fatal in either direction: a missing or invalid JSON file loads as
 empty. Malformed entries and counters reset without discarding valid
-history. The next record rewrites the file whole (atomic tmp+rename).
+history. Writers hold a bounded process lock across loading, folding and
+atomic replacement so concurrent runs do not erase each other's counters.
 Keys whose macro file is gone are pruned at write time. Additive
 fields load as absent — no schema versioning (alpha convention).
 """
@@ -25,6 +26,7 @@ from physiclaw.common import paths
 from physiclaw.common.logger import write_json_atomic
 from physiclaw.common.text import read_text
 from physiclaw.macros.model import REASON_BAD_INPUT
+from physiclaw.port.locks import FileLockBusy, exclusive_file_lock
 
 log = logging.getLogger(__name__)
 
@@ -34,6 +36,7 @@ _COUNTERS = {
     "total_aborts": 0,
     "consecutive_aborts": 0,
 }
+_LOCK_TIMEOUT_SECONDS = 1.0
 
 
 def stats_file() -> Path:
@@ -81,41 +84,44 @@ def record(
     existing macro names) prunes orphan keys so deleted macros don't leave
     stats behind. Best-effort: a write failure logs and moves on — stats
     must never take down a session."""
-    data = load()
-    # Qualified `app/name` keys are pack macros: their files live under
-    # playbooks/, not macros/, so the user-macro prune set can never
-    # vouch for them — keep them unconditionally (a deleted pack leaves
-    # a few orphan lines, which beats losing the decay signal).
-    data = {k: v for k, v in data.items() if k in known_names or k == name or "/" in k}
-    entry = data.setdefault(name, dict(_COUNTERS))
-    now = dt.datetime.now().isoformat(timespec="seconds")
-    entry["total_runs"] += 1
-    entry["last_run_at"] = now
-    if ok:
-        entry["total_successes"] += 1
-        entry["consecutive_aborts"] = 0
-        entry["last_success_at"] = now
-    else:
-        entry["total_aborts"] += 1
-        # `consecutive_aborts` is the re-rehearse signal — "the app layout
-        # changed under this macro". A `bad_input` run never reached the
-        # screen (a missing input, an unknown `start_at`), so it says
-        # nothing about layout: count it as a run and an abort, but leave
-        # the streak alone rather than let three typos in a row make a
-        # healthy macro read as decayed.
-        if reason != REASON_BAD_INPUT:
-            entry["consecutive_aborts"] += 1
-        entry["last_abort"] = {
-            "ts": now,
-            "step": step,
-            "reason": reason,
-            "detail": detail,
-            # The forensic pointer: `physiclaw macros runs <id>` shows the
-            # per-step trail of exactly this abort.
-            "run": run_id,
-        }
     try:
-        paths.macros_dir().mkdir(parents=True, exist_ok=True)
-        write_json_atomic(stats_file(), data)
-    except OSError:
-        log.warning("macro stats write failed", exc_info=True)
+        path = stats_file()
+        # Lock the stable sibling rather than the atomically replaced JSON.
+        with exclusive_file_lock(
+            path.with_suffix(".lock"), timeout=_LOCK_TIMEOUT_SECONDS
+        ):
+            data = load()
+            # Qualified `app/name` keys are pack macros: their files live under
+            # playbooks/, not macros/, so the user-macro prune set can never
+            # vouch for them — keep them unconditionally (a deleted pack leaves
+            # a few orphan lines, which beats losing the decay signal).
+            data = {
+                k: v
+                for k, v in data.items()
+                if k in known_names or k == name or "/" in k
+            }
+            entry = data.setdefault(name, dict(_COUNTERS))
+            now = dt.datetime.now().isoformat(timespec="seconds")
+            entry["total_runs"] += 1
+            entry["last_run_at"] = now
+            if ok:
+                entry["total_successes"] += 1
+                entry["consecutive_aborts"] = 0
+                entry["last_success_at"] = now
+            else:
+                entry["total_aborts"] += 1
+                # Bad input never reached the screen: count the abort without
+                # changing the streak that signals a changed app layout.
+                if reason != REASON_BAD_INPUT:
+                    entry["consecutive_aborts"] += 1
+                entry["last_abort"] = {
+                    "ts": now,
+                    "step": step,
+                    "reason": reason,
+                    "detail": detail,
+                    # The forensic pointer to this abort's per-step trail.
+                    "run": run_id,
+                }
+            write_json_atomic(path, data)
+    except (OSError, FileLockBusy):
+        log.warning("macro stats update failed", exc_info=True)

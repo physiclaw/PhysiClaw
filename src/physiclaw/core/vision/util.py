@@ -16,6 +16,7 @@ import numpy as np
 
 from physiclaw.common.bbox import validate_bbox
 from physiclaw.common.config import CONFIG
+from physiclaw.common.image import checked_image_size
 from physiclaw.core.vision.preprocess import grayscale, resize_to_max_edge
 
 # `validate_bbox` comes from `physiclaw.common.bbox` (the shared
@@ -50,6 +51,8 @@ def encode_view_jpeg(frame: np.ndarray) -> bytes:
 
 def decode_image(data: bytes) -> np.ndarray:
     """Decode image bytes (PNG or JPEG) to a BGR frame. Raises on failure."""
+    if checked_image_size(data) is None:
+        raise RuntimeError("Failed to decode image bytes")
     arr = np.frombuffer(data, dtype=np.uint8)
     frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
     if frame is None:

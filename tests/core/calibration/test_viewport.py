@@ -194,6 +194,64 @@ def test_measure_viewport_shift_raises_on_decode_failure(
         measure_viewport_shift(cal, bridge, fresh=True)
 
 
+def test_viewport_rejects_oversized_metadata_before_pixel_decode(
+    monkeypatch, mocker, tmp_path
+) -> None:
+    from physiclaw.common import image
+
+    ok, encoded = cv2.imencode(".png", np.zeros((20, 20, 3), dtype=np.uint8))
+    assert ok
+    monkeypatch.setattr(image, "MAX_IMAGE_PIXELS", 100)
+    mocker.patch.object(viewport_mod.time, "sleep")
+    mocker.patch.object(viewport_mod, "VIEWPORT_CACHE_STEM", tmp_path / "viewport")
+    decode = mocker.patch.object(
+        cv2, "imdecode", side_effect=AssertionError("pixel decode")
+    )
+    cal, bridge = MagicMock(), MagicMock()
+    cal.screen_dimension = {"viewport_width": 390, "viewport_height": 844}
+    bridge.take_pending_screenshot.return_value = None
+    bridge.wait_screenshot.return_value = encoded.tobytes()
+
+    with pytest.raises(image.ImageSizeError, match="decode limit"):
+        measure_viewport_shift(cal, bridge, fresh=True)
+    decode.assert_not_called()
+
+
+@pytest.mark.parametrize("source", ["cache", "pending"])
+def test_oversized_candidate_falls_back_to_a_fresh_screenshot(
+    mocker, tmp_path, source
+) -> None:
+    from physiclaw.common.image import MAX_IMAGE_DIMENSION
+
+    ok, encoded = cv2.imencode(
+        ".png", np.zeros((1, MAX_IMAGE_DIMENSION + 1, 3), dtype=np.uint8)
+    )
+    assert ok
+    oversized = encoded.tobytes()
+    fresh = _orange_square_image()
+    mocker.patch.object(viewport_mod.time, "sleep")
+    cache_stem = tmp_path / "viewport"
+    mocker.patch.object(viewport_mod, "VIEWPORT_CACHE_STEM", cache_stem)
+    if source == "cache":
+        cache_stem.with_suffix(".img").write_bytes(oversized)
+    cal, bridge = MagicMock(), MagicMock()
+    cal.screen_dimension = {"viewport_width": 390, "viewport_height": 844}
+    bridge.take_pending_screenshot.return_value = (
+        oversized if source == "pending" else None
+    )
+    bridge.wait_screenshot.return_value = fresh
+    decode = mocker.patch.object(cv2, "imdecode", wraps=cv2.imdecode)
+
+    transform = measure_viewport_shift(cal, bridge, fresh=source == "pending")
+
+    assert isinstance(transform, ViewportShift)
+    bridge.clear_screenshot.assert_called_once()
+    bridge.wait_screenshot.assert_called_once()
+    decode.assert_called_once()
+    assert decode.call_args.args[0].tobytes() == fresh
+    assert cache_stem.with_suffix(".img").read_bytes() == fresh
+
+
 def test_measure_viewport_shift_raises_when_no_orange_detected(
     mocker,
     tmp_path: Path,

@@ -173,6 +173,20 @@ def test_report_touch_appends_and_signals_event() -> None:
     assert cs._touch_event.is_set() is True
 
 
+def test_touch_history_is_bounded_while_preserving_the_latest_event() -> None:
+    cs = CalibrationState()
+    count = cs.MAX_PENDING_TOUCHES + 10
+    for i in range(count):
+        cs.report_touch({"x": i / count, "y": 0.4})
+
+    assert len(cs.touches) == cs.MAX_PENDING_TOUCHES
+    assert cs.touches[0]["x"] == 10 / count
+    assert cs.wait_touch(timeout=0) == {"x": (count - 1) / count, "y": 0.4}
+    assert len(cs.flush_touches()) == cs.MAX_PENDING_TOUCHES
+    assert cs.touches == []
+    assert not cs._touch_event.is_set()
+
+
 def test_wait_touch_returns_last_event_when_already_signaled() -> None:
     cs = CalibrationState()
     cs.report_touch({"x": 0.5, "y": 0.4})

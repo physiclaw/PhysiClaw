@@ -8,12 +8,70 @@ engine's behavior module for one pure function.
 """
 
 import logging
+from io import BytesIO
 
 from physiclaw.common import config
 
 log = logging.getLogger(__name__)
 
 _JPEG_MAGIC = b"\xff\xd8\xff"  # JPEG SOI marker
+# Allow an 8K frame, while bounding a decoded BGR buffer to 96 MiB.
+MAX_IMAGE_PIXELS = 32 * 1024 * 1024
+MAX_IMAGE_DIMENSION = 16_384
+
+
+class ImageSizeError(ValueError):
+    """Image dimensions exceed the application's allocation budget."""
+
+
+def _require_image_size(width: int, height: int) -> None:
+    if (
+        width > MAX_IMAGE_DIMENSION
+        or height > MAX_IMAGE_DIMENSION
+        or width * height > MAX_IMAGE_PIXELS
+    ):
+        raise ImageSizeError(
+            f"image dimensions {width}x{height} exceed the decode limit "
+            f"({MAX_IMAGE_PIXELS} pixels, {MAX_IMAGE_DIMENSION} per dimension)"
+        )
+
+
+def _webp_header_size(raw: bytes) -> tuple[int, int] | None:
+    # Pillow 13's WebP open allocates its animation canvas before returning
+    # .size. Use its own header reader first, isolated here because it is a
+    # private API within our pinned pillow>=13,<14 dependency. An unavailable
+    # helper or unreadable header must never fall through to the decoder.
+    from PIL import WebPImagePlugin
+
+    reader = getattr(WebPImagePlugin, "_get_size", None)
+    return reader(raw[:30]) if reader is not None else None
+
+
+def checked_image_size(raw: bytes) -> tuple[int, int] | None:
+    """Read supported metadata before pixel allocation, enforcing a hard cap.
+
+    None means unsupported/corrupt metadata; callers keep their existing
+    decode-failure policy. Oversized dimensions raise ImageSizeError and
+    must never select a fallback that forwards or decodes the original.
+    Restrict metadata probing to JPEG/PNG/WebP and leave Pillow's process-wide
+    warning and decoder settings untouched.
+    """
+    from PIL import Image
+
+    if raw.startswith(b"RIFF") and raw[8:12] == b"WEBP":
+        size = _webp_header_size(raw)
+        if size is None:
+            return None
+        _require_image_size(*size)
+    try:
+        with Image.open(BytesIO(raw), formats=("JPEG", "PNG", "WEBP")) as encoded:
+            size = encoded.size
+    except (Image.DecompressionBombError, Image.DecompressionBombWarning) as exc:
+        raise ImageSizeError("image dimensions exceed the decode limit") from exc
+    except (OSError, ValueError, SyntaxError):
+        return None
+    _require_image_size(*size)
+    return size
 
 
 def image_dimensions(raw: bytes) -> tuple[int, int]:
@@ -21,6 +79,8 @@ def image_dimensions(raw: bytes) -> tuple[int, int]:
     import cv2
     import numpy as np
 
+    if checked_image_size(raw) is None:
+        raise ValueError("invalid observation image")
     try:
         decoded = cv2.imdecode(np.frombuffer(raw, dtype=np.uint8), cv2.IMREAD_COLOR)
     except cv2.error as exc:
@@ -50,6 +110,8 @@ def scale_image_bytes(raw: bytes) -> tuple[bytes, str]:
 
     max_edge = config.CONFIG.compact.max_image_edge_px
     quality = config.CONFIG.compact.jpeg_quality
+    if checked_image_size(raw) is None:
+        return raw, "application/octet-stream"
     try:
         arr = np.frombuffer(raw, dtype=np.uint8)
         img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
