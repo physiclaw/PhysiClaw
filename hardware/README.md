@@ -40,10 +40,6 @@ Documents include English and Chinese editions. By default, generated files go t
 `hardware/output/`, in `step/`, `svg/`, `manual/`, `sourcing/`, `drawing/` and
 `print_3d/`. Builds reuse cached CAD work automatically.
 
-CAD rendering can crash inside OpenCascade ([upstream issue #1546](https://github.com/Open-Cascade-SAS/OCCT/issues/1546)).
-Builds retry unfinished work and keep completed outputs. For failures, check
-`hardware/output/logs/`.
-
 | Task | Command |
 | --- | --- |
 | Build one assembly step | `make hw-step ARGS=belt_20_clamp` |

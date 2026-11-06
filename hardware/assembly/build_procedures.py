@@ -8,8 +8,8 @@ two dispatchers from writing the same tree.
 The dispatcher retries incomplete stems up to ``MAX_STEM_RETRIES`` after
 native HLR crashes. ``--only-missing`` retains finished outputs, and exact
 BREP checkpoints let unfinished views resume without rebuilding geometry.
-See hardware/README.md for the upstream fault. Workers line-buffer progress
-and write native stacks to a per-run ``output/logs/build-*.crash.log``.
+Workers line-buffer progress and write native stacks to a per-run
+``output/logs/build-*.crash.log``.
 
 Both variants export STEP; only declared ``views`` render SVG. Matching
 annotation patches are replayed after rendering. Optional ``--bom`` and
