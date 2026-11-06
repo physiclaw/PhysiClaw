@@ -11,7 +11,7 @@ PhysiClaw 通过 MCP 把底层硬件封装成 `peek`、`tap`、`swipe` 等工具
 physiclaw mcp
 ```
 
-也可用 `physiclaw mcp -H` 热启动。
+如果上次运行后硬件没有移动过，也可用 `physiclaw mcp -H` 热启动，复用已有校准数据并跳过校验。
 
 ## 连接 MCP
 
@@ -52,5 +52,5 @@ hermes mcp add physiclaw --url http://127.0.0.1:8048/mcp
 ```
 
 :::note[注意 token 消耗]
-每一步操作都会返回一张摄像头拍摄的屏幕画面，token 消耗增长很快，任务较长时容易达到上下文窗口的上限。
+每一步操作都会返回一张摄像头拍摄的屏幕图像，因此 token 消耗较高。任务步骤较多时，累计的图像和消息容易占满上下文窗口。
 :::

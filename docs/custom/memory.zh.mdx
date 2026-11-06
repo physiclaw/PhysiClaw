@@ -3,7 +3,7 @@ title: 记忆
 description: PhysiClaw 如何在会话之间保持记忆。
 ---
 
-智能体唤醒时加载 `~/.physiclaw/memory/` 下的 Markdown 文件，在会话之间保持记忆。
+智能体每次唤醒时，都会加载 `~/.physiclaw/memory/` 下的 Markdown 文件，读取之前保存的信息。
 
 <FileTree>
 - ~/.physiclaw/memory/
@@ -21,7 +21,7 @@ description: PhysiClaw 如何在会话之间保持记忆。
 
 ## 示例
 
-`USER.md` 可选，存放关于你的信息，这样不必每次会话都向智能体重复说明。
+你可以创建 `USER.md`，记录自己的偏好和常用信息，这样每次开始会话时就不必重复说明。
 
 ```markdown
 ## 称呼

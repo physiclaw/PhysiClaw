@@ -1,9 +1,9 @@
 ---
 title: 宏
-description: 你编写并排练过的手势序列，智能体一次调用即可重放，节省时间和 token。
+description: 预先编写并在真机上测试过的手势序列，智能体一次调用即可执行，节省时间和 token。
 ---
 
-token 成本很高。宏把一连串手势合并为一次模型调用，智能体只需重放你编写并排练过的序列，不必逐步操作手机，从而节省 token 和时间。
+token 成本很高。宏把一连串手势合并为一次模型调用，智能体只需执行你预先编写并在真机上测试过的序列，不必逐步调用工具，从而节省 token 和时间。
 
 ## 创建宏
 
@@ -22,13 +22,13 @@ physiclaw macros init notify-user-wechat
 ### notify-user-wechat.yml
 
 ```yaml
-# 这个文件是什么：录制好的手势序列，所以放在 macros/ 下。
+# 这个文件定义一组按顺序执行的手势，保存在 macros/ 下。
 kind: macro
 # 这个文件使用的 pack 语法版本。
 schema: 1
 name: notify-user-wechat
 # 智能体只根据这一行选择宏，因此要写清楚使用场景和宏的作用。
-description: 用微信给用户发消息时使用。打开聊天窗口，把文本粘贴到输入框，停在发送之前。
+description: 用微信给用户发消息时使用。打开聊天窗口，将消息粘贴到输入框，但不点击「发送」。
 
 # 设为 false 后，智能体看不到也无法调用这个宏。
 enabled: true
@@ -39,12 +39,12 @@ inputs:
     description: 要发送的消息文本
     example: "订单已下，共 ¥30"
 
-# 从上到下执行，每步一个动作：动词和对象，步骤需要的其他条件写在旁边。
+# 步骤从上到下执行。每步写明动作和操作对象，其他参数也放在同一个步骤中。
 steps:
   - home_screen
 
-  # 点击要写明对象；`at` 是坐标框 [左, 上, 右, 下]，取 0–1 的屏幕比例。
-  # 对象是屏幕上的文字时，点击会跟随文字移动；图标则写一句描述。
+  # 点击时要写明目标；`at` 用 [左, 上, 右, 下] 指定目标区域，取值均为 0–1。
+  # 目标是文字时直接填写原文，以便随文字位置变化重新定位；目标是图标时填写简短描述。
   - tap: "微信图标"
     at: [0.62, 0.18, 0.85, 0.30]
 
@@ -53,7 +53,7 @@ steps:
     expect: {text: ["微信", "Weixin", "用户昵称"], within: top}
     hint: "微信没有打开，先登录再手动发送"
 
-  # `skip_when`：已在聊天界面时跳过此步；`require`：确认点击位置上是正确的那一行。
+  # `skip_when`：已在聊天界面时跳过此步；`require`：检查目标区域是否包含用户昵称，避免点错会话。
   - tap: "用户昵称"
     at: [0.05, 0.10, 0.95, 0.20]
     skip_when: {text: "用户昵称", within: [0.15, 0.02, 0.85, 0.1]}
@@ -86,7 +86,7 @@ steps:
 physiclaw mcp
 ```
 
-检查所有宏文件，然后在真机上重放这个宏：
+检查所有宏文件，再在真机上试运行这个宏：
 
 ```bash
 physiclaw macros check
@@ -99,4 +99,4 @@ physiclaw macros run notify-user-wechat -i message=hi
 
 **让智能体来写。** 把 `claude` 或 `codex` 连接到你的 MCP 服务器，让它生成宏。
 
-**关注统计。** `physiclaw macros stats` 列出每个宏的计数。如果 `consecutive_aborts` 持续增加，说明 App 布局已变，需要重新排练并更新坐标框。
+**留意运行统计。** `physiclaw macros stats` 显示各宏的运行统计。如果连续中止次数（`consecutive_aborts`）持续增加，可能是 App 布局发生了变化，需要在真机上重新测试，并更新目标区域的坐标。

@@ -28,7 +28,7 @@ PhysiClaw runs OCR and icon detection on the camera frame and screenshots, then 
 
 Image pixel coordinates → phone screen coordinates → physical-plane coordinates. The full chain needs two transform matrices to convert between coordinate systems.
 
-The arm has to be recalibrated before every run to compute accurate transform matrices.
+Accurate coordinate conversion requires valid calibration data. Reuse the saved calibration if the hardware hasn't moved; recalibrate after moving it.
 
 ### Screenshot
 
@@ -46,13 +46,13 @@ Shortcuts are iOS-only. Android has no native equivalent, which is why we curren
 
 The runtime keeps running a loop, constantly checking whether a scheduled job is due or the screen has lit up from a new notification; when either is true, it wakes the agent.
 
-Once awake, the agent unlocks the phone, reads the messages, opens the relevant app to do the task, reports the result back to the user, and finally saves a log and ends the conversation.
+Once awake, the agent unlocks the phone, reads the messages, opens the relevant app to do the task, reports the result back to the user, and finally saves a log and ends the session.
 
 ## Context management
 
 An agent usually needs many model calls to finish a single task, and every call attaches an image of the phone screen for it to look at. Without good context management, you'd quickly hit the context-window limit.
 
-**Shrink the context.** On every model call, besides the action to run, the model also returns a short description. Only the most recent turn keeps its original image; earlier turns are replaced with their OCR text, and as the turns pile up, that OCR text is further compressed into a one-line description of each step.
+**Shrink the context.** On every model call, besides the action to run, the model also returns a short description. Only the most recent turn keeps its original image; images from earlier turns are replaced with OCR text, and as the turns pile up, that OCR text is further compressed into a one-line description of each step.
 
 **Update progress.** The model is prompted to update its task progress at key steps, so it doesn't lose its way after the context is compressed. The progress sits at the end of the message list, guiding the model.
 
