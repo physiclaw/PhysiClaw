@@ -52,7 +52,7 @@ def repo(tmp_path, monkeypatch):
     specs.write_text("FIGURES = {}\n", encoding="utf-8")
 
     def expected_figures(stem):
-        figures = ast.literal_eval(specs.read_text().split("=", 1)[1])
+        figures = ast.literal_eval(specs.read_text(encoding="utf-8").split("=", 1)[1])
         return {name for name in figures if name.startswith(stem + "_")}
 
     monkeypatch.setattr(cache, "figure_names", expected_figures)
@@ -352,8 +352,8 @@ def test_restore_annotations_restores_paths_to_their_own_directory(repo):
     final.unlink()
     paths.unlink()
     cache.restore_annotations(STEM)
-    assert final.read_text() == "manual figure"
-    assert paths.read_text() == "paths"
+    assert final.read_text(encoding="utf-8") == "manual figure"
+    assert paths.read_text(encoding="utf-8") == "paths"
 
 
 def test_annotations_cached_after_declaration_edit_is_false(repo):

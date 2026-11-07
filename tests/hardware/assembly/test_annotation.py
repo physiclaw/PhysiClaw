@@ -63,15 +63,15 @@ def test_generated_intermediate_contains_only_paths_and_composes_over_source(poo
     svg, paths = pool
     [figure] = generator.generate(Demo(exploded=True))
     intermediate = paths / f"{NAME}_annotated_screws.paths.svg"
-    root = ET.fromstring(intermediate.read_text())
+    root = ET.fromstring(intermediate.read_text(encoding="utf-8"))
     assert list(root)
     assert all(el.tag == f"{{{NS['svg']}}}path" for el in root)
     assert root.find(".//*[@id='art']") is None
-    final = ET.fromstring(figure.read_text())
+    final = ET.fromstring(figure.read_text(encoding="utf-8"))
     assert final.find(".//*[@id='art']") is not None
     assert final.find(".//*[@id='procedure-annotation']") is not None
     assert root.attrib["viewBox"] == final.attrib["viewBox"]
-    assert (svg / f"{NAME}.svg").read_text() == SVG
+    assert (svg / f"{NAME}.svg").read_text(encoding="utf-8") == SVG
 
 
 @pytest.mark.parametrize("other_view", [NAME, NAME.upper()])
@@ -108,20 +108,20 @@ def test_named_annotations_share_a_view_and_survive_reordering_and_deletion(
     monkeypatch.setattr(specs, "FIGURES", specs._index_figures(screws, base))
     written = generator.generate(Demo(exploded=True))
     assert {path.name for path in written} == {screws.filename, base.filename}
-    baseline = {path.name: path.read_text() for path in written}
+    baseline = {path.name: path.read_text(encoding="utf-8") for path in written}
     assert baseline[screws.filename] != baseline[base.filename]
     assert all((paths / (path.stem + ".paths.svg")).is_file() for path in written)
 
     monkeypatch.setattr(specs, "FIGURES", specs._index_figures(base, screws))
     generator.generate(Demo(exploded=True))
-    assert {path.name: path.read_text() for path in written} == baseline
+    assert {path.name: path.read_text(encoding="utf-8") for path in written} == baseline
 
     monkeypatch.setattr(specs, "FIGURES", specs._index_figures(base))
     [remaining] = generator.generate(Demo(exploded=True))
     assert remaining.name == base.filename
-    assert remaining.read_text() == baseline[base.filename]
+    assert remaining.read_text(encoding="utf-8") == baseline[base.filename]
     assert specs.figure_names(Demo._module_stem()) == {base.filename}
-    assert (svg / f"{NAME}.svg").read_text() == SVG
+    assert (svg / f"{NAME}.svg").read_text(encoding="utf-8") == SVG
 
 
 def test_missing_path_intermediate_is_regenerated_even_when_final_exists(pool):
@@ -138,10 +138,10 @@ def test_highlight_follows_current_model_instead_of_saved_coordinates(
 ):
     _, paths = pool
     generator.generate(Demo(exploded=True))
-    before = (paths / f"{NAME}_annotated_screws.paths.svg").read_text()
+    before = (paths / f"{NAME}_annotated_screws.paths.svg").read_text(encoding="utf-8")
     monkeypatch.setattr(Demo, "offset", 5)
     generator.generate(Demo(exploded=True))
-    after = (paths / f"{NAME}_annotated_screws.paths.svg").read_text()
+    after = (paths / f"{NAME}_annotated_screws.paths.svg").read_text(encoding="utf-8")
     assert before != after
 
 
@@ -156,10 +156,12 @@ def test_single_step_build_refreshes_paths_even_when_previous_figures_exist(
     monkeypatch.setattr(Demo, "export", lambda self: None)
     monkeypatch.setattr(Demo, "render", lambda self, **kwargs: None)
     build_procedures._run_one(Demo, True)
-    before = (paths / f"{NAME}_annotated_screws.paths.svg").read_text()
+    before = (paths / f"{NAME}_annotated_screws.paths.svg").read_text(encoding="utf-8")
     monkeypatch.setattr(Demo, "offset", 5)
     build_procedures._run_one(Demo, True)
-    assert (paths / f"{NAME}_annotated_screws.paths.svg").read_text() != before
+    assert (paths / f"{NAME}_annotated_screws.paths.svg").read_text(
+        encoding="utf-8"
+    ) != before
 
 
 @pytest.mark.parametrize("missing", [None, "figure", "paths"])
@@ -284,7 +286,9 @@ def test_interrupted_pair_commit_is_repaired_on_resume(pool, monkeypatch, commit
     assert not intermediate.with_suffix(".tmp").exists()
     monkeypatch.setattr(Path, "replace", replace)
     assert generator.generate(Demo(exploded=True), only_missing=True) == [figure]
-    assert figure.read_text() == svg.compose(SVG, intermediate.read_text())
+    assert figure.read_text(encoding="utf-8") == svg.compose(
+        SVG, intermediate.read_text(encoding="utf-8")
+    )
 
 
 def test_bad_selector_fails_without_replacing_valid_outputs(pool, monkeypatch):
@@ -936,6 +940,8 @@ def test_occluding_parts_clip_highlights_before_composition(pool, monkeypatch):
     )
     monkeypatch.setitem(features.FEATURES, "silhouette", features.silhouette)
     generator.generate(Demo(exploded=True))
-    root = ET.fromstring((paths / f"{NAME}_annotated_screws.paths.svg").read_text())
+    root = ET.fromstring(
+        (paths / f"{NAME}_annotated_screws.paths.svg").read_text(encoding="utf-8")
+    )
     # The front component splits the rear highlight into two visible islands.
     assert root[0].attrib["d"].count("M ") == 2
