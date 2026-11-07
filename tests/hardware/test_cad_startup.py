@@ -39,7 +39,9 @@ def test_cad_startup_builds_engraved_board_without_fontconfig_diagnostics(module
         env=env,
         capture_output=True,
         text=True,
-        timeout=30,
+        # Cold CAD imports and real geometry builds can exceed 30s on Windows.
+        # Keep a hang guard without treating this as a startup benchmark.
+        timeout=120,
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert result.stderr == ""

@@ -152,7 +152,12 @@ def test_list_all_includes_each_provider():
     assert "claude-code" not in result.stdout
 
 
-@settings(max_examples=30, suppress_health_check=[HealthCheck.function_scoped_fixture])
+# Cache writes and CLI startup are behavioral checks, not timing benchmarks.
+@settings(
+    max_examples=30,
+    deadline=None,
+    suppress_health_check=[HealthCheck.function_scoped_fixture],
+)
 @given(
     ids=st.lists(
         st.text(alphabet="abcXYZ012.-/_模型", min_size=1, max_size=20), max_size=10

@@ -134,8 +134,9 @@ def test_regression_invalid_corpus_record_names_file_and_line(tmp_path, record):
         corpus.read_corpus(path)
 
 
+# Real file I/O can exceed Hypothesis's default deadline on a busy host.
 @given(st.lists(st.tuples(st.text(), st.text()), max_size=12))
-@settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
+@settings(deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
 def test_corpus_strings_round_trip_without_coercion(tmp_path, records):
     items = [corpus.CorpusItem(label, listing) for label, listing in records]
     path = tmp_path / "roundtrip.jsonl"

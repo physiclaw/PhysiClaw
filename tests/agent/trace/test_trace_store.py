@@ -11,7 +11,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
-from hypothesis import example, given
+from hypothesis import example, given, settings
 from hypothesis import strategies as st
 from symlink_helpers import symlink_to
 
@@ -219,6 +219,8 @@ def test_resolve_session_finds_unique_suffix(tmp_path, ref):
     assert resolved == session
 
 
+# Filesystem latency varies independently of session-name correctness.
+@settings(deadline=None)
 @given(st.from_regex(r"[A-Za-z0-9_-]{1,24}", fullmatch=True))
 @example(name="abcX123")
 def test_find_session_dirs_preserves_valid_names_and_suffixes(name):
