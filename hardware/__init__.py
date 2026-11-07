@@ -28,7 +28,7 @@ class _SourceFinder:
             return None
         spec = _machinery.PathFinder.find_spec(fullname, path, target)
         if spec is not None and isinstance(spec.loader, _machinery.SourceFileLoader):
-            spec.loader = _SourceLoader(fullname, spec.origin)
+            spec.loader = _SourceLoader(fullname, spec.loader.get_filename(fullname))
         return spec
 
 
