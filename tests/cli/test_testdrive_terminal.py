@@ -160,23 +160,47 @@ def test_session_supports_console_encodings(monkeypatch, encoding):
     arm.close.assert_called_once_with()
 
 
-def test_portable_editor_keeps_history_and_handles_eof_and_interrupt():
+@pytest.mark.parametrize("eager_input", [False, True])
+def test_portable_editor_keeps_history_and_handles_eof_and_interrupt(
+    monkeypatch, eager_input
+):
+    from asyncio import get_running_loop
+    from contextlib import contextmanager
+
     from prompt_toolkit import PromptSession
     from prompt_toolkit.input import create_pipe_input
     from prompt_toolkit.output import DummyOutput
 
     with create_pipe_input() as pipe:
+        if eager_input:
+            original_attach = pipe.attach
+
+            @contextmanager
+            def attach(callback):
+                with original_attach(callback):
+                    # Windows can dispatch already queued keys before history loads.
+                    get_running_loop().call_soon(callback)
+                    yield
+
+            monkeypatch.setattr(pipe, "attach", attach)
+
         session = PromptSession(input=pipe, output=DummyOutput())
-        pipe.send_text("tap\n")
-        assert testdrive._read_command(None, session=session) == "tap"
-        pipe.send_text("\033[A\001\013Y-1\n")
-        assert testdrive._read_command(True, session=session) == "Y-1"
-        pipe.send_text("\033[A\n")
-        assert testdrive._read_command(False, session=session) == "Y-1"
+
+        def read(keys, result):
+            def send_after_render(app):
+                app.after_render -= send_after_render
+                # Let the initial render's history task run before sending keys.
+                get_running_loop().call_soon(pipe.send_text, keys)
+
+            session.app.after_render += send_after_render
+            return testdrive._read_command(result, session=session)
+
+        assert read("tap\n", None) == "tap"
+        assert read("\033[A\001\013Y-1\n", True) == "Y-1"
+        assert read("\033[A\n", False) == "Y-1"
         for key, error in (("\004", EOFError), ("\003", KeyboardInterrupt)):
-            pipe.send_text(key)
             with pytest.raises(error):
-                testdrive._read_command(True, session=session)
+                read(key, True)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Requires a POSIX PTY")
