@@ -1,6 +1,7 @@
 """Change the real travel source in isolation and exercise downstream artifacts."""
 
 import os
+import py_compile
 import shutil
 import subprocess
 import sys
@@ -88,6 +89,12 @@ def _probe(x_delta: int, y_delta: int) -> None:
     )
     before = {stem: cache.source_key(stem) for stem in stems}
     source = travel_source.read_text(encoding="utf-8")
+    source_stat = travel_source.stat()
+    py_compile.compile(
+        str(travel_source),
+        doraise=True,
+        invalidation_mode=py_compile.PycInvalidationMode.TIMESTAMP,
+    )
     configured_travel = []
     for axis, delta in zip(("X", "Y"), (x_delta, y_delta)):
         configured_travel.append(
@@ -101,6 +108,10 @@ def _probe(x_delta: int, y_delta: int) -> None:
         )
         assert count == 1
     travel_source.write_text(source, encoding="utf-8")
+    # Equal-size, same-timestamp edits must affect actual imported CAD code too,
+    # not merely its source hash. Leave a valid-looking stale .pyc behind.
+    assert travel_source.stat().st_size == source_stat.st_size
+    os.utime(travel_source, ns=(source_stat.st_atime_ns, source_stat.st_mtime_ns))
     # No module has imported travel yet; subsequent consumers see the changed build.
     assert all(cache.source_key(stem) != before[stem] for stem in stems)
     reference_after = _reference_probe()

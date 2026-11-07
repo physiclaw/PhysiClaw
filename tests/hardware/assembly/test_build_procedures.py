@@ -48,6 +48,39 @@ def test_changed_travel_builds_reference_in_separate_subprocess(
     assert args[0][-3:] == ["--jobs", "1", "--no-cache"]
     assert kwargs["env"]["PHYSICLAW_HW_MANUAL_ILLUSTRATIONS"] == "1"
     assert kwargs["env"]["PHYSICLAW_HW_OUTPUT"] == str(tmp_path)
+    assert kwargs["cancelled"] is bp._CANCELLED
+
+
+def test_cancelling_reference_build_stops_child_and_returns_cancelled(
+    tmp_path, monkeypatch
+):
+    import subprocess
+    import sys
+    import time
+
+    monkeypatch.setattr(bp, "OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr("hardware.build_lock.OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(bp, "X_TRAVEL", 220)
+    monkeypatch.setattr(bp, "_execute", lambda args: 0)
+    original_popen = subprocess.Popen
+    children = []
+
+    def reference_child(args, **kwargs):
+        child = original_popen(
+            [sys.executable, "-c", "import time; time.sleep(30)"], **kwargs
+        )
+        children.append(child)
+        bp._CANCELLED.set()
+        return child
+
+    monkeypatch.setattr(subprocess, "Popen", reference_child)
+    started = time.monotonic()
+    assert bp.main([]) == 130
+    # A hang guard, allowing the owned-process cleanup grace on every platform.
+    # Without cancellation polling this waits for the child's entire 30 seconds.
+    assert time.monotonic() - started < 15
+    assert len(children) == 1
+    assert children[0].poll() is not None
 
 
 def test_failed_reference_build_fails_complete_hardware_build(tmp_path, monkeypatch):

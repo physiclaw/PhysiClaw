@@ -233,7 +233,8 @@ def source_key(stem: str) -> str:
     """Content hash of ``stem``'s import closure, CAD toolchain and platform.
     Governs the ``.step``, the raw ``.svg``, and the BOM ``.md``."""
     h = hashlib.sha256()
-    h.update(b"hardware-cache-v3\n")
+    # Reject v3 entries that may contain geometry built from stale bytecode.
+    h.update(b"hardware-cache-v4\n")
     h.update(f"manual-illustrations={MANUAL_ILLUSTRATIONS}\n".encode())
     h.update(b"build123d=" + _kernel_version().encode() + b"\n")
     h.update(platform.python_version().encode())

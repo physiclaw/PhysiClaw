@@ -298,10 +298,12 @@ def step(label):
     )
 
 
-def run_process(args, *, timeout=None, merge_stderr=True, **kwargs):
+def run_process(args, *, timeout=None, merge_stderr=True, cancelled=None, **kwargs):
     """Stream child diagnostics to the run log and clean up its process group."""
     from hardware.port.processes import ignore_interrupts, is_interrupted, owned_process
 
+    if cancelled is not None and cancelled.is_set():
+        raise KeyboardInterrupt
     log = _current
     stdout, stderr = [], []
     reader_errors = []
@@ -355,13 +357,28 @@ def run_process(args, *, timeout=None, merge_stderr=True, **kwargs):
         try:
             for reader in readers:
                 reader.start()
-            child.wait(timeout=timeout)
+            if cancelled is None:
+                child.wait(timeout=timeout)
+            else:
+                deadline = None if timeout is None else time.monotonic() + timeout
+                while True:
+                    if cancelled.is_set():
+                        raise KeyboardInterrupt
+                    interval = 0.1
+                    if deadline is not None:
+                        interval = min(interval, max(0, deadline - time.monotonic()))
+                    try:
+                        child.wait(timeout=interval)
+                        break
+                    except subprocess.TimeoutExpired:
+                        if deadline is not None and time.monotonic() >= deadline:
+                            raise subprocess.TimeoutExpired(args, timeout) from None
         except subprocess.TimeoutExpired:
             timed_out = True
             raise
         finally:
             with ignore_interrupts():
-                owner.stop(timeout=5)
+                owner.stop(timeout=5, cooperative_cancel=cancelled is not None)
                 for reader in readers:
                     if reader.ident is not None:
                         reader.join()

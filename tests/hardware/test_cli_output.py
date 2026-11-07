@@ -161,7 +161,12 @@ def test_subprocess_stdout_and_stderr_are_saved_without_corrupting_json(
     assert events[-1]["status"] == "success"
 
 
-def test_subprocess_timeout_retains_partial_diagnostics(tmp_path, monkeypatch):
+@pytest.mark.parametrize("cancellable", [False, True])
+def test_subprocess_timeout_retains_partial_diagnostics(
+    tmp_path, monkeypatch, cancellable
+):
+    from threading import Event
+
     monkeypatch.setattr(scheme, "OUTPUT_DIR", tmp_path)
     with pytest.raises(SystemExit, match="1"):
         with buildlog.command("Hardware subprocess"):
@@ -173,6 +178,7 @@ def test_subprocess_timeout_retains_partial_diagnostics(tmp_path, monkeypatch):
                     "import time; print('partial diagnostics'); time.sleep(30)",
                 ],
                 timeout=0.5,
+                cancelled=Event() if cancellable else None,
             )
     events = [
         json.loads(line)

@@ -890,6 +890,7 @@ def _build_manual_illustrations(jobs: int, *, use_cache: bool = True) -> None:
                 "PHYSICLAW_HW_MANUAL_ILLUSTRATIONS": "1",
             },
             cwd=REPO_ROOT,
+            cancelled=_CANCELLED,
         )
 
 
