@@ -1,7 +1,7 @@
 """``physiclaw testdrive`` — take the board for a spin after flashing.
 
-The post-flash bring-up check: connect to the board, show the machine's
-axes, then hand the user the controls — ``X10`` / ``X-10Y-10`` style
+The post-flash bring-up check: connect to the board, then hand the user
+the controls — ``X10`` / ``X-10Y-10`` style
 moves plus ``tap`` and ``longpress`` — so they watch the motors and
 solenoid do what they typed. No pass/fail bookkeeping: the user's own
 eyes are the verdict. Every command routes through ``StylusArm``, so
@@ -9,56 +9,24 @@ moves are idle-synced and the solenoid keeps its safety profile.
 (``scripts/grbl_jog.py`` keeps scripted per-motor phases for deeper
 diagnosis.)
 
-Runs before calibration, so directions are the arm's own axes — the
-diagram defines them; the screen mapping comes later in
-``setup hardware``.
+Runs alongside the firmware guide, which explains the machine's axes
+and wiring. The terminal focuses on controls and errors.
 """
 
 from __future__ import annotations
 
+import logging
 import re
-from typing import Annotated
+import sys
+from typing import TYPE_CHECKING, Annotated
 
 import typer
 
-from physiclaw.cli._format import exit_error, info, ok
+from physiclaw.cli._format import _style, exit_error, info, ok, warn
+from physiclaw.common.terminal import color_enabled, is_terminal, stdout_text
 
-# Bird's-eye view of the frame plus the legend, printed once connected —
-# it defines X/Y/A/B/origin before anything moves. Motors A/B sit on the
-# top beam just inside the corners. Same orientation the screen mapping
-# uses later: origin top-left, X growing right, Y growing down. The help
-# below asks the user to verify real moves match these directions and
-# names the wiring fix if not.
-AXES_DIAGRAM = """\
-  Looking down at the machine:
-
-     origin
-        ●──[A]───── X → ─────[B]──┐
-        │                         │
-        │                         │
-        Y        (phone           │
-        ↓         bed)            │
-        │                         │
-        └─────────────────────────┘
-
-  Motors A and B sit on the top beam — the X axis.
-  The other direction is Y; the top-left corner is the origin.
-"""
-
-TRY_IT_HELP = """\
-  Try the machine — type a command, q to finish:
-
-    X10        move 10 mm in X+
-    Y10        move 10 mm in Y+
-    X-10Y-10   move 10 mm in X- and 10 mm in Y-
-    tap        click the stylus
-    longpress  press and hold ~1 s
-
-  Check each move matches the diagram's directions — if not, make sure
-  motor A is plugged into the board's Y1 port and motor B into X.
-
-  Phone off the bed — keep hands clear.
-"""
+if TYPE_CHECKING:
+    from prompt_toolkit import PromptSession
 
 # Per-command caps (inclusive): no homing or limit switches, so any one
 # move stays small enough that a typo can't run the carriage hard into
@@ -71,12 +39,74 @@ _MAX_JOG_Y_MM = 50
 _MOVE_RE = re.compile(r"^(?:x(?P<x>-?\d+(?:\.\d+)?))?(?:y(?P<y>-?\d+(?:\.\d+)?))?$")
 
 
+def _show_controls() -> None:
+    """A compact reference; the firmware guide owns diagrams and wiring."""
+    typer.echo()
+    typer.echo(_style("Controls", bold=True))
+    typer.echo("  " + _style("Type a command, then press Enter.", dim=True))
+    for commands in (
+        (
+            ("X10", "Move X by +10 mm"),
+            ("Y10", "Move Y by +10 mm"),
+            ("X-10Y-10", "Move X by -10 mm and Y by -10 mm"),
+        ),
+        (
+            ("tap", "Tap once"),
+            ("longpress", "Press and hold the stylus"),
+        ),
+        (
+            ("help", "Show controls"),
+            ("q", "End test drive"),
+        ),
+    ):
+        typer.echo()
+        for command, description in commands:
+            label = _style(f"{command:<9}", fg=typer.colors.CYAN)
+            typer.echo(f"  {label}  {stdout_text(description)}")
+    typer.echo()
+    typer.echo(
+        info(
+            f"Max per move: X {_MAX_JOG_X_MM} mm / Y {_MAX_JOG_Y_MM} mm, "
+            "either direction."
+        )
+    )
+    typer.echo()
+
+
 def _parse_move(cmd: str) -> tuple[float, float] | None:
     """(dx, dy) mm for a move command, or None if it isn't one."""
     m = _MOVE_RE.fullmatch(cmd)
     if not m or (m.group("x") is None and m.group("y") is None):
         return None
     return float(m.group("x") or 0), float(m.group("y") or 0)
+
+
+def _prompt_session() -> PromptSession[str] | None:
+    """Use a portable line editor for color; retain plain input for pipes."""
+    if not is_terminal(sys.stdin) or not color_enabled(sys.stdout):
+        return None
+    try:
+        from prompt_toolkit import PromptSession
+
+        return PromptSession()
+    except Exception:
+        # Some emulated consoles report a TTY but lack native handles.
+        # An optional display enhancement must not block the command loop.
+        logging.getLogger(__name__).debug(
+            "Interactive prompt unavailable; using plain input", exc_info=True
+        )
+        return None
+
+
+def _read_command(result: bool | None, *, session: PromptSession[str] | None) -> str:
+    """Style only the arrow; the label, input and line editing stay neutral."""
+    marker = stdout_text("→")
+    if session is None:
+        return input(f"testdrive {marker} ")
+    style = "bold"
+    if result is not None:
+        style += " ansigreen" if result else " ansired"
+    return session.prompt([("", "testdrive "), (style, marker), ("", " ")])
 
 
 def testdrive(
@@ -87,10 +117,8 @@ def testdrive(
 ) -> None:
     """Take the board for a spin — drive the motors and solenoid yourself.
 
-    Shows the machine's axes, then reads commands in a loop: `X10` /
-    `X-10Y-10` moves the carriage, `tap` / `longpress` fires the stylus,
-    `q` finishes. Run it right after `physiclaw flash` or any re-wiring, with
-    the phone off the bed.
+    Run after flashing or re-wiring, with the phone off the bed.
+    Type `help` during the session to see the controls.
     """
     from physiclaw.common import runtime_state
 
@@ -107,71 +135,81 @@ def testdrive(
     from physiclaw.core.hardware.arm import StylusArm
     from physiclaw.core.hardware.device import HardwareError
 
-    # ↑/↓ recall in the command loop: importing readline swaps input()'s
-    # line reader for the line editor (libedit on macOS) — jog commands
-    # get re-sent tweaked far more often than typed fresh. The prompt
-    # must then be passed TO input() so the editor owns redraw; a
-    # recalled line after a separately printed prompt smears into it.
-    # Windows has no stdlib readline — plain input() there, no recall.
+    # The plain-input fallback gets history through readline on POSIX.
+    # Colored sessions use prompt_toolkit's editor on every platform.
+    # Windows does not provide stdlib readline, so keep this optional.
     try:
         import readline  # noqa: F401
     except ImportError:
         pass
 
-    typer.secho("Test-drive the control board: motors + solenoid\n", bold=True)
-    typer.echo("→ Looking for the control board …")
+    typer.echo(_style("Test drive", bold=True))
+    typer.echo(info("Connecting to the control board..."))
     try:
         arm = StylusArm(port)
     except (HardwareError, OSError) as e:
-        exit_error(str(e))
+        exit_error(f"Could not connect to the control board: {e}")
 
     completed = False
     try:
         arm.setup()
-        typer.echo(ok(f"Board answered on {arm.port} — the firmware is alive.\n"))
+        typer.echo("  " + ok(f"Connected on {arm.port}"))
+        _show_controls()
 
-        typer.echo(AXES_DIAGRAM)
-        typer.echo(TRY_IT_HELP)
-
+        session = _prompt_session()
+        last_result: bool | None = None
         while True:
-            # input() over typer.prompt: readline only edits/recalls when
-            # it renders the prompt itself. EOF and Ctrl-C mean "done" —
-            # same clean close as `q` (the finally releases the coil).
+            # EOF and Ctrl-C mean "done", with the same board cleanup as q.
             try:
-                raw = input("testdrive> ")
+                raw = _read_command(last_result, session=session)
             except (EOFError, KeyboardInterrupt):
-                typer.echo()
+                if session is None:
+                    typer.echo()
                 break
             cmd = "".join(raw.split()).lower()
+            if not cmd:
+                continue
             if cmd in ("q", "quit", "exit"):
                 break
+            if cmd in ("help", "?"):
+                _show_controls()
+                last_result = None
+                continue
             if cmd == "tap":
                 arm.tap()
+                last_result = True
                 continue
             if cmd == "longpress":
                 arm.long_press()
+                last_result = True
                 continue
             move = _parse_move(cmd)
             if move is None:
-                typer.echo(
-                    info("? try X10, Y10, X-10Y-10, tap, longpress — or q to finish")
-                )
+                last_result = False
+                typer.echo("  " + warn("Unknown command."))
                 continue
             dx, dy = move
             if abs(dx) > _MAX_JOG_X_MM or abs(dy) > _MAX_JOG_Y_MM:
+                last_result = False
                 typer.echo(
-                    info(
-                        f"keep each move within ±{_MAX_JOG_X_MM} mm in X "
-                        f"and ±{_MAX_JOG_Y_MM} mm in Y"
+                    "  "
+                    + warn(
+                        f"Move skipped. Max: X {_MAX_JOG_X_MM} mm / "
+                        f"Y {_MAX_JOG_Y_MM} mm, either direction."
                     )
                 )
                 continue
+            if dx == 0 and dy == 0:
+                typer.echo(info("No movement requested (0 mm)."))
+                last_result = None
+                continue
             arm.jog(dx, dy)
+            last_result = True
         completed = True
     except (HardwareError, OSError) as e:
         # Board answered at connect but died mid-run (cable yanked, alarm,
         # serial silence) — a plain exit, not a traceback.
-        exit_error(f"the board stopped responding mid-run: {e}")
+        exit_error(f"Test drive stopped: {e}")
     finally:
         # Always attempt release; a cleanup failure must not replace an
         # operation's exception or cancellation already leaving the try block.

@@ -18,9 +18,15 @@ import typer
 from physiclaw.common.terminal import color_enabled, stdout_text
 
 
-def _style(text: str, *, fg: str, bold: bool = False) -> str:
+def _style(
+    text: str, *, fg: str | None = None, bold: bool = False, dim: bool | None = None
+) -> str:
     text = stdout_text(text)
-    return typer.style(text, fg=fg, bold=bold) if color_enabled(sys.stdout) else text
+    return (
+        typer.style(text, fg=fg, bold=bold, dim=dim)
+        if color_enabled(sys.stdout)
+        else text
+    )
 
 
 def ok(msg: str) -> str:

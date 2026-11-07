@@ -4,10 +4,8 @@ The arm is faked at the lazy-import boundary (`StylusArm` is imported
 inside the command body) and the interactive command loop is fed through
 CliRunner stdin — no serial hardware, no wall-clock waits.
 
-Mutation review: 58 of 69 variants are detected. Accepted survivors only
-change display text/style or replace the initial False completion flag with
-equivalent falsy None. The EOF loop mutation fails deterministically on a
-second input read, so the regression does not rely on a timeout.
+The EOF loop regression fails deterministically on a second input read,
+so it does not rely on a timeout.
 """
 
 from __future__ import annotations
@@ -74,7 +72,7 @@ def _cmds(*commands: str) -> str:
 # ---------- the command loop ----------
 
 
-def test_moves_and_actions_execute(fake_arm) -> None:
+def test_moves_and_actions_execute_without_success_chatter(fake_arm) -> None:
     result = runner.invoke(
         app, [], input=_cmds("X20Y20", "Y-10", "tap", "longpress", "q")
     )
@@ -85,6 +83,53 @@ def test_moves_and_actions_execute(fake_arm) -> None:
     assert fake_arm.taps == 1
     assert fake_arm.long_presses == 1
     assert fake_arm.closed
+    assert "Moved" not in result.output
+    assert "Tap complete." not in result.output
+    assert "Long press complete." not in result.output
+    assert "Test drive ended" not in result.output
+    assert "Board disconnected" not in result.output
+
+
+def test_prompt_reflects_the_last_action_without_extra_output(fake_arm, mocker) -> None:
+    session = mocker.Mock()
+    session.prompt.side_effect = [
+        "tap",
+        "",
+        "wat",
+        "",
+        "X500",
+        "help",
+        "X0",
+        "Y-1",
+        "longpress",
+        "q",
+    ]
+    mocker.patch.object(testdrive_mod, "_prompt_session", return_value=session)
+
+    result = runner.invoke(app, [])
+
+    assert result.exit_code == 0
+    assert fake_arm.taps == fake_arm.long_presses == 1
+    assert fake_arm.jogs == [(0.0, -1.0)]
+    colors = [
+        "",
+        "ansigreen",
+        "ansigreen",
+        "ansired",
+        "ansired",
+        "ansired",
+        "",
+        "",
+        "ansigreen",
+        "ansigreen",
+    ]
+    assert [call.args[0] for call in session.prompt.call_args_list] == [
+        [("", "testdrive "), (("bold " + color).strip(), "→"), ("", " ")]
+        for color in colors
+    ]
+    assert "Tap complete." not in result.output
+    assert "Long press complete." not in result.output
+    assert "Moved" not in result.output
 
 
 def test_commands_ignore_case_and_spaces(fake_arm) -> None:
@@ -103,11 +148,12 @@ def test_decimal_and_single_axis_moves(fake_arm) -> None:
     assert fake_arm.jogs == [(1.5, -2.5), (-10.0, 0.0)]
 
 
-def test_unknown_input_shows_help_line(fake_arm) -> None:
+def test_unknown_input_reports_error_without_reprinting_controls(fake_arm) -> None:
     result = runner.invoke(app, [], input=_cmds("wat", "q"))
 
     assert result.exit_code == 0
-    assert "try X10, Y10, X-10Y-10" in result.output
+    assert "! Unknown command.\n" in result.output
+    assert result.output.count("Move X by +10 mm") == 1
     assert fake_arm.jogs == []
 
 
@@ -120,20 +166,55 @@ def test_oversize_move_rejected(fake_arm) -> None:
     )
 
     assert result.exit_code == 0
-    assert "within ±20 mm in X and ±50 mm in Y" in result.output
+    assert result.output.count("Move skipped.") == 3
+    assert "Max: X 20 mm / Y 50 mm, either direction." in result.output
     assert fake_arm.jogs == [(20.0, 0.0), (0.0, -50.0)]
 
 
-def test_axes_diagram_and_help_shown(fake_arm) -> None:
+def test_startup_is_a_compact_reference_alongside_the_firmware_guide(fake_arm) -> None:
     result = runner.invoke(app, [], input=_cmds("q"))
 
-    assert "origin" in result.output
-    assert "[A]" in result.output
-    assert "[B]" in result.output
-    assert "Motors A and B" in result.output
-    assert "q to finish" in result.output
+    assert "Connected on /dev/cu.fake" in result.output
+    assert "Phone off the bed. Keep hands clear." not in result.output
+    assert "Type a command, then press Enter." in result.output
+    assert "X10        Move X by +10 mm" in result.output
+    assert "Y10        Move Y by +10 mm" in result.output
+    assert "X-10Y-10   Move X by -10 mm and Y by -10 mm" in result.output
+    assert "tap" in result.output and "longpress" in result.output
+    assert "help       Show controls" in result.output
+    assert "q          End test drive" in result.output
+    assert "Max per move: X 20 mm / Y 50 mm, either direction." in result.output
+    assert "origin" not in result.output
+    assert "[A]" not in result.output and "[B]" not in result.output
+    assert "Y1 port" not in result.output
+    assert "\033[" not in result.output
+    assert max(map(len, result.output.splitlines())) <= 64
     assert fake_arm.jogs == []
     assert fake_arm.closed  # port released on quit
+
+
+@pytest.mark.parametrize("command", ["help", "?", " HELP "])
+def test_help_can_be_recalled_without_moving_hardware(fake_arm, command) -> None:
+    result = runner.invoke(app, [], input=_cmds(command, "q"))
+
+    assert result.exit_code == 0
+    assert result.output.count("Move X by +10 mm") == 2
+    assert result.output.count("Connected on") == 1
+    assert "Unknown command" not in result.output
+    assert fake_arm.jogs == []
+    assert fake_arm.taps == fake_arm.long_presses == 0
+
+
+@pytest.mark.parametrize("command", ["", "   ", "X0", "X-0Y0"])
+def test_empty_and_zero_moves_do_not_send_hardware_commands(fake_arm, command) -> None:
+    result = runner.invoke(app, [], input=_cmds(command, "q"))
+
+    assert result.exit_code == 0
+    assert "Unknown command" not in result.output
+    assert "Moved" not in result.output
+    if command.strip():
+        assert "No movement requested (0 mm)." in result.output
+    assert fake_arm.jogs == []
 
 
 # ---------- guards and error paths ----------
@@ -172,7 +253,9 @@ def test_board_dying_midrun_closes_port(fake_arm, mocker) -> None:
     result = runner.invoke(app, [], input=_cmds("x10"))
 
     assert result.exit_code == 1
-    assert "stopped responding" in result.output
+    assert "Test drive stopped" in result.output
+    assert "Moved" not in result.output
+    assert "Test drive ended" not in result.output
     assert fake_arm.closed
 
 
@@ -202,8 +285,11 @@ def test_regression_testdrive_serial_failure_closes_arm_and_reports_error(
 
     assert result.exit_code == 1
     assert isinstance(result.exception, SystemExit)
-    assert "the board stopped responding" in result.stderr
+    assert "Test drive stopped" in result.stderr
     assert "serial disconnected" in result.stderr
+    if operation == "setup":
+        assert "Connected on" not in result.output
+    assert "Test drive ended" not in result.output
     close.assert_called_once_with()
 
 
@@ -218,6 +304,7 @@ def test_regression_testdrive_close_failure_is_a_clean_error(fake_arm, mocker, e
     assert result.exit_code == 1
     assert isinstance(result.exception, SystemExit)
     assert "could not close the board connection: close failed" in result.stderr
+    assert "Test drive ended" not in result.output
     close.assert_called_once_with()
 
 
@@ -297,18 +384,29 @@ def test_testdrive_quit_aliases_stop_before_next_move(fake_arm, termination):
 
 
 @pytest.mark.parametrize("error", [EOFError(), KeyboardInterrupt()])
-def test_testdrive_prompt_eof_or_interrupt_finishes_cleanly(fake_arm, mocker, error):
-    prompt = mocker.patch(
-        "builtins.input",
-        side_effect=[error, AssertionError("prompt read after termination")],
-    )
+@pytest.mark.parametrize("colored", [False, True])
+def test_testdrive_prompt_eof_or_interrupt_finishes_cleanly(
+    fake_arm, mocker, error, colored
+):
+    errors = [error, AssertionError("prompt read after termination")]
+    if colored:
+        session = mocker.Mock()
+        session.prompt.side_effect = errors
+        mocker.patch.object(testdrive_mod, "_prompt_session", return_value=session)
+        prompt = session.prompt
+    else:
+        prompt = mocker.patch("builtins.input", side_effect=errors)
 
     result = runner.invoke(app, [])
 
     assert result.exit_code == 0
     assert fake_arm.closed
     assert fake_arm.jogs == []
-    prompt.assert_called_once_with("testdrive> ")
+    assert "Test drive ended" not in result.output
+    expected = (
+        [("", "testdrive "), ("bold", "→"), ("", " ")] if colored else "testdrive → "
+    )
+    prompt.assert_called_once_with(expected)
 
 
 @pytest.mark.parametrize("command", ["tap", "longpress", "wat", "x999", ""])
@@ -348,7 +446,6 @@ def test_testdrive_without_readline_still_accepts_commands(fake_arm, mocker):
 @pytest.mark.parametrize(
     "command",
     [
-        "",
         "x",
         "y",
         "xnan",
@@ -369,7 +466,7 @@ def test_testdrive_malformed_moves_never_reach_hardware(fake_arm, command):
     result = runner.invoke(app, [], input=commands)
 
     assert result.exit_code == 0
-    assert "try X10, Y10, X-10Y-10" in result.output
+    assert "! Unknown command.\n" in result.output
     assert fake_arm.jogs == []
     assert fake_arm.taps == 0
     assert fake_arm.long_presses == 0
@@ -386,7 +483,7 @@ def test_testdrive_valid_decimal_moves_preserve_signed_distances(mocker, x, y):
     result = runner.invoke(app, [], input=commands)
 
     assert result.exit_code == 0
-    assert arm.jogs == [(x / 10, y / 10)]
+    assert arm.jogs == ([(x / 10, y / 10)] if x or y else [])
     assert arm.closed
 
 
@@ -406,6 +503,6 @@ def test_testdrive_out_of_range_moves_never_reach_hardware(mocker, axis, sign, e
     result = runner.invoke(app, [], input=commands)
 
     assert result.exit_code == 0
-    assert "within ±20 mm in X and ±50 mm in Y" in result.output
+    assert "Move skipped. Max: X 20 mm / Y 50 mm" in result.output
     assert arm.jogs == []
     assert arm.closed

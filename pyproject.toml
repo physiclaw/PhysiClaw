@@ -51,6 +51,8 @@ dependencies = [
     "rapidocr>=3.7.0,<3.10",
     "onnxruntime>=1.24.0,<2",
     "typer>=0.24.1,<0.25",
+    # Per-character prompt styling and command recall on Windows/macOS/Linux.
+    "prompt-toolkit>=3.0.52,<4",
     "tomlkit>=0.14,<0.15",
     "anthropic>=0.97,<0.98",
     # MACRO.yml parsing. ruamel over PyYAML for YAML 1.2 semantics: unquoted
