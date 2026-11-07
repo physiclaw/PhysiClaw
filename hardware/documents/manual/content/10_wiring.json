@@ -28,10 +28,10 @@
     "variant": "hero",
     "figures": [
       {
-        "src": "wire_10_tmc2209_exploded_cam1_oacw.svg"
+        "src": "wire_10_tmc2209_exploded_cam1_annotated_driver_slots.svg"
       },
       {
-        "src": "wire_10_tmc2209_assembled_cam0_ycix.svg",
+        "src": "wire_10_tmc2209_assembled_cam0_annotated_driver_carrier.svg",
         "style": "transform: scale(0.85);"
       }
     ],
@@ -115,11 +115,11 @@
     "variant": "hero",
     "figures": [
       {
-        "src": "wire_10_tmc2209_assembled_cam1_nqfd.svg",
+        "src": "wire_10_tmc2209_assembled_cam1_annotated_board_connections.svg",
         "style": "transform: translateX(6mm);"
       },
       {
-        "src": "camera_40_frame_assembled_cam0_ljek.svg",
+        "src": "camera_40_frame_assembled_cam0_annotated_wiring_connections.svg",
         "style": "transform: scale(0.85);"
       }
     ],
@@ -343,7 +343,7 @@
     "variant": "hero",
     "figures": [
       {
-        "src": "tapz_10_solenoid_tip_assembled_cam1_ohru.svg"
+        "src": "tapz_10_solenoid_tip_assembled_cam1_annotated_solenoid_wiring.svg"
       }
     ],
     "notes": [

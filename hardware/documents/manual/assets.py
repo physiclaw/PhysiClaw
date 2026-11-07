@@ -32,7 +32,7 @@ HAND_FIGURES = {"wire_splice.svg": lambda: figure.wire_splice_svg}
 
 def _render_stem(basename: str) -> str:
     """The procedure stem behind a render filename, e.g.
-    ``camera_40_frame_assembled_cam0_ljek.svg`` -> ``camera_40_frame``.
+    ``camera_40_frame_assembled_cam0_annotated_wiring_connections.svg`` -> ``camera_40_frame``.
     A name that isn't a render (e.g. a hand figure) passes through whole."""
     m = SVG_NAME_RE.match(basename)
     return m["stem"] if m else basename

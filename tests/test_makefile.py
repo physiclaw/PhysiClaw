@@ -97,9 +97,6 @@ ROUTES = [
     ("hw-sourcing", [], [[*DOC, "sourcing"]]),
     ("hw-url", [], [[*DOC, "url"]]),
     ("hw-drawing", [], [[*DOC, "drawing", "--pdf"]]),
-    ("hw-mark", ['ARGS="drawing path.svg"'], [[*CAD, "mark", "drawing path.svg"]]),
-    ("hw-replay", ['ARGS="patch path.json"'], [[*CAD, "replay", "patch path.json"]]),
-    ("hw-camera", [], [[*CAD, "camera"]]),
     ("hw-rebuild", ["ARGS=--bom"], [[*CAD, "build", "--no-cache", "--bom"]]),
     ("hw-preflight", [], [[*DOC, "release", "preflight"]]),
     ("hw-prepare", [], [[*CAD, "release", "prepare"]]),
@@ -186,6 +183,18 @@ def test_make_target_forwards_exact_arguments(make_project, target, options, exp
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert [record["argv"] for record in records] == expected
+
+
+@pytest.mark.parametrize("target", ["hw-mark", "hw-replay", "hw-annotate", "hw-camera"])
+def test_removed_hardware_targets_are_rejected(make_project, target):
+    _, invoke = make_project
+
+    result, records = invoke(target)
+
+    assert result.returncode != 0
+    assert "No rule to make target" in result.stderr
+    assert target in result.stderr
+    assert records == []
 
 
 @pytest.mark.parametrize("target", ["bump", "build", "publish", "release"])
@@ -328,9 +337,7 @@ def test_make_lint_checks_scripts_and_formats_the_full_source_scope(make_project
     ]
 
 
-@pytest.mark.parametrize(
-    "target, variable", [("mutate", "MOD"), ("hw-step", "ARGS"), ("hw-mark", "ARGS")]
-)
+@pytest.mark.parametrize("target, variable", [("mutate", "MOD"), ("hw-step", "ARGS")])
 @pytest.mark.parametrize("value", ["", "   "])
 def test_make_missing_required_argument_fails_before_running_anything(
     make_project, target, variable, value
@@ -366,6 +373,10 @@ def test_make_help_and_default_do_not_run_a_worker(make_project, target):
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "hw-build" in result.stdout and "hw-release" in result.stdout
+    assert all(
+        target not in result.stdout
+        for target in ("hw-mark", "hw-replay", "hw-annotate", "hw-camera")
+    )
     assert records == []
 
 

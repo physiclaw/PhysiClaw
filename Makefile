@@ -1,5 +1,5 @@
 .PHONY: test test-cov test-fast test-encoding test-slow test-integration test-all test-studio-ui mutate lint fmt typecheck loc help firmware bump build publish release docs-deploy \
-        hw-help hw-parts hw-build hw-check hw-step hw-print hw-manual hw-manual-pdf hw-sourcing hw-url hw-drawing hw-mark hw-replay hw-camera hw-rebuild hw-preflight hw-prepare hw-verify hw-publish hw-release _hw-package
+        hw-help hw-parts hw-build hw-check hw-step hw-print hw-manual hw-manual-pdf hw-sourcing hw-url hw-drawing hw-rebuild hw-preflight hw-prepare hw-verify hw-publish hw-release _hw-package
 
 PY ?= uv run
 PYTHON ?= $(PY) python
@@ -164,9 +164,6 @@ hw-help:
 	@echo "    make hw-manual-pdf                   Build bilingual manual HTML and PDFs"
 	@echo "    make hw-sourcing                    Build bilingual sourcing guides"
 	@echo "    make hw-drawing                     Build extrusion drawings as HTML and PDFs"
-	@echo "    make hw-mark ARGS=<svg|json>         Open the drawing annotation tool"
-	@echo "    make hw-replay [ARGS=file]           Apply saved drawing annotations"
-	@echo "    pbpaste | make hw-camera            Convert a FreeCAD view to a Camera() literal"
 	@echo ""
 	@echo "  Force rebuild:"
 	@echo "    make hw-rebuild [ARGS=--bom]         Same as hw-build; bypass CAD cache"
@@ -180,7 +177,7 @@ hw-parts:
 hw-build:
 	@$(HW) build $(ARGS)
 
-# Static cross-artifact consistency check (stems / patches / manual /
+# Static cross-artifact consistency check (stems / annotations / manual /
 # sourcing) — stdlib-only, no cad group, also run in CI.
 hw-check:
 	@$(HW_DOC) check $(ARGS)
@@ -211,18 +208,6 @@ hw-url:
 # model. PDFs print through headless Chrome like the manual.
 hw-drawing:
 	@$(HW_DOC) drawing --pdf $(ARGS)
-
-hw-mark:
-	$(call need-args,<svg|json>)
-	@$(HW) mark $(ARGS)
-
-hw-replay:
-	@$(HW) replay $(ARGS)
-
-# No need-args guard: `camera` also reads the view from stdin when ARGS is
-# empty (projection.py), so `pbpaste | make hw-camera` works too.
-hw-camera:
-	@$(HW) camera $(ARGS)
 
 # Same assembly build and flags as hw-build, bypassing persistent cache reads.
 hw-rebuild:

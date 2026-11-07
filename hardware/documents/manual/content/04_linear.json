@@ -27,7 +27,7 @@
     },
     "figures": [
       {
-        "src": "linear_10_y_exploded_cam0_jwgq.svg"
+        "src": "linear_10_y_exploded_cam0_annotated_y_rail_fasteners.svg"
       },
       {
         "src": "linear_10_y_assembled_cam0.svg"
@@ -143,7 +143,7 @@
       "small": "linear_11"
     },
     "main": {
-      "src": "linear_11_y_exploded_cam1_xjoj.svg"
+      "src": "linear_11_y_exploded_cam1_annotated_y_rail.svg"
     },
     "notes": [
       {
@@ -186,10 +186,10 @@
     "variant": "hero",
     "figures": [
       {
-        "src": "linear_20_joint_exploded_cam1_mleb.svg"
+        "src": "linear_20_joint_exploded_cam1_annotated_joint_positions.svg"
       },
       {
-        "src": "linear_20_joint_assembled_cam0_oavm.svg"
+        "src": "linear_20_joint_assembled_cam0_annotated_xy_joints.svg"
       }
     ],
     "notes": [
@@ -269,10 +269,10 @@
     },
     "figures": [
       {
-        "src": "linear_30_x_exploded_cam1_qqbr.svg"
+        "src": "linear_30_x_exploded_cam1_annotated_rail_tnuts.svg"
       },
       {
-        "src": "linear_30_x_assembled_cam1_ifxv.svg"
+        "src": "linear_30_x_assembled_cam1_annotated_tnut_position.svg"
       }
     ],
     "notes": [
@@ -328,7 +328,7 @@
       "small": "linear_31"
     },
     "main": {
-      "src": "linear_31_x_exploded_cam1_opwr.svg",
+      "src": "linear_31_x_exploded_cam1_annotated_rail_mount.svg",
       "style": "transform: translateX(-20mm);"
     },
     "notes": [
@@ -386,7 +386,7 @@
     },
     "figures": [
       {
-        "src": "linear_32_x_exploded_cam0_lccr.svg"
+        "src": "linear_32_x_exploded_cam0_annotated_x_rail_fasteners.svg"
       },
       {
         "src": "linear_32_x_assembled_cam0.svg"
@@ -453,7 +453,7 @@
       "small": "linear_33"
     },
     "main": {
-      "src": "linear_33_x_exploded_cam1_yxys.svg",
+      "src": "linear_33_x_exploded_cam1_annotated_x_rail.svg",
       "style": "transform: translateX(-15mm);"
     },
     "notes": [
@@ -560,10 +560,10 @@
     "variant": "hero",
     "figures": [
       {
-        "src": "linear_41_idler_lj1_exploded_cam1_ekiq.svg"
+        "src": "linear_41_idler_lj1_exploded_cam1_annotated_idler_lj1_seat.svg"
       },
       {
-        "src": "linear_41_idler_lj1_assembled_cam0_prgl.svg"
+        "src": "linear_41_idler_lj1_assembled_cam0_annotated_idler_lj1_stack.svg"
       }
     ],
     "notes": [
@@ -678,10 +678,10 @@
     "variant": "hero",
     "figures": [
       {
-        "src": "linear_43_idler_lj2_exploded_cam1_ojoy.svg"
+        "src": "linear_43_idler_lj2_exploded_cam1_annotated_idler_lj2_seat.svg"
       },
       {
-        "src": "linear_43_idler_lj2_assembled_cam0_zhsr.svg"
+        "src": "linear_43_idler_lj2_assembled_cam0_annotated_idler_lj2_stack.svg"
       }
     ],
     "notes": [],
@@ -783,10 +783,10 @@
     "variant": "hero",
     "figures": [
       {
-        "src": "linear_45_idler_rj1_exploded_cam1_njol.svg"
+        "src": "linear_45_idler_rj1_exploded_cam1_annotated_idler_rj1_seat.svg"
       },
       {
-        "src": "linear_45_idler_rj1_assembled_cam0_xriv.svg"
+        "src": "linear_45_idler_rj1_assembled_cam0_annotated_idler_rj1_stack.svg"
       }
     ],
     "notes": [],
@@ -896,10 +896,10 @@
     "variant": "hero",
     "figures": [
       {
-        "src": "linear_47_idler_rj2_exploded_cam1_ahca.svg"
+        "src": "linear_47_idler_rj2_exploded_cam1_annotated_idler_rj2_seat.svg"
       },
       {
-        "src": "linear_47_idler_rj2_assembled_cam0_muvb.svg"
+        "src": "linear_47_idler_rj2_assembled_cam0_annotated_idler_rj2_stack.svg"
       }
     ],
     "notes": [

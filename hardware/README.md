@@ -64,8 +64,7 @@ hardware/
 │   └── custom/            Custom parts
 ├── assembly/
 │   ├── procedures/        Assembly steps
-│   ├── patch/             Saved drawing annotations
-│   └── mark/              Drawing annotation tool
+│   └── annotation/        Generated manual highlights and callouts
 ├── documents/
 │   ├── bom/bom.json       Shared purchasing list
 │   ├── manual/            Assembly instructions and manual builder

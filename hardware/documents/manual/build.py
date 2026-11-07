@@ -69,6 +69,7 @@ from hardware.documents.manual.style_checks import inline_style_unit_warnings
 from hardware.documents.pdf import render_pdf
 from hardware.port.desktop import find_browser
 from hardware.scheme import OUTPUT_DIR as _OUTPUT_ROOT
+from hardware.scheme import SVG_NAME_RE
 
 # Note "icon" keys -> SVG accessors for the leading icon of a flex callout.
 NOTE_ICONS = {"info": lambda: icon.info_svg}
@@ -148,15 +149,17 @@ def figure_alt(fig: dict) -> str:
     """Accessible alt text for a figure render.
 
     Authors may pin an exact ``alt`` per figure; otherwise it is derived from
-    the SVG ``src``: drop the ``.svg`` suffix and the trailing ``_camN`` (plus
-    any render-hash token), then surface the final ``_word`` (e.g. ``exploded``/
-    ``assembled``) as a separate word — ``frame_10_extrusion_tnut_exploded_cam0_rbun.svg``
+    the SVG ``src``: drop ``.svg``, the annotation name and the trailing ``_camN``,
+    then surface the final ``_word`` (e.g. ``exploded``/
+    ``assembled``) as a separate word — ``frame_10_extrusion_tnut_exploded_cam0_annotated_nut_insertion.svg``
     becomes ``frame_10_extrusion_tnut exploded``.
     """
     if fig.get("alt") is not None:
         return fig["alt"]
+    match = SVG_NAME_RE.fullmatch(fig["src"])
+    if match:
+        return f"{match['stem']} {match['variant']}"
     base = re.sub(r"\.svg$", "", fig["src"])
-    base = re.sub(r"_cam\d+(?:_[a-z0-9]+)?$", "", base)
     return re.sub(r"_([a-z]+)$", r" \1", base)
 
 

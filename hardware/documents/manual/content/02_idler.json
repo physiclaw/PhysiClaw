@@ -175,10 +175,10 @@
     "variant": "hero",
     "figures": [
       {
-        "src": "idler_12_lu_exploded_cam1_dgik.svg"
+        "src": "idler_12_lu_exploded_cam1_annotated_upper_left_idler_fasteners.svg"
       },
       {
-        "src": "idler_12_lu_assembled_cam0_swuy.svg",
+        "src": "idler_12_lu_assembled_cam0_annotated_upper_left_idler_mount.svg",
         "style": "object-position: 64% center;"
       }
     ],
@@ -388,10 +388,10 @@
     "variant": "hero",
     "figures": [
       {
-        "src": "idler_22_ru_exploded_cam1_lddo.svg"
+        "src": "idler_22_ru_exploded_cam1_annotated_upper_right_idler_fasteners.svg"
       },
       {
-        "src": "idler_22_ru_assembled_cam0_zefy.svg"
+        "src": "idler_22_ru_assembled_cam0_annotated_upper_right_idler_mount.svg"
       }
     ],
     "notes": [
@@ -572,10 +572,10 @@
     "variant": "hero",
     "figures": [
       {
-        "src": "idler_31_ld_exploded_cam1_qzxx.svg"
+        "src": "idler_31_ld_exploded_cam1_annotated_lower_left_idler_fasteners.svg"
       },
       {
-        "src": "idler_31_ld_assembled_cam0_xfuv.svg"
+        "src": "idler_31_ld_assembled_cam0_annotated_lower_left_idler_mount.svg"
       }
     ],
     "notes": [
@@ -709,10 +709,10 @@
     "variant": "hero",
     "figures": [
       {
-        "src": "idler_41_rd_exploded_cam1_skiy.svg"
+        "src": "idler_41_rd_exploded_cam1_annotated_lower_right_idler_fasteners.svg"
       },
       {
-        "src": "idler_41_rd_assembled_cam0_oxst.svg"
+        "src": "idler_41_rd_assembled_cam0_annotated_lower_right_idler_mount.svg"
       }
     ],
     "notes": [

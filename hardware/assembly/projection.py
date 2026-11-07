@@ -1,8 +1,7 @@
 import math
-import re
 from dataclasses import dataclass
 
-from build123d import Axis, Shape, Vector
+from build123d import Shape, Vector
 
 
 @dataclass(frozen=True)
@@ -48,48 +47,6 @@ class Camera:
         theta = -math.radians(self.roll)
         # Rodrigues simplifies — base ⊥ view_dir means the parallel term is 0.
         return base * math.cos(theta) + view_dir.cross(base) * math.sin(theta)
-
-    @classmethod
-    def from_freecad_view(cls, s: str) -> "Camera":
-        """Parse a FreeCAD/Coin3D Inventor camera string into a ``Camera``.
-
-        Reads only the ``orientation`` field (axis-angle in radians).
-        The returned Camera describes the camera's gaze direction in
-        the convention defined on this dataclass: Z up, azimuth 0 =
-        looking toward +Y (camera at -Y), azimuth +90 = looking toward
-        -X (camera at +X), elevation +90 = top-down, roll positive =
-        clockwise on paper.
-        """
-        m = re.search(
-            r"orientation\s+([-\d.eE+]+)\s+([-\d.eE+]+)\s+([-\d.eE+]+)\s+([-\d.eE+]+)",
-            s,
-        )
-        if not m:
-            raise ValueError("no 'orientation' field in camera string")
-        ax, ay, az_, angle_rad = (float(v) for v in m.groups())
-
-        # Rotate the camera's canonical right / up / forward vectors
-        # (camera-space +X / +Y / -Z) through the axis-angle orientation.
-        # Axis normalises the direction internally; a zero-length axis
-        # raises ValueError, surfaced to the caller.
-        axis = Axis((0, 0, 0), (ax, ay, az_))
-        deg = math.degrees(angle_rad)
-        right = Vector(1, 0, 0).rotate(axis, deg)
-        up_cam = Vector(0, 1, 0).rotate(axis, deg)
-        fwd = Vector(0, 0, -1).rotate(axis, deg)
-
-        elevation = math.degrees(math.asin(max(-1.0, min(1.0, -fwd.Z))))
-        if abs(fwd.Z) > 0.99999:
-            # Gimbal lock: looking straight up or down. Azimuth degenerates;
-            # fold it into roll using the camera-up direction in world XY.
-            azimuth = 0.0
-            roll = math.degrees(math.atan2(up_cam.X, up_cam.Y))
-        else:
-            azimuth = math.degrees(math.atan2(-fwd.X, fwd.Y))
-            roll = math.degrees(math.atan2(right.Z, up_cam.Z))
-
-        azimuth = (azimuth + 180.0) % 360.0 - 180.0
-        return cls(azimuth=azimuth, elevation=elevation, roll=roll)
 
 
 FRONT = Camera(0, 0)
@@ -139,56 +96,3 @@ def camera_view(
     )
     look_at = bbox.center()
     return look_at + camera * (reach * distance_factor), camera.up, look_at
-
-
-if __name__ == "__main__":
-    # Convert a FreeCAD camera view string (from View → Camera settings)
-    # into a ready-to-paste ``Camera(az, el, roll)`` literal.
-    #
-    # To grab the view string from FreeCAD, frame the desired angle in the
-    # 3D viewport, then run in the View → Panels → Python console:
-    #
-    #     import FreeCADGui as Gui
-    #     view = Gui.ActiveDocument.ActiveView
-    #     view.getCamera()
-    #
-    # The printed Inventor block (``#Inventor V2.1 ascii ... PerspectiveCamera
-    # { ... }``) is what gets fed to this module.
-    #
-    # The string must be passed as a single shell argument or piped on
-    # stdin — a bare quoted string at the start of a pipeline is run as
-    # a command by the shell, not redirected as input.
-    #
-    #     uv run --group cad python -m hardware.assembly.projection '<paste>'
-    #     uv run --group cad python -m hardware.assembly.projection "$(pbpaste)"
-    #     pbpaste | uv run --group cad python -m hardware.assembly.projection
-    #     echo  '<paste>' | uv run --group cad python -m hardware.assembly.projection
-    #
-    import argparse
-    import sys
-
-    parser = argparse.ArgumentParser(
-        description="Convert a FreeCAD camera view to a Camera() literal."
-    )
-    parser.add_argument("view", nargs="?", help="quoted camera view (default: stdin)")
-    args = parser.parse_args()
-    s = args.view if args.view is not None else sys.stdin.read()
-    try:
-        cam = Camera.from_freecad_view(s)
-    except Exception as err:
-        print(f"ERROR: {err}", file=sys.stderr)
-        print(
-            "\nTo grab the camera string in FreeCAD, frame the angle in the\n"
-            "3D viewport, then run in View → Panels → Python console:\n"
-            "\n"
-            "    import FreeCADGui as Gui\n"
-            "    view = Gui.ActiveDocument.ActiveView\n"
-            "    view.getCamera()\n"
-            "\n"
-            "Pass the printed Inventor block to this module:\n"
-            "\n"
-            '    uv run --group cad python -m hardware.assembly.projection "$(pbpaste)"\n',
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    print(f"Camera({cam.azimuth:.2f}, {cam.elevation:.2f}, {cam.roll:.2f})")

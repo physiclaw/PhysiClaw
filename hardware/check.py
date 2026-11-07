@@ -6,12 +6,11 @@ What a rename or typo breaks quietly, this catches loudly:
 
   procedures/  stem naming + known family; exactly one assembly class per
                module; a well-formed class-level ``views`` declaration.
-  patch/       every patch JSON names a procedure stem and a declared
-               (variant, camera) view; its ops have unique ids and every
-               ``preop`` chain terminates at ``orig``.
+  annotations  every figure names a procedure stem and a declared view;
+               its optional crop is valid.
   manual       every figure ``src``/``render`` in ``documents/manual/content/*.json``
-               resolves to a declared view's raw render, one of its patch
-               leaves' snapshots, or a hand figure the manual builder
+               resolves to a declared view's raw render, one of its generated
+               annotated figures, or a hand figure the manual builder
                generates itself (``HAND_FIGURES``).
   sourcing     Both vendor files’ part_ids match the BOM content
                rows one-to-one (no missing, stale, or duplicate ids).
@@ -38,13 +37,13 @@ from __future__ import annotations
 import argparse
 import ast
 import json
+import math
 import re
 import sys
 from collections import Counter
 
 from hardware import buildlog
-from hardware.assembly.mark.patch import ID_RE, ORIG_SENTINEL
-from hardware.assembly.mark.replay import find_leaves
+from hardware.assembly.annotation.specs import FIGURES
 from hardware.documents import BuildError
 from hardware.documents.bom.loader import bom_row_findings, read_bom_rows
 from hardware.documents.dimensions import resolve_dimensions
@@ -54,8 +53,6 @@ from hardware.documents.manual.pages import CONTENT_DIR, load_chapter
 from hardware.documents.sourcing import VENDOR_FILES
 from hardware.scheme import (
     FAMILY_PRIORITY,
-    PATCH_DIR,
-    PATCH_NAME_RE,
     PROCEDURES_DIR,
     STEM_CONVENTION,
     STEM_RE,
@@ -187,83 +184,41 @@ def _view_declared(views: set | None, variant: str, cam: int) -> bool:
     return views is None or (variant, cam) in views
 
 
-# ── patches ───────────────────────────────────────────────────────────────────
+# ── generated annotations ─────────────────────────────────────────────────────
 
 
-def check_patches(
-    views_by_stem: dict[str, set | None],
-) -> tuple[list[str], dict[str, set[str]]]:
-    """Validate patch/*.json and return (findings, leaf op-ids per SVG name)."""
-    findings: list[str] = []
-    leaves_by_svg: dict[str, set[str]] = {}
-    for path in sorted(PATCH_DIR.glob("*.json")):
-        m = PATCH_NAME_RE.match(path.stem)
-        if not m:
-            findings.append(
-                f"patch: {path.name} doesn't match <stem>_<variant>_cam<i>.json"
-            )
+def check_annotations(views_by_stem):
+    """Validate generated figures against the procedure views, without CAD."""
+    findings = []
+    generated_figures = set()
+    for filename, figure in sorted(FIGURES.items()):
+        view = figure.view
+        m = SVG_NAME_RE.fullmatch(view + ".svg")
+        if not m or m["annotation"] is not None:
+            findings.append(f"annotation: {view!r} must name a procedure view")
+            continue
+        if filename != figure.filename or not SVG_NAME_RE.fullmatch(filename):
+            findings.append(f"annotation: {filename!r} is not a valid figure filename")
             continue
         stem, variant, cam = m["stem"], m["variant"], int(m["cam"])
         if stem not in views_by_stem:
-            findings.append(f"patch: {path.name} names unknown procedure {stem!r}")
-            continue
-        if not _view_declared(views_by_stem[stem], variant, cam):
+            findings.append(f"annotation: {view} names unknown procedure {stem!r}")
+        elif not _view_declared(views_by_stem[stem], variant, cam):
             findings.append(
-                f"patch: {path.name} targets {variant}_cam{cam}, "
-                f"which {stem} doesn't declare in views"
+                f"annotation: {view} targets {variant}_cam{cam}, which {stem} doesn't declare in views"
             )
-        try:
-            entries = json.loads(path.read_text(encoding="utf-8"))
-        except ValueError as exc:
-            findings.append(f"patch: {path.name} is not valid JSON ({exc})")
-            continue
-        if not isinstance(entries, list):
-            findings.append(f"patch: {path.name} must be a JSON array of ops")
-            continue
-        ids = [e.get("id") for e in entries if isinstance(e, dict)]
-        # ID_RE alone admits "orig", the reserved source-SVG sentinel: an
-        # op that names itself "orig" makes replay's chain_to() stop at it
-        # as if it were the source, silently dropping its shapes.
-        bad_ids = [
-            i
-            for i in ids
-            if not (isinstance(i, str) and ID_RE.match(i)) or i == ORIG_SENTINEL
-        ]
-        if len(ids) != len(entries) or bad_ids:
-            findings.append(f"patch: {path.name} has op(s) without a valid id")
-        if len(set(ids)) != len(ids):
-            findings.append(f"patch: {path.name} has duplicate op ids")
-        known = set(ids)
-        preop = {
-            e["id"]: e.get("preop")
-            for e in entries
-            if isinstance(e, dict) and "id" in e
-        }
-        for op_id in preop:
-            seen: set[str] = set()
-            cur = op_id
-            while cur not in seen:
-                seen.add(cur)
-                nxt = preop.get(cur)
-                if nxt == ORIG_SENTINEL:
-                    break
-                if nxt not in known:
-                    findings.append(
-                        f"patch: {path.name} op {op_id!r} chains to "
-                        f"unknown preop {nxt!r}"
-                    )
-                    break
-                cur = nxt
-            else:
-                findings.append(f"patch: {path.name} op {op_id!r} preop chain loops")
-        # Feed find_leaves only well-formed ops: an op missing "id" or
-        # "preop" was already reported above, and letting it through would
-        # KeyError — crashing the gate and masking every other finding.
-        well_formed = [
-            e for e in entries if isinstance(e, dict) and "id" in e and "preop" in e
-        ]
-        leaves_by_svg[f"{path.stem}.svg"] = {e["id"] for e in find_leaves(well_formed)}
-    return findings, leaves_by_svg
+        if figure.crop is not None and (
+            len(figure.crop) != 4
+            or any(
+                not isinstance(v, (int, float)) or not math.isfinite(v)
+                for v in figure.crop
+            )
+            or figure.crop[2] <= 0
+            or figure.crop[3] <= 0
+        ):
+            findings.append(f"annotation: {view} has an invalid crop")
+        generated_figures.add(filename)
+    return findings, generated_figures
 
 
 # ── manual content ────────────────────────────────────────────────────────────
@@ -305,7 +260,7 @@ def _figure_refs(pages: object) -> set[str]:
 
 def check_manual(
     views_by_stem: dict[str, set | None],
-    leaves_by_svg: dict[str, set[str]],
+    generated_figures: set[str],
     pages_by_file: dict[str, list],
 ) -> list[str]:
     findings: list[str] = []
@@ -321,25 +276,24 @@ def check_manual(
                     f"a procedure render nor a hand figure"
                 )
                 continue
-            stem, variant, cam, op = m["stem"], m["variant"], int(m["cam"]), m["op"]
+            stem, variant, cam = (
+                m["stem"],
+                m["variant"],
+                int(m["cam"]),
+            )
             if not _view_declared(views_by_stem[stem], variant, cam):
                 findings.append(
                     f"manual: {filename} references {ref!r}, but {stem} "
                     f"doesn't declare {variant}_cam{cam} in views"
                 )
                 continue
-            if op is None:
+            if m["annotation"] is None:
                 continue
             base = f"{stem}_{variant}_cam{cam}.svg"
-            if base not in leaves_by_svg:
+            if ref not in generated_figures:
                 findings.append(
-                    f"manual: {filename} references snapshot {ref!r}, "
-                    f"but {base} has no patch JSON"
-                )
-            elif op not in leaves_by_svg[base]:
-                findings.append(
-                    f"manual: {filename} references snapshot {ref!r}, but "
-                    f"{op!r} is not a leaf op in {base}'s patch"
+                    f"manual: {filename} references annotated figure {ref!r}, "
+                    f"but it has no declared annotation for {base}"
                 )
     return findings
 
@@ -437,15 +391,15 @@ def main(argv: list[str] | None = None) -> int:
     with buildlog.command("Hardware check", args, name="check") as run:
         with buildlog.step("Check consistency"):
             proc_findings, views_by_stem = check_procedures()
-            patch_findings, leaves_by_svg = check_patches(views_by_stem)
+            annotation_findings, generated_figures = check_annotations(views_by_stem)
             content_findings, pages_by_file = load_content()
             bom_findings, rows = load_purchasing_bom()
             findings = (
                 proc_findings
-                + patch_findings
+                + annotation_findings
                 + content_findings
                 + bom_findings
-                + check_manual(views_by_stem, leaves_by_svg, pages_by_file)
+                + check_manual(views_by_stem, generated_figures, pages_by_file)
                 + check_sourcing(rows)
                 + check_extrusions(rows)
             )
@@ -455,10 +409,10 @@ def main(argv: list[str] | None = None) -> int:
             run.exit_code = 1
             run.summary = f"{len(findings)} consistency findings"
         else:
-            n_patches = len(list(PATCH_DIR.glob("*.json")))
+            n_figures = len(FIGURES)
             run.summary = "All checks passed"
             run.details.append(
-                f"{len(views_by_stem)} procedures, {n_patches} patches; manual, sourcing and extrusions consistent"
+                f"{len(views_by_stem)} procedures, {n_figures} annotated figures; manual, sourcing and extrusions consistent"
             )
         return run.exit_code
 

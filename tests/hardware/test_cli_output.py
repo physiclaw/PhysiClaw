@@ -89,17 +89,10 @@ def test_human_output_has_one_result_and_aligned_elapsed_column(tmp_path, comman
     assert all(len(line) <= 60 for line in lines)
 
 
-@pytest.mark.parametrize(
-    "args",
-    [
-        ["release", "verify", "--version", "invalid"],
-        ["mark", "missing.svg"],
-        ["refit", "missing.json"],
-        ["replay", "unsupported.txt"],
-    ],
-)
-def test_failed_clis_save_traceback_and_end_with_json_failure(tmp_path, args):
-    result = invoke(tmp_path, *args, "--log-format", "json")
+def test_failed_cli_saves_traceback_and_ends_with_json_failure(tmp_path):
+    result = invoke(
+        tmp_path, "release", "verify", "--version", "invalid", "--log-format", "json"
+    )
     assert result.returncode != 0
     assert result.stderr == ""
     events = [json.loads(line) for line in result.stdout.splitlines()]
@@ -107,6 +100,13 @@ def test_failed_clis_save_traceback_and_end_with_json_failure(tmp_path, args):
     assert events[-1]["status"] == "failed"
     assert events[-1]["exit_code"] != 0
     assert any(event.get("traceback") for event in events)
+
+
+@pytest.mark.parametrize("command", ["annotate", "mark", "replay", "refit", "camera"])
+def test_removed_commands_are_rejected(tmp_path, command):
+    result = invoke(tmp_path, command)
+    assert result.returncode == 2
+    assert f"unknown command {command!r}" in result.stderr
 
 
 @pytest.mark.parametrize("interrupted", [False, True])
@@ -258,21 +258,6 @@ def test_interrupted_child_produces_cancelled_parent_result(
     assert events[-1]["status"] == "cancelled"
 
 
-@pytest.mark.parametrize("missing", ["patch", "source"])
-def test_replay_missing_inputs_cannot_report_success(
-    tmp_path, monkeypatch, capsys, missing
-):
-    from hardware.assembly.mark import replay
-
-    monkeypatch.setattr(scheme, "OUTPUT_DIR", tmp_path)
-    src, patch = tmp_path / "source.svg", tmp_path / "patch.json"
-    (src if missing == "patch" else patch).write_text("fixture", encoding="utf-8")
-    monkeypatch.setattr(replay, "_resolve_targets", lambda argv: [(src, patch)])
-    assert replay.main(["replay"]) == 1
-    output = capsys.readouterr().out
-    assert "ERROR:" in output and "FAILED" in output and "SUCCESS" not in output
-
-
 @pytest.mark.parametrize("command", ["parts", "print"])
 def test_cad_exports_share_json_contract_with_real_geometry(tmp_path, command):
     if command == "parts":
@@ -330,16 +315,15 @@ def test_make_check_forwards_format_flags_without_recipe_noise(tmp_path):
     assert events[-1]["status"] == "success"
 
 
-@pytest.mark.parametrize("command", ["step", "camera"])
 @pytest.mark.parametrize("flag", ["-h", "--help"])
-def test_make_camera_and_step_help_without_positional_or_stdin(tmp_path, command, flag):
+def test_make_step_help_without_positional_or_stdin(tmp_path, flag):
     if find_spec("build123d") is None:
         pytest.skip("CAD group not installed")
     result = subprocess.run(
         [
             "make",
             "--no-print-directory",
-            f"hw-{command}",
+            "hw-step",
             f"HW={sys.executable} -m hardware",
             f"ARGS={flag}",
         ],
@@ -352,21 +336,4 @@ def test_make_camera_and_step_help_without_positional_or_stdin(tmp_path, command
     )
     assert result.returncode == 0, result.stderr + result.stdout
     assert "usage:" in result.stdout
-    assert result.stderr == ""
-
-
-@pytest.mark.parametrize("piped", [False, True])
-def test_camera_accepts_quoted_view_or_stdin(tmp_path, piped):
-    if find_spec("build123d") is None:
-        pytest.skip("CAD group not installed")
-    view = "#Inventor V2.1 ascii\nPerspectiveCamera { orientation 1 0 0 1.5707963267948966 }"
-    result = invoke(
-        tmp_path,
-        "camera",
-        *([] if piped else [view]),
-        input=view if piped else "",
-        timeout=30,
-    )
-    assert result.returncode == 0, result.stderr + result.stdout
-    assert result.stdout == "Camera(0.00, 0.00, 0.00)\n"
     assert result.stderr == ""

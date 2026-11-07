@@ -87,12 +87,12 @@ def test_figure_alt_prefers_a_pinned_alt():
     ("src", "expected"),
     [
         (
-            "frame_10_extrusion_tnut_exploded_cam0_rbun.svg",
+            "frame_10_extrusion_tnut_exploded_cam0_annotated_nut_insertion.svg",
             "frame_10_extrusion_tnut exploded",
         ),
         ("belt_20_clamp_assembled_cam1.svg", "belt_20_clamp assembled"),
     ],
-    ids=["with-hash-token", "without-hash-token"],
+    ids=["named-annotation", "raw-view"],
 )
 def test_figure_alt_derives_readable_text_from_the_src(src, expected):
     assert build_manual.figure_alt({"src": src}) == expected

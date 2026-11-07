@@ -1,6 +1,6 @@
 """Persistent per-step build cache for the procedure pipeline.
 
-Three output kinds, two invalidation layers (their "subtly different logic"):
+Two invalidation layers:
 
   * ``.step`` (geometry) and the raw ``.svg`` (render) share one **source
     key** — a content hash of the procedure's transitive hardware
@@ -10,20 +10,18 @@ Three output kinds, two invalidation layers (their "subtly different logic"):
     Source tracking is conservative at file granularity. The cumulative /
     delta BOM ``.md`` is a pure function of the same parts. Change a part →
     source key changes → rebuild geometry, re-render, re-aggregate BOM.
-  * the patch-snapshot ``.svg`` (the raw render with the mark-tool
-    annotations composited in) carries an extra **patch key** on top: the
-    stem's patch JSON(s), the replay engine's own source, and the exact
-    source-layer manifest. Edit only a
-    patch and the source key still matches — so we keep the cached ``.step``
-    and raw ``.svg`` and just re-run the replay — no geometry rebuild, though
-    the replay itself still imports build123d (via ``assembly.base``).
+  * Generated annotation path SVGs and the manual's composited figures
+    carry an extra annotation key: the drawing declarations, generator and
+    exact source-layer manifest. An annotation-only edit keeps the STEP and
+    raw SVG cache. It reconstructs the model for highlights without repeating
+    the full assembly's hidden-line rendering.
 
 No stale cache, three ways:
   * stale HIT — the keys fold in every input file (import closure, kernel
-    version, patch JSON, replay engine), so any change that could alter an
-    output changes that output's key and forces a rebuild;
+    version, drawing declarations, annotation generator), so any change that
+    could alter an output changes that output's key and forces a rebuild;
   * stale FILE — each stem keeps exactly one entry; ``store_source`` /
-    ``store_snapshots`` replace their layer's files wholesale, and
+    ``store_annotations`` replace their layer's files wholesale, and
     ``prune()`` drops entries for stems that no longer exist;
   * damaged ENTRY — each layer's key file is a manifest (key + each stored
     file's sha256), written last; a hit requires the key to match AND every
@@ -52,24 +50,24 @@ import tomllib
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
+from hardware.assembly.annotation.specs import figure_names
 from hardware.scheme import (
+    ANNOTATION_DIR,
     BOM_DIR,
     CACHE_DIR,
     MANUAL_ILLUSTRATIONS,
-    MARK_DIR,
-    PATCH_DIR,
     PROCEDURES_DIR,
     RENDER_WORK_DIR,
     REPO_ROOT,
     STEP_DIR,
     SVG_DIR,
     VARIANTS,
+    annotated_svg_re,
     raw_svg_re,
-    snapshot_svg_re,
 )
 
 _SOURCE_KEY = "source.key"
-_PATCH_KEY = "patch.key"
+_ANNOTATION_KEY = "annotation.key"
 _SOURCE_SALT = b"hardware-cache-v4\n"
 
 
@@ -133,6 +131,8 @@ def _closure(
 ) -> frozenset[Path]:
     """All project source files reachable from ``paths`` through imports."""
     seen: dict[Path, bool] = {}
+    # Resolve each module once per traversal; the next check sees new/deleted files.
+    resolve = functools.cache(_module_to_path)
     stack = [(p, True) for p in paths]
     while stack:
         p, include_lazy = stack.pop()
@@ -149,7 +149,7 @@ def _closure(
             if init.is_file() and init not in seen:
                 stack.append((init, False))
         for mod in _imports(p, include_lazy=include_lazy):
-            dep = _module_to_path(mod)
+            dep = resolve(mod)
             if (
                 dep is not None
                 and (p, dep) not in skip_imports
@@ -232,8 +232,8 @@ def _parsed_cad_toolchain(project_source: bytes, lock_source: bytes) -> bytes:
 
 def _source_files(stem: str) -> frozenset[Path]:
     # Export orchestration and BOM code aren't necessarily imported by the
-    # procedure. Only these known replay imports belong to the other layer.
-    # Follow mark helpers reached by any other importer, including exporters
+    # procedure. Only these known annotation imports belong to the other layer.
+    # Follow drawing helpers reached by any other importer, including exporters
     # and BOM code: their location alone cannot prove they are annotation-only.
     assembly = REPO_ROOT / "hardware/assembly"
     inputs = {
@@ -242,9 +242,9 @@ def _source_files(stem: str) -> frozenset[Path]:
         if (assembly / name).is_file()
     }
     annotation_imports = frozenset(
-        (assembly / caller, MARK_DIR / module)
+        (assembly / caller, assembly / module)
         for caller in ("build_procedures.py", "cache.py")
-        for module in ("patch.py", "replay.py")
+        for module in ("annotation/generator.py", "annotation/specs.py")
     )
     return _closure(
         PROCEDURES_DIR / f"{stem}.py", *inputs, skip_imports=annotation_imports
@@ -266,26 +266,23 @@ def source_key(stem: str) -> str:
     return h.hexdigest()
 
 
-def _patch_files(stem: str) -> list[Path]:
-    out: list[Path] = []
-    for v in VARIANTS:
-        out += PATCH_DIR.glob(f"{stem}_{v}_cam*.json")
-    return out
+def _annotation_files() -> frozenset[Path]:
+    annotation = REPO_ROOT / "hardware/assembly/annotation"
+    return _closure(*(annotation / name for name in ("generator.py", "specs.py")))
 
 
 def annotation_key(stem: str) -> str:
-    """Inputs to annotation replay, independent of the cached geometry generation."""
+    """Inputs to generated annotation paths, independent of geometry generation."""
     h = hashlib.sha256()
-    _hash_files(h, _closure(MARK_DIR / "replay.py"))
-    _hash_files(h, _patch_files(stem))
+    _hash_files(h, _annotation_files())
     return h.hexdigest()
 
 
-def patch_key(stem: str, *, inputs_key: str | None = None) -> str:
-    """Bind annotated drawings to the exact source layer, patches and replay code."""
+def illustration_key(stem: str, *, inputs_key: str | None = None) -> str:
+    """Bind generated drawings to the exact source layer and annotation inputs."""
     h = hashlib.sha256()
     # A crash between the two stores must not pair new geometry with old
-    # snapshots. File hashes also cover rerenders with unchanged source keys.
+    # annotations. File hashes also cover rerenders with unchanged source keys.
     h.update(json.dumps(_read_layer(stem, _SOURCE_KEY), sort_keys=True).encode())
     h.update((annotation_key(stem) if inputs_key is None else inputs_key).encode())
     return h.hexdigest()
@@ -322,10 +319,10 @@ def _source_inputs(stem: str) -> dict[str, str]:
     }
 
 
-def _snapshot_inputs(stem: str) -> dict[str, str]:
+def _annotation_inputs(stem: str) -> dict[str, str]:
     key, files = _read_layer(stem, _SOURCE_KEY)
     return {
-        **_file_inputs(_closure(MARK_DIR / "replay.py") | set(_patch_files(stem))),
+        **_file_inputs(_annotation_files()),
         **{_shown(_entry(stem) / name): sha for name, sha in files.items()},
         "geometry source key": key or "missing",
     }
@@ -342,9 +339,7 @@ def _changed_inputs(stem: str, key_file: str, current_inputs) -> list[str]:
         ):
             raise ValueError("Invalid input history")
     except (ValueError, KeyError, TypeError, OSError):
-        return [
-            "build inputs changed; previous cache has no input history; rebuilding records it"
-        ]
+        return ["cache input history missing or invalid"]
     current = current_inputs(stem)
     changes = []
     for name in sorted(previous.keys() | current.keys()):
@@ -377,6 +372,8 @@ def _entry(stem: str) -> Path:
 
 
 def _dest_dir(name: str) -> Path:
+    if name.endswith(".paths.svg"):
+        return ANNOTATION_DIR
     return {".step": STEP_DIR, ".svg": SVG_DIR, ".md": BOM_DIR}[Path(name).suffix]
 
 
@@ -391,9 +388,15 @@ def _is_source(stem: str, name: str, *, want_bom: bool = True) -> bool:
     )
 
 
-def _is_snapshot(stem: str, name: str) -> bool:
-    """``name`` belongs to ``stem``'s patch-snapshot layer."""
-    return bool(snapshot_svg_re(stem).match(name))
+def _is_annotation(stem: str, name: str) -> bool:
+    """``name`` belongs to ``stem``'s generated annotation layer."""
+    return bool(
+        annotated_svg_re(stem).match(
+            name.removesuffix(".paths.svg") + ".svg"
+            if name.endswith(".paths.svg")
+            else name
+        )
+    )
 
 
 def _svgs(stem: str, pat: re.Pattern) -> list[Path]:
@@ -417,8 +420,12 @@ def _source_outputs(
     return files
 
 
-def _snapshot_outputs(stem: str) -> list[Path]:
-    return _svgs(stem, snapshot_svg_re(stem))
+def _annotation_outputs(stem: str) -> list[Path]:
+    return _svgs(stem, annotated_svg_re(stem)) + [
+        p
+        for p in ANNOTATION_DIR.glob(f"{stem}_*_cam*.paths.svg")
+        if _is_annotation(stem, p.name)
+    ]
 
 
 def clear_outputs(stem: str) -> None:
@@ -429,17 +436,9 @@ def clear_outputs(stem: str) -> None:
     for variant in VARIANTS:
         shutil.rmtree(RENDER_WORK_DIR / f"{stem}_{variant}", ignore_errors=True)
     tmps = list(SVG_DIR.glob(f"{stem}_*_cam*.tmp"))
+    tmps += ANNOTATION_DIR.glob(f"{stem}_*_cam*.tmp")
     tmps += STEP_DIR.glob(f"{stem}_*.tmp")
-    for f in _source_outputs(stem) + _snapshot_outputs(stem) + tmps:
-        f.unlink()
-
-
-def clear_snapshots(stem: str) -> None:
-    """Remove only ``stem``'s patch-snapshot SVGs (op-id-suffixed), leaving
-    the cached .step / raw .svg / BOM intact. Used before a patch re-replay
-    so the snapshot of a leaf op the edit removed or renamed doesn't survive
-    on disk and get re-manifested into the fresh snapshot layer."""
-    for f in _snapshot_outputs(stem):
+    for f in _source_outputs(stem) + _annotation_outputs(stem) + tmps:
         f.unlink()
 
 
@@ -511,8 +510,7 @@ def _store_layer(
 
 def _read_layer(stem: str, key_file: str) -> tuple[str | None, dict[str, str]]:
     """``(stored key, {filename: sha256})`` for a layer, or ``(None, {})`` when
-    the key file is missing or unreadable — a pre-manifest entry, or one a
-    killed store left half-written. Both read as a miss."""
+    the key file is missing, invalid or left half-written by a killed store."""
     p = _entry(stem) / key_file
     if not p.is_file():
         return None, {}
@@ -521,6 +519,11 @@ def _read_layer(stem: str, key_file: str) -> tuple[str | None, dict[str, str]]:
         if not isinstance(m, dict) or not isinstance(m.get("files"), dict):
             return None, {}
         if not isinstance(m.get("key"), str):
+            return None, {}
+        if not isinstance(m.get("inputs"), dict) or any(
+            not isinstance(name, str) or not isinstance(value, str)
+            for name, value in m["inputs"].items()
+        ):
             return None, {}
         for name, sha in m["files"].items():
             if (
@@ -571,18 +574,18 @@ def store_source(
     )
 
 
-def store_snapshots(stem: str, *, expected_annotation_key: str | None = None) -> None:
-    """Replace ``stem``'s snapshot layer (.svg op snapshots) + patch key."""
+def store_annotations(stem: str, *, expected_annotation_key: str | None = None) -> None:
+    """Replace ``stem``'s annotation paths, manual figures and annotation key."""
     _store_layer(
         stem,
-        key_file=_PATCH_KEY,
-        current_key=patch_key,
-        inputs=_snapshot_inputs,
-        expected_key=patch_key(stem, inputs_key=expected_annotation_key)
+        key_file=_ANNOTATION_KEY,
+        current_key=illustration_key,
+        inputs=_annotation_inputs,
+        expected_key=illustration_key(stem, inputs_key=expected_annotation_key)
         if expected_annotation_key is not None
         else None,
-        belongs=lambda n: _is_snapshot(stem, n),
-        outputs=_snapshot_outputs(stem),
+        belongs=lambda n: _is_annotation(stem, n),
+        outputs=_annotation_outputs(stem),
     )
 
 
@@ -627,23 +630,18 @@ def source_cached(
     return _entry_intact(stem, files, reasons)
 
 
-def snapshots_cached(stem: str, *, reasons: list[str] | None = None) -> bool:
-    """True only if the patch key matches AND every recorded snapshot is present
-    with its hash (a stem with no patches records an empty set — trivially true)."""
-    key, files = _read_layer(stem, _PATCH_KEY)
+def annotations_cached(stem: str, *, reasons: list[str] | None = None) -> bool:
+    """True only if the annotation key and every generated file hash match.
+    A stem with no annotated figures records an empty set."""
+    key, files = _read_layer(stem, _ANNOTATION_KEY)
     if key is None:
-        return _miss(reasons, _missing_manifest(stem, _PATCH_KEY))
-    if key != patch_key(stem):
+        return _miss(reasons, _missing_manifest(stem, _ANNOTATION_KEY))
+    if key != illustration_key(stem):
         if reasons is not None:
-            reasons.extend(_changed_inputs(stem, _PATCH_KEY, _snapshot_inputs))
+            reasons.extend(_changed_inputs(stem, _ANNOTATION_KEY, _annotation_inputs))
         return False
-    from hardware.assembly.mark.replay import find_leaves
-
-    expected = {
-        f"{patch.stem}_{leaf['id']}.svg"
-        for patch in _patch_files(stem)
-        for leaf in find_leaves(json.loads(patch.read_text(encoding="utf-8")))
-    }
+    names = figure_names(stem)
+    expected = names | {name.removesuffix(".svg") + ".paths.svg" for name in names}
     if set(files) != expected:
         return _miss(
             reasons,
@@ -670,14 +668,14 @@ def restore_source(stem: str, *, want_bom: bool = True) -> None:
     )
 
 
-def restore_snapshots(stem: str) -> None:
-    key, files = _read_layer(stem, _PATCH_KEY)
-    if key != patch_key(stem):
+def restore_annotations(stem: str) -> None:
+    key, files = _read_layer(stem, _ANNOTATION_KEY)
+    if key != illustration_key(stem):
         raise RuntimeError(f"Drawing cache changed before restore: {stem}")
     _restore(
         (_entry(stem) / name, sha)
         for name, sha in files.items()
-        if _is_snapshot(stem, name)
+        if _is_annotation(stem, name)
     )
 
 

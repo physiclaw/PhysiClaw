@@ -1,6 +1,6 @@
 """Tests for hardware/check.py — the static cross-artifact consistency gate.
 
-Each test builds (or mutates) a minimal fake world — procedures, patches,
+Each test builds (or mutates) a minimal fake world — procedures, annotations,
 manual content, sourcing data — and asserts which finding the gate reports.
 """
 
@@ -13,6 +13,7 @@ from types import SimpleNamespace
 import pytest
 
 from hardware import check
+from hardware.assembly.annotation.specs import Figure
 from hardware.documents.bom import loader as bom
 from hardware.documents.drawing.extrusion import SPECS
 
@@ -40,20 +41,21 @@ BASE_PROCEDURE = textwrap.dedent(
 
 @pytest.fixture
 def world(tmp_path, monkeypatch):
-    """A consistent fake world: one procedure with a patch, manual content
-    referencing its raw render, its snapshot, and a hand figure, and a
+    """A consistent fake world: one procedure with an annotated figure, manual content
+    referencing its raw render, its annotated figure, and a hand figure, and a
     BOM/sourcing pair that joins cleanly."""
     procedures = tmp_path / "procedures"
-    patches = tmp_path / "patch"
+    figure = Figure(view="frame_10_base_exploded_cam0", name="screws")
+    figures = {figure.filename: figure}
     documents = tmp_path / "documents"
     manual = documents / "manual"
     vendors = documents / "sourcing" / "vendors"
     bom_dir = documents / "bom"
     content = manual / "content"
-    for d in (procedures, patches, content, vendors, bom_dir):
+    for d in (procedures, content, vendors, bom_dir):
         d.mkdir(parents=True)
     monkeypatch.setattr(check, "PROCEDURES_DIR", procedures)
-    monkeypatch.setattr(check, "PATCH_DIR", patches)
+    monkeypatch.setattr(check, "FIGURES", figures)
     monkeypatch.setattr(check, "CONTENT_DIR", content)
     monkeypatch.setattr(bom, "BOM_FILE", bom_dir / "bom.json")
     monkeypatch.setattr(
@@ -67,16 +69,13 @@ def world(tmp_path, monkeypatch):
     monkeypatch.setattr(check, "HAND_FIGURES", {"wire_splice.svg": "<svg/>"})
 
     (procedures / "frame_10_base.py").write_text(BASE_PROCEDURE, encoding="utf-8")
-    (patches / "frame_10_base_exploded_cam0.json").write_text(
-        json.dumps([{"id": "abcd", "preop": "orig"}]), encoding="utf-8"
-    )
     (content / "01_frame.json").write_text(
         json.dumps(
             [
                 {
                     "figures": [
                         {"src": "frame_10_base_assembled_cam0.svg"},
-                        {"src": "frame_10_base_exploded_cam0_abcd.svg"},
+                        {"src": figure.filename},
                         {"src": "wire_splice.svg"},
                     ]
                 }
@@ -87,7 +86,7 @@ def world(tmp_path, monkeypatch):
     write_bom(content, vendors, [{"part_id": "p1"}, {"part_id": "p2"}])
     return SimpleNamespace(
         procedures=procedures,
-        patches=patches,
+        figures=figures,
         vendors=vendors,
         content=content,
         bom=bom_dir / "bom.json",
@@ -120,15 +119,15 @@ def write_bom(content, vendors, rows: list[dict], extrusions=EXTRUSION_ROWS) -> 
 
 def run_check() -> list[str]:
     proc_findings, views_by_stem = check.check_procedures()
-    patch_findings, leaves_by_svg = check.check_patches(views_by_stem)
+    annotation_findings, generated_figures = check.check_annotations(views_by_stem)
     content_findings, pages_by_file = check.load_content()
     bom_findings, rows = check.load_purchasing_bom()
     return (
         proc_findings
-        + patch_findings
+        + annotation_findings
         + content_findings
         + bom_findings
-        + check.check_manual(views_by_stem, leaves_by_svg, pages_by_file)
+        + check.check_manual(views_by_stem, generated_figures, pages_by_file)
         + check.check_sourcing(rows)
         + check.check_extrusions(rows)
     )
@@ -230,9 +229,8 @@ def test_subclassing_procedure_inherits_parent_views(world):
         "class FR20Child(FR10Base):\n    pass\n",
         encoding="utf-8",
     )
-    (world.patches / "frame_20_child_assembled_cam0.json").write_text(
-        "[]", encoding="utf-8"
-    )
+    figure = Figure(view="frame_20_child_assembled_cam0", name="child")
+    world.figures[figure.filename] = figure
 
     assert run_check() == []
 
@@ -241,113 +239,57 @@ def test_explicit_views_none_renders_all_and_is_permissive(world):
     (world.procedures / "frame_20_all.py").write_text(
         "class A(BaseAssembly):\n    views = None\n", encoding="utf-8"
     )
-    (world.patches / "frame_20_all_assembled_cam3.json").write_text(
-        "[]", encoding="utf-8"
-    )
+    figure = Figure(view="frame_20_all_assembled_cam3", name="all")
+    world.figures[figure.filename] = figure
 
     assert run_check() == []
 
 
-# ── patches ───────────────────────────────────────────────────────────────────
+# ── generated annotations ─────────────────────────────────────────────────────
 
 
-def test_patch_naming_unknown_procedure_is_flagged(world):
-    (world.patches / "ghost_10_gone_exploded_cam0.json").write_text(
-        "[]", encoding="utf-8"
-    )
-
-    assert_finding("names unknown procedure 'ghost_10_gone'")
-
-
-def test_patch_on_undeclared_view_is_flagged(world):
-    (world.patches / "frame_10_base_exploded_cam1.json").write_text(
-        "[]", encoding="utf-8"
-    )
-
-    assert_finding("targets exploded_cam1, which frame_10_base doesn't declare")
-
-
-def test_patch_with_malformed_name_is_flagged(world):
-    (world.patches / "frame_10_base_cam0.json").write_text("[]", encoding="utf-8")
-
-    assert_finding("doesn't match <stem>_<variant>_cam<i>.json")
-
-
-def test_patch_with_invalid_json_is_flagged(world):
-    (world.patches / "frame_10_base_assembled_cam0.json").write_text(
-        "{nope", encoding="utf-8"
-    )
-
-    assert_finding("is not valid JSON")
-
-
-def test_patch_with_non_array_body_is_flagged(world):
-    (world.patches / "frame_10_base_assembled_cam0.json").write_text(
-        '{"id": "abcd"}', encoding="utf-8"
-    )
-
-    assert_finding("must be a JSON array of ops")
-
-
-def test_patch_with_duplicate_op_ids_is_flagged(world):
-    (world.patches / "frame_10_base_assembled_cam0.json").write_text(
-        json.dumps([{"id": "abcd", "preop": "orig"}, {"id": "abcd", "preop": "orig"}]),
-        encoding="utf-8",
-    )
-
-    assert_finding("duplicate op ids")
-
-
-def test_patch_op_without_valid_id_is_flagged(world):
-    (world.patches / "frame_10_base_assembled_cam0.json").write_text(
-        json.dumps([{"id": "TOOLONGID", "preop": "orig"}]), encoding="utf-8"
-    )
-
-    assert_finding("op(s) without a valid id")
-
-
-def test_patch_op_named_orig_is_flagged(world):
-    # "orig" passes ID_RE (4 lowercase letters) but is the reserved
-    # source-SVG sentinel — an op that adopts it is silently dropped at
-    # replay, so the gate must reject it.
-    (world.patches / "frame_10_base_assembled_cam0.json").write_text(
-        json.dumps([{"id": "orig", "preop": "orig"}]), encoding="utf-8"
-    )
-
-    assert_finding("op(s) without a valid id")
-
-
-def test_patch_op_with_unknown_preop_is_flagged(world):
-    (world.patches / "frame_10_base_assembled_cam0.json").write_text(
-        json.dumps([{"id": "abcd", "preop": "gone"}]), encoding="utf-8"
-    )
-
-    assert_finding("chains to unknown preop 'gone'")
-
-
-def test_patch_preop_cycle_is_flagged(world):
-    (world.patches / "frame_10_base_assembled_cam0.json").write_text(
-        json.dumps([{"id": "abcd", "preop": "efgh"}, {"id": "efgh", "preop": "abcd"}]),
-        encoding="utf-8",
-    )
-
-    assert_finding("preop chain loops")
-
-
-def test_patch_op_missing_its_id_is_reported_not_crashed(world):
-    (world.patches / "frame_10_base_assembled_cam0.json").write_text(
-        json.dumps([{"preop": "orig"}]), encoding="utf-8"
-    )
-
-    assert_finding("op(s) without a valid id")
-
-
-def test_patch_op_missing_its_preop_is_reported_not_crashed(world):
-    (world.patches / "frame_10_base_assembled_cam0.json").write_text(
-        json.dumps([{"id": "abcd"}]), encoding="utf-8"
-    )
-
-    assert_finding("chains to unknown preop None")
+@pytest.mark.parametrize(
+    "figure,message",
+    [
+        (
+            Figure(view="ghost_10_gone_exploded_cam0", name="screws"),
+            "names unknown procedure",
+        ),
+        (
+            Figure(view="frame_10_base_exploded_cam1", name="screws"),
+            "targets exploded_cam1",
+        ),
+        (
+            Figure(view="frame_10_base_cam0", name="screws"),
+            "must name a procedure view",
+        ),
+        (
+            Figure(view="frame_10_base_assembled_cam0_annotated_screws", name="screws"),
+            "must name a procedure view",
+        ),
+        (
+            Figure(view="frame_10_base_assembled_cam0", name="../bad"),
+            "not a valid figure filename",
+        ),
+        (
+            Figure(
+                view="frame_10_base_assembled_cam0", name="screws", crop=(0, 0, -1, 2)
+            ),
+            "invalid crop",
+        ),
+        (
+            Figure(
+                view="frame_10_base_assembled_cam0",
+                name="screws",
+                crop=(0, 0, 1, float("nan")),
+            ),
+            "invalid crop",
+        ),
+    ],
+)
+def test_invalid_annotation_declaration_is_reported(world, figure, message):
+    world.figures[figure.filename] = figure
+    assert_finding(message)
 
 
 # ── manual content ────────────────────────────────────────────────────────────
@@ -371,22 +313,37 @@ def test_manual_reference_to_undeclared_view_is_flagged(world):
     assert_finding("doesn't declare exploded_cam7 in views")
 
 
-def test_manual_snapshot_without_patch_is_flagged(world):
+def test_manual_figure_without_annotation_is_flagged(world):
     (world.content / "02_x.json").write_text(
-        json.dumps([{"figures": [{"src": "frame_10_base_assembled_cam0_abcd.svg"}]}]),
+        json.dumps(
+            [
+                {
+                    "figures": [
+                        {"src": "frame_10_base_assembled_cam0_annotated_screws.svg"}
+                    ]
+                }
+            ]
+        ),
         encoding="utf-8",
     )
 
-    assert_finding("has no patch JSON")
+    assert_finding("has no declared annotation")
 
 
-def test_manual_snapshot_of_non_leaf_op_is_flagged(world):
-    (world.patches / "frame_10_base_exploded_cam0.json").write_text(
-        json.dumps([{"id": "abcd", "preop": "orig"}, {"id": "efgh", "preop": "abcd"}]),
-        encoding="utf-8",
-    )
+def test_deleted_annotation_is_reported_without_retargeting_other_figures(world):
+    other = Figure(view="frame_10_base_exploded_cam0", name="nut_positions")
+    world.figures[other.filename] = other
+    path = world.content / "01_frame.json"
+    pages = json.loads(path.read_text(encoding="utf-8"))
+    pages[0]["figures"].append({"src": other.filename})
+    path.write_text(json.dumps(pages), encoding="utf-8")
+    assert run_check() == []
 
-    assert_finding("'abcd' is not a leaf op")
+    del world.figures["frame_10_base_exploded_cam0_annotated_screws.svg"]
+    [finding] = run_check()
+    assert "_annotated_screws.svg" in finding
+    assert "has no declared annotation" in finding
+    assert other.filename not in finding
 
 
 def test_manual_content_with_invalid_json_is_flagged(world):

@@ -4,7 +4,7 @@ The real module drives CAD geometry (build123d / OCCT) in worker
 subprocesses; these tests monkeypatch the heavy pieces (``load_class``,
 ``_run_one``, the ``stepcache`` module) and pin the wiring around them:
 BOM failure accounting, the ``_incomplete`` completeness predicate, and
-the patch-replay branch's stale-snapshot clearing.
+the annotation-generation branch's stale-output clearing.
 """
 
 from __future__ import annotations
@@ -107,7 +107,6 @@ def worker(monkeypatch):
         "_run_one",
         lambda cls, exploded, *, only_missing=False: (0.0, 0.0, 0.0),
     )
-    monkeypatch.setattr(bp, "_replay_patches_for", lambda stem, exploded: 0)
 
 
 def test_bom_write_failure_is_recorded_so_the_build_returns_nonzero(
@@ -147,11 +146,11 @@ def test_bom_write_success_keeps_the_build_green(worker, monkeypatch, tmp_path, 
     assert abs(float(finished["message"][:-1]) - finished["duration_s"]) < 0.051
 
 
-def test_annotation_exception_fails_worker(worker, monkeypatch):
-    def fail(*args):
-        raise ValueError("invalid annotation")
+def test_variant_exception_fails_worker(worker, monkeypatch):
+    def fail(*args, **kwargs):
+        raise ValueError("invalid variant")
 
-    monkeypatch.setattr(bp, "_replay_patches_for", fail)
+    monkeypatch.setattr(bp, "_run_one", fail)
     assert bp._build_stems([STEM]) == 1
 
 
@@ -248,7 +247,7 @@ def test_crashed_batch_with_complete_files_still_requires_successful_verificatio
     monkeypatch.setattr(
         bp.stepcache, "store_source", lambda stem, **kwargs: stored.append(stem)
     )
-    monkeypatch.setattr(bp.stepcache, "store_snapshots", lambda stem, **kwargs: None)
+    monkeypatch.setattr(bp.stepcache, "store_annotations", lambda stem, **kwargs: None)
 
     import json
 
@@ -428,7 +427,7 @@ def test_parallel_batches_are_bounded_and_awaited(tmp_path, monkeypatch):
     monkeypatch.setattr(bp, "_incomplete", lambda stem, flags: [])
     monkeypatch.setattr(bp, "_run_subprocess", run)
     monkeypatch.setattr(bp.stepcache, "store_source", lambda stem, **kwargs: None)
-    monkeypatch.setattr(bp.stepcache, "store_snapshots", lambda stem, **kwargs: None)
+    monkeypatch.setattr(bp.stepcache, "store_annotations", lambda stem, **kwargs: None)
 
     assert bp._dispatch(1, use_cache=False, jobs=2) == 0
     assert sorted(completed) == stems
@@ -554,12 +553,14 @@ def cache_pipeline(outputs, tmp_path, monkeypatch):
         monkeypatch.setattr(bp.stepcache, name, path)
     for name, path in (
         ("CACHE_DIR", tmp_path / "cache"),
-        ("PATCH_DIR", tmp_path / "patches"),
         ("RENDER_WORK_DIR", tmp_path / "render"),
     ):
         monkeypatch.setattr(bp.stepcache, name, path)
     monkeypatch.setattr(bp, "RENDER_WORK_DIR", tmp_path / "render")
-    monkeypatch.setattr("hardware.assembly.mark.patch.PATCH_DIR", tmp_path / "patches")
+    monkeypatch.setattr(bp, "figure_names", lambda stem: set())
+    monkeypatch.setattr(bp.stepcache, "figure_names", lambda stem: set())
+    monkeypatch.setattr(bp, "ANNOTATION_DIR", tmp_path / "annotations")
+    monkeypatch.setattr(bp.stepcache, "ANNOTATION_DIR", tmp_path / "annotations")
     monkeypatch.setattr(
         bp.stepcache,
         "source_key",
@@ -577,7 +578,7 @@ def cache_pipeline(outputs, tmp_path, monkeypatch):
     )
     monkeypatch.setattr(
         bp.stepcache,
-        "_snapshot_inputs",
+        "_annotation_inputs",
         lambda stem: {"annotations": bp.stepcache.annotation_key(stem)},
     )
     monkeypatch.setattr(bp, "_batches", lambda size: [stems])
@@ -743,7 +744,7 @@ def test_inputs_edited_during_build_are_not_cached_as_current(
             bp.cancel_on_interrupt(bp._CANCELLED),
         ):
             bp._dispatch(1, use_cache=False)
-    assert not bp.stepcache.snapshots_cached(STEM)
+    assert not bp.stepcache.annotations_cached(STEM)
     assert bp.stepcache.source_cached(STEM, want_bom=False) == (edited == "annotations")
     if cancelled:
         events = [
@@ -764,7 +765,7 @@ def test_edit_to_restored_step_prevents_success_of_mixed_build(
 ):
     cache_pipeline.write(STEM)
     bp.stepcache.store_source(STEM)
-    bp.stepcache.store_snapshots(STEM)
+    bp.stepcache.store_annotations(STEM)
     pending = "frame_20_pending"
     cache_pipeline.stems.append(pending)
 
@@ -829,14 +830,14 @@ def test_incomplete_still_reports_a_missing_variant(outputs):
     assert bp._incomplete(STEM, ("--bom",)) == ["exploded"]
 
 
-# ── _dispatch: the cached-geometry patch-replay branch ────────────────────────
+# ── _dispatch: the cached-geometry annotation-generation branch ────────────────────────
 
 
-def test_patch_replay_branch_clears_stale_snapshots_before_replaying(
+def test_annotation_branch_clears_stale_outputs_before_regenerating(
     tmp_path, monkeypatch
 ):
-    # A leaf op the patch edit removed/renamed leaves its `_<opid>.svg` on
-    # disk; clear_outputs must remove it before restoring source and replaying.
+    # A removed figure declaration leaves its old SVG on disk; clear_outputs
+    # must remove it before restoring source and regenerating annotations.
     events: list[tuple[str, str]] = []
 
     def record(name):
@@ -848,10 +849,12 @@ def test_patch_replay_branch_clears_stale_snapshots_before_replaying(
         source_key=lambda stem: f"source:{stem}",
         annotation_key=lambda stem: f"annotations:{stem}",
         source_cached=lambda stem, **kwargs: True,
-        snapshots_cached=lambda stem, **kwargs: False,  # patch edited → re-replay
+        annotations_cached=lambda stem, **kwargs: (
+            False
+        ),  # annotation declaration edited
         restore_source=record("restore_source"),
-        restore_snapshots=record("restore_snapshots"),
-        store_snapshots=record("store_snapshots"),
+        restore_annotations=record("restore_annotations"),
+        store_annotations=record("store_annotations"),
         clear_outputs=record("clear_outputs"),
         store_source=record("store_source"),
     )
@@ -865,17 +868,17 @@ def test_patch_replay_branch_clears_stale_snapshots_before_replaying(
     monkeypatch.setattr(bp, "_view_indices", lambda stem, exploded: (0,))
     monkeypatch.setattr(
         bp,
-        "_replay_patches_for",
-        lambda stem, exploded: events.append(("replay", stem)),
+        "_generate_annotations_for",
+        lambda stem, exploded: events.append(("annotate", stem)),
     )
 
     rc = bp._dispatch(1, (), use_cache=True)
 
     assert rc == 0
     assert [name for name, _ in events] == [
-        "clear_outputs",  # stale snapshots removed before replay
+        "clear_outputs",  # stale annotation outputs removed before generation
         "restore_source",
-        "replay",  # … which rewrites both variants …
-        "replay",
-        "store_snapshots",  # … and only then is the fresh layer stored.
+        "annotate",  # … which regenerates both variants …
+        "annotate",
+        "store_annotations",  # … and only then is the fresh layer stored.
     ]

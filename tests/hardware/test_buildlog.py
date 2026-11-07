@@ -89,13 +89,16 @@ def test_malformed_worker_events_are_preserved_as_diagnostics(tmp_path):
     assert all(r["event"] == "worker_output" for r in records(log.path))
 
 
-def test_runs_have_distinct_logs_and_completed_steps_are_not_double_counted(tmp_path):
+@pytest.mark.parametrize(
+    "event", ["step_finished", "step_cached", "annotations_generated"]
+)
+def test_runs_have_distinct_logs_and_completed_steps_are_not_double_counted(
+    tmp_path, event
+):
     with buildlog.session(tmp_path) as first:
         buildlog.event("build_plan", "One assembly", total=1)
         for _ in range(2):
-            buildlog.event(
-                "step_finished", "Completed", stem="frame_10_base", status="success"
-            )
+            buildlog.event(event, "Completed", stem="frame_10_base", status="success")
     with buildlog.session(tmp_path) as second:
         buildlog.event("build_started", "New run")
     assert first.path != second.path

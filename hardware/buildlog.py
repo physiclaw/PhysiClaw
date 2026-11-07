@@ -110,7 +110,10 @@ class BuildLog:
                 and "worker_pid" not in record
             ):
                 self._total = record["total"]
-            if record["event"] in ("step_cached", "annotations_replayed") or (
+            if record["event"] in (
+                "step_cached",
+                "annotations_generated",
+            ) or (
                 record["event"] == "step_finished" and record.get("status") == "success"
             ):
                 self._complete.add(record["stem"])

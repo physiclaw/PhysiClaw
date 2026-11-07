@@ -2,7 +2,7 @@
 
 Operations shared between the build pipeline (post-render stripping of
 ``width`` / ``height`` + a non-scaling-stroke style block) and the
-marker tool (setting ``viewBox`` to a user-cropped rect). The
+annotation generator (setting ``viewBox`` to the figure's frame). The
 attribute rewrites touch only the root ``<svg ...>`` opening tag —
 nested elements with their own ``width`` / ``height`` (e.g.
 ``<rect>``) are untouched."""

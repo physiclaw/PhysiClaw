@@ -27,7 +27,7 @@
     },
     "figures": [
       {
-        "src": "frame_10_extrusion_tnut_exploded_cam0_rbun.svg"
+        "src": "frame_10_extrusion_tnut_exploded_cam0_annotated_nut_insertion.svg"
       }
     ],
     "notes": [
@@ -95,7 +95,7 @@
     },
     "figures": [
       {
-        "src": "frame_20_SHCS_exploded_cam0_nllz.svg",
+        "src": "frame_20_SHCS_exploded_cam0_annotated_frame_fasteners.svg",
         "style": "object-position: 12% center;"
       }
     ],
@@ -178,10 +178,10 @@
     },
     "figures": [
       {
-        "src": "frame_31_bracket_assembled_cam0_cljs.svg"
+        "src": "frame_31_bracket_assembled_cam0_annotated_frame_bracket.svg"
       },
       {
-        "src": "frame_30_bracket_tnut_exploded_cam0_gslq.svg"
+        "src": "frame_30_bracket_tnut_exploded_cam0_annotated_bracket_fasteners.svg"
       }
     ],
     "notes": [
@@ -246,10 +246,10 @@
     },
     "figures": [
       {
-        "src": "frame_41_bumper_assembled_cam0_hovj.svg"
+        "src": "frame_41_bumper_assembled_cam0_annotated_bumper.svg"
       },
       {
-        "src": "frame_40_bumper_tnut_exploded_cam0_jnva.svg",
+        "src": "frame_40_bumper_tnut_exploded_cam0_annotated_bumper_fasteners.svg",
         "style": "object-position: 64% center;"
       }
     ],

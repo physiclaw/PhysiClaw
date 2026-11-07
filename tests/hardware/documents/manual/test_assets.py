@@ -94,7 +94,7 @@ def test_require_renders_error_names_the_stems_to_rebuild(svg_pool):
     ):
         assets._require_renders(
             [
-                "camera_40_frame_assembled_cam0_ljek.svg",
+                "camera_40_frame_assembled_cam0_annotated_wiring_connections.svg",
                 "belt_20_clamp_exploded_cam1.svg",
             ]
         )

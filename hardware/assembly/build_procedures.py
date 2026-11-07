@@ -12,13 +12,14 @@ Workers line-buffer progress and write native stacks to a per-run
 ``output/logs/build-*.crash.log``.
 
 Both variants export STEP; only declared ``views`` render SVG. Matching
-annotation patches are replayed after rendering. Optional ``--bom`` and
-``--bom-delta`` outputs are written first, warming the leaf cache and surviving
-render crashes.
+annotation path SVGs and manual figures are generated after rendering. Optional
+``--bom`` and ``--bom-delta`` outputs are written first, warming the leaf cache
+and surviving render crashes.
 
-Unchanged stems restore from ``output/.cache``; patch-only edits replay their
-annotations without rebuilding geometry. ``--no-cache`` forces a fresh build
-and refreshes the cache. See ``assembly/cache.py`` for invalidation rules.
+Unchanged stems restore from ``output/.cache``; annotation-only edits generate
+new paths and figures while retaining cached STEP files and raw renders.
+``--no-cache`` forces a fresh build and refreshes the cache. See
+``assembly/cache.py`` for invalidation rules.
 
 A full build at custom travel also builds reference-proportion manual artwork
 in ``output/manual-illustrations``. Its geometry and cache stay separate from
@@ -55,6 +56,7 @@ from threading import Thread
 
 from hardware import buildlog
 from hardware.assembly import cache as stepcache
+from hardware.assembly.annotation.specs import figure_names, figures_for
 from hardware.assembly.base import BaseAssembly
 from hardware.assembly.bom import write_bom  # only for the optional --bom feature
 
@@ -67,8 +69,6 @@ from hardware.assembly.dispatch import (
     load_class,
     retry_stems,
 )
-from hardware.assembly.mark.patch import patch_path
-from hardware.assembly.mark.replay import replay_one
 from hardware.assembly.travel_ranges import ILLUSTRATION_TRAVEL, X_TRAVEL, Y_TRAVEL
 from hardware.build_lock import locked_main
 from hardware.port.processes import (
@@ -78,6 +78,7 @@ from hardware.port.processes import (
     owned_process,
 )
 from hardware.scheme import (
+    ANNOTATION_DIR,
     BOM_DIR,
     MANUAL_ILLUSTRATIONS,
     OUTPUT_DIR,
@@ -126,6 +127,8 @@ def _clear_outputs(clear_bom: bool = False) -> None:
         (STEP_DIR, "*.tmp"),
         (SVG_DIR, "*.svg"),
         (SVG_DIR, "*.tmp"),
+        (ANNOTATION_DIR, "*.paths.svg"),
+        (ANNOTATION_DIR, "*.tmp"),
     ]
     if clear_bom:
         targets.append((BOM_DIR, "*.md"))
@@ -145,29 +148,35 @@ def _clear_outputs(clear_bom: bool = False) -> None:
 def _run_one(
     cls: type[BaseAssembly], exploded: bool, *, only_missing: bool = False
 ) -> tuple[float, float, float] | None:
-    """Build, export and render one variant; return timings or None if complete.
+    """Build, render and annotate one variant; return source timings or None.
 
-    ``only_missing`` skips atomic outputs already on disk. Render recovery
-    uses its checkpoint when available, otherwise rebuilds the geometry.
+    ``only_missing`` retains completed source outputs and repairs annotations.
+    Render recovery uses its checkpoint when available.
     """
     asm = cls(exploded=exploded)
     svgs = [asm.svg_path(index=i) for i in asm.view_indices]
     step_done = only_missing and asm.output_path().exists()
-    if step_done and all(p.exists() for p in svgs):
-        return None
+    source_complete = step_done and all(p.exists() for p in svgs)
     t_build = 0.0
     t_export = 0.0
-    if not step_done:
+    t_render = 0.0
+    if not source_complete:
+        if not step_done:
+            t0 = time.monotonic()
+            asm.build()
+            t_build = time.monotonic() - t0
+            t0 = time.monotonic()
+            asm.export()
+            t_export = time.monotonic() - t0
         t0 = time.monotonic()
-        asm.build()
-        t_build = time.monotonic() - t0
-        t0 = time.monotonic()
-        asm.export()
-        t_export = time.monotonic() - t0
-    t0 = time.monotonic()
-    asm.render(only_missing=only_missing)
-    t_render = time.monotonic() - t0
-    return t_build, t_export, t_render
+        asm.render(only_missing=only_missing)
+        t_render = time.monotonic() - t0
+    # Reuse this exact model and camera for its generated path SVGs. A normal
+    # single-step build must replace older annotations along with its raw render.
+    from hardware.assembly.annotation.generator import generate
+
+    generate(asm, only_missing=only_missing)
+    return None if source_complete else (t_build, t_export, t_render)
 
 
 def _missing_boms(stem: str, *, bom: bool, bom_delta: bool) -> bool:
@@ -181,19 +190,11 @@ def _missing_boms(stem: str, *, bom: bool, bom_delta: bool) -> bool:
     return any(not p.exists() for p in wanted)
 
 
-def _replay_patches_for(stem: str, exploded: bool) -> int:
-    """For every SVG just rendered for this procedure variant, replay
-    any matching patch JSON in ``hardware/assembly/patch/``. Returns
-    the total number of patch-leaf snapshots written (0 if none of the
-    rendered SVGs has a patch). Annotations are required manual inputs;
-    a failed replay must fail the build."""
-    variant = "exploded" if exploded else "assembled"
-    written = 0
-    for svg in sorted(SVG_DIR.glob(f"{stem}_{variant}_cam*.svg")):
-        if not patch_path(svg).exists():
-            continue
-        written += len(replay_one(svg))
-    return written
+def _generate_annotations_for(stem: str, exploded: bool) -> None:
+    """Generate path SVG intermediates and the manual's composited figures."""
+    from hardware.assembly.annotation.generator import generate
+
+    generate(load_class(stem)(exploded=exploded), only_missing=True)
 
 
 def _build_stems(
@@ -253,14 +254,12 @@ def _build_stems(
                     variant=variant,
                 )
                 timings = _run_one(cls, exploded, only_missing=only_missing)
-                # Replay even on a skip: a crash may have landed the last SVG
-                # before its annotations. Replay is idempotent and geometry-free.
-                n_patches = _replay_patches_for(short, exploded)
+                n_annotations = len(figures_for(short, exploded))
                 tb, te, tr = timings or (0.0, 0.0, 0.0)
                 buildlog.event(
                     "variant_finished",
                     f"{'Retained completed outputs' if timings is None else 'Built variant'}; "
-                    f"build {tb:.2f}s, export {te:.2f}s, render {tr:.2f}s; {n_patches} annotation snapshots",
+                    f"build {tb:.2f}s, export {te:.2f}s, render {tr:.2f}s; {n_annotations} annotated figures",
                     level="debug",
                     stem=short,
                     variant=variant,
@@ -268,7 +267,7 @@ def _build_stems(
                     build_s=round(tb, 3),
                     export_s=round(te, 3),
                     render_s=round(tr, 3),
-                    snapshots=n_patches,
+                    figures=n_annotations,
                 )
             except Exception as exc:
                 failures += 1
@@ -431,28 +430,25 @@ def _missing_variants(stem: str) -> list[str]:
 
 
 def _incomplete(stem: str, bom_flags: tuple[str, ...]) -> list[str]:
-    """Missing STEP/SVG variants, requested BOMs, and annotation snapshots.
+    """Missing STEP/SVG variants, requested BOMs, and annotated figures.
 
-    Presence is sufficient here: writers are atomic, and the dispatcher
-    clears each miss stem's outputs before its first build attempt.
+    Presence is sufficient here: writers stage their outputs, annotation pairs
+    publish the final figure last, and the dispatcher clears each miss stem's
+    outputs before its first build attempt.
     """
     missing = list(_missing_variants(stem))
     if _missing_boms(
         stem, bom="--bom" in bom_flags, bom_delta="--bom-delta" in bom_flags
     ):
         missing.append("bom")
-    from hardware.assembly.mark.patch import load_patch, snapshot_path
-    from hardware.assembly.mark.replay import find_leaves
-
-    for variant, exploded in _VARIANTS:
-        for index in _view_indices(stem, exploded):
-            svg = svg_path_for(stem, exploded, index=index)
-            if patch_path(svg).exists():
-                if any(
-                    not snapshot_path(svg, leaf["id"]).is_file()
-                    for leaf in find_leaves(load_patch(svg))
-                ):
-                    missing.append(f"{variant} annotations")
+    for name in sorted(figure_names(stem)):
+        if (
+            not (SVG_DIR / name).is_file()
+            or not (
+                ANNOTATION_DIR / (name.removesuffix(".svg") + ".paths.svg")
+            ).is_file()
+        ):
+            missing.append(f"{name} annotations")
     return missing
 
 
@@ -467,10 +463,10 @@ def _dispatch(
 
     Per stem (see ``assembly/cache.py``): if the *source* layer is fresh
     (.step / raw .svg / BOM unchanged) restore it instead of rebuilding,
-    then either restore the patch snapshots (patch unchanged) or just
-    re-run the cheap annotation replay (patch edited — geometry stays
-    cached). Stems with no cache hit go to a worker subprocess in family
-    batches; crashed stems solo-retry. ``bom_flags`` (--bom / --bom-delta)
+    then restore or regenerate annotation paths and manual figures.
+    The STEP and raw SVG stay cached when only annotation inputs change. Stems
+    with no cache hit go to a worker subprocess in family batches; crashed stems
+    solo-retry. ``bom_flags`` (--bom / --bom-delta)
     pass through so workers also emit BOMs."""
     want_bom = "--bom" in bom_flags
     want_delta = "--bom-delta" in bom_flags
@@ -547,7 +543,7 @@ def _dispatch(
             cache_dir=str(stepcache.CACHE_DIR.resolve()),
         )
 
-    n_fresh = n_replay = 0
+    n_fresh = n_reannotated = 0
     pending = []
     for batch in batches:
         _check_cancelled()
@@ -560,8 +556,8 @@ def _dispatch(
             stepcache.clear_outputs(s)
             stepcache.restore_source(s, want_bom=want_any_bom)
             reasons = []
-            if stepcache.snapshots_cached(s, reasons=reasons):
-                stepcache.restore_snapshots(s)
+            if stepcache.annotations_cached(s, reasons=reasons):
+                stepcache.restore_annotations(s)
                 n_fresh += 1
                 buildlog.event(
                     "step_cached",
@@ -571,17 +567,16 @@ def _dispatch(
                 )
             else:
                 log_cache_miss(s, "annotations", reasons)
-                # Patch edited but geometry/render unchanged: keep the cached
-                # .step + raw .svg, just re-apply the (build123d-free) replay.
-                # clear_outputs already removed the old snapshots, so removed
-                # or renamed patch operations cannot survive in the new layer.
+                # Reconstruct only the models needed for generated highlights.
+                # Keep cached STEP/raw SVGs; clear_outputs removed stale paths
+                # and figures before restoring the source layer.
                 for exploded in (True, False):
-                    _replay_patches_for(s, exploded)
-                stepcache.store_snapshots(s, expected_annotation_key=inputs[s][1])
-                n_replay += 1
+                    _generate_annotations_for(s, exploded)
+                stepcache.store_annotations(s, expected_annotation_key=inputs[s][1])
+                n_reannotated += 1
                 buildlog.event(
-                    "annotations_replayed",
-                    "Reapplied annotations to cached geometry",
+                    "annotations_generated",
+                    "Generated annotation paths from cached procedure renders",
                     stem=s,
                 )
 
@@ -605,7 +600,7 @@ def _dispatch(
             want_bom=want_bom,
             want_delta=want_delta,
         )
-        stepcache.store_snapshots(stem, expected_annotation_key=annotation_key)
+        stepcache.store_annotations(stem, expected_annotation_key=annotation_key)
         stored.add(stem)
 
     def log_retry(stem: str, attempt: int) -> None:
@@ -656,7 +651,7 @@ def _dispatch(
                 log=log_retry,
             )
             # Exceptions after the last output landed (e.g. annotation
-            # replay) must never be converted to success by file presence.
+            # generation) must never be converted to success by file presence.
             # Re-run a cheap only-missing pass and require a successful exit.
             completed = [s for s in misses if not _incomplete(s, bom_flags)]
             if completed and _run_subprocess(completed, bom_flags, only_missing=True):
@@ -726,16 +721,16 @@ def _dispatch(
         )
     buildlog.event(
         "build_summary",
-        f"{ok_assemblies}/{total} assemblies have complete outputs; {n_fresh} cached, {n_replay} reannotated, "
-        f"{ok_assemblies - n_fresh - n_replay} rebuilt; {len(retry_attempts)} retries; "
+        f"{ok_assemblies}/{total} assemblies have complete outputs; {n_fresh} cached, {n_reannotated} reannotated, "
+        f"{ok_assemblies - n_fresh - n_reannotated} rebuilt; {len(retry_attempts)} retries; "
         f"{n_step} STEP and {n_svg} SVG files present",
         level="error" if failed else "info",
         status="failed" if failed else "success",
         total=total,
         complete=ok_assemblies,
         cached=n_fresh,
-        reannotated=n_replay,
-        rebuilt=ok_assemblies - n_fresh - n_replay,
+        reannotated=n_reannotated,
+        rebuilt=ok_assemblies - n_fresh - n_reannotated,
         retries=len(retry_attempts),
         failed_outputs=len(failed_variants),
         failed_batches=results.count(False),

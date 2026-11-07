@@ -28,7 +28,7 @@
     "variant": "hero",
     "figures": [
       {
-        "src": "tapz_10_solenoid_tip_exploded_cam1_botx.svg"
+        "src": "tapz_10_solenoid_tip_exploded_cam1_annotated_solenoid_tip.svg"
       },
       {
         "src": "tapz_10_solenoid_tip_assembled_cam1.svg"
@@ -104,7 +104,7 @@
     "variant": "hero",
     "figures": [
       {
-        "src": "tapz_11_solenoid_attach_exploded_cam1_cjmx.svg"
+        "src": "tapz_11_solenoid_attach_exploded_cam1_annotated_solenoid_fasteners.svg"
       },
       {
         "src": "tapz_11_solenoid_attach_assembled_cam0.svg"
@@ -201,10 +201,10 @@
     "variant": "hero",
     "figures": [
       {
-        "src": "tapz_20_solenoid_mount_exploded_cam1_hmwg.svg"
+        "src": "tapz_20_solenoid_mount_exploded_cam1_annotated_mount_fasteners.svg"
       },
       {
-        "src": "tapz_20_solenoid_mount_assembled_cam0_pydm.svg"
+        "src": "tapz_20_solenoid_mount_assembled_cam0_annotated_solenoid_mount.svg"
       }
     ],
     "notes": [

@@ -1,14 +1,13 @@
 """Unified CLI for the PhysiClaw hardware pipeline — one front door for
 every generator.
 
-The legacy invocation is unchanged: ``uv run --group cad python -m hardware
+The legacy part-export invocation is unchanged: ``uv run --group cad python -m hardware
 [--custom] [--standard]`` still exports part STEPs exactly as before. Each stage now
-also has a named subcommand, and every subcommand forwards its trailing
-arguments untouched to the underlying script, so all the original flags
-still apply:
+also has a named subcommand that forwards its trailing arguments to the
+corresponding generator:
 
     uv run --group cad python -m hardware parts     [--custom] [--standard]   export part STEPs (default)
-    uv run --group cad python -m hardware build     [--bom] [--bom-delta]     build assembly steps (STEP + SVG)
+    uv run --group cad python -m hardware build     [--bom] [--bom-delta]     build assembly steps (STEP + SVG + annotations)
     uv run --group cad python -m hardware step      <stem>                    build one step via `build --bom --stems`
     uv run --group cad python -m hardware print                               3D-print package (zip)
     uv run            python -m hardware check                                static consistency check (CI-friendly)
@@ -19,18 +18,13 @@ still apply:
     uv run --group cad python -m hardware release prepare --version X.Y       build a verified local release bundle
     uv run            python -m hardware release verify --version X.Y        verify a prepared bundle
     uv run            python -m hardware release publish --version X.Y       publish the verified bundle via a draft
-    uv run --group cad python -m hardware mark      <svg|json>                annotate a step drawing
-    uv run --group cad python -m hardware replay    [file]                    replay annotation patches
-    uv run --group cad python -m hardware refit     <json> [--parts …]        refit a patch's highlights from the model
-    uv run --group cad python -m hardware camera    "<freecad-view>"          FreeCAD view → Camera() literal
 
 Geometry commands need ``--group cad`` (build123d); ``check`` and the manual,
 sourcing and drawing builders are standard-library only. Run all commands from the
 repo root.
 
-Each underlying module also stays runnable on its own (e.g.
-``uv run --group cad python -m hardware.assembly.build_procedures``) — the
-subcommands are a convenience wrapper, not a replacement.
+Generators can also run directly as modules, e.g.
+``uv run --group cad python -m hardware.assembly.build_procedures``.
 """
 
 import argparse
@@ -52,10 +46,6 @@ _DELEGATED: dict[str, list[str]] = {
     "build": ["-m", "hardware.assembly.build_procedures"],
     "check": ["-m", "hardware.check"],
     "print": ["-m", "hardware.parts.build_custom_parts"],
-    "mark": ["-m", "hardware.assembly.mark"],
-    "replay": ["-m", "hardware.assembly.mark.replay"],
-    "refit": ["-m", "hardware.assembly.mark.refit"],
-    "camera": ["-m", "hardware.assembly.projection"],
     "manual": ["-m", "hardware.documents.manual.build"],
     "sourcing": ["-m", "hardware.documents.sourcing.build"],
     "url": ["-m", "hardware.documents.sourcing.urls"],
@@ -147,7 +137,7 @@ def main(argv: list[str] | None = None) -> int:
         if rest[0] in ("-h", "--help"):
             return _delegate(_DELEGATED["build"], rest)
         stem, *step_args = rest
-        # One stem through the full `build` pipeline (STEP + SVG + patch replay
+        # One stem through the full `build` pipeline (STEP + SVG + generated annotations
         # + its BOM) — i.e. `build --bom --stems <stem>`, reusing build's own
         # stem resolution rather than hand-building a procedures.<stem> path.
         return _delegate(

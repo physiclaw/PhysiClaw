@@ -28,10 +28,10 @@
     "variant": "hero",
     "figures": [
       {
-        "src": "belt_10_motor_a_exploded_cam0_sstk.svg"
+        "src": "belt_10_motor_a_exploded_cam0_annotated_motor_a_belt_route.svg"
       },
       {
-        "src": "belt_11_clamp_show_assembled_cam0_zybo.svg",
+        "src": "belt_11_clamp_show_assembled_cam0_annotated_clamp_threading_cam0.svg",
         "style": "transform: translate(-26mm, 12mm) scale(0.8);"
       }
     ],
@@ -106,10 +106,10 @@
     "variant": "hero",
     "figures": [
       {
-        "src": "belt_20_clamp_exploded_cam1_vbba.svg"
+        "src": "belt_20_clamp_exploded_cam1_annotated_clamp_fasteners.svg"
       },
       {
-        "src": "belt_20_clamp_assembled_cam0_odxc.svg"
+        "src": "belt_20_clamp_assembled_cam0_annotated_belt_clamp.svg"
       }
     ],
     "notes": [
@@ -179,10 +179,10 @@
     "variant": "hero",
     "figures": [
       {
-        "src": "belt_30_motor_b_exploded_cam0_uesm.svg"
+        "src": "belt_30_motor_b_exploded_cam0_annotated_motor_b_belt_route.svg"
       },
       {
-        "src": "belt_11_clamp_show_assembled_cam1_dhwk.svg",
+        "src": "belt_11_clamp_show_assembled_cam1_annotated_clamp_threading_cam1.svg",
         "style": "transform: translateY(6mm) scale(0.8);"
       }
     ],
@@ -237,7 +237,7 @@
     },
     "figures": [
       {
-        "src": "belt_30_motor_b_assembled_cam0_egkj.svg"
+        "src": "belt_30_motor_b_assembled_cam0_annotated_belt_tension.svg"
       }
     ],
     "labels": [

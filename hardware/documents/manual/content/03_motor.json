@@ -136,10 +136,10 @@
     "variant": "hero",
     "figures": [
       {
-        "src": "motor_11_frame_exploded_cam1_qued.svg"
+        "src": "motor_11_frame_exploded_cam1_annotated_motor_a_bracket_mount.svg"
       },
       {
-        "src": "motor_11_frame_assembled_cam0_aupa.svg"
+        "src": "motor_11_frame_assembled_cam0_annotated_motor_a_bracket.svg"
       }
     ],
     "notes": [
@@ -278,10 +278,10 @@
     "variant": "hero",
     "figures": [
       {
-        "src": "motor_21_frame_exploded_cam1_homb.svg"
+        "src": "motor_21_frame_exploded_cam1_annotated_motor_b_bracket_mount.svg"
       },
       {
-        "src": "motor_21_frame_assembled_cam0_poqx.svg"
+        "src": "motor_21_frame_assembled_cam0_annotated_motor_b_bracket.svg"
       }
     ],
     "notes": [
@@ -324,10 +324,10 @@
     "variant": "hero",
     "figures": [
       {
-        "src": "motor_30_pulley_exploded_cam1_wcny.svg"
+        "src": "motor_30_pulley_exploded_cam1_annotated_pulley_and_shaft.svg"
       },
       {
-        "src": "motor_30_pulley_assembled_cam0_ghfe.svg"
+        "src": "motor_30_pulley_assembled_cam0_annotated_pulley.svg"
       }
     ],
     "notes": [

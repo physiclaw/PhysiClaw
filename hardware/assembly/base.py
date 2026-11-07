@@ -71,7 +71,7 @@ class BaseAssembly(BasePart):
     # every skipped view saves an exact-HLR pass, which is both the
     # dominant render cost and the crash surface. Indices refer to
     # positions in ``cameras`` and stay stable in filenames, so manual
-    # references and patch JSONs never rename when views are trimmed.
+    # references and generated figure names never change when views are trimmed.
     views: "list[tuple[str, int]] | None" = None
     # With `vector-effect: non-scaling-stroke` baked into every render,
     # these values are interpreted as ~device pixels (not millimetres) —

@@ -7,6 +7,7 @@ under ``REPO_ROOT``) and its store/restore run against tmp files only.
 
 from __future__ import annotations
 
+import ast
 import json
 import os
 import shutil
@@ -26,8 +27,7 @@ def repo(tmp_path, monkeypatch):
     output/cache directory the module writes to."""
     dirs = {
         "PROCEDURES_DIR": tmp_path / "hardware" / "assembly" / "procedures",
-        "PATCH_DIR": tmp_path / "hardware" / "assembly" / "patch",
-        "MARK_DIR": tmp_path / "hardware" / "assembly" / "mark",
+        "ANNOTATION_DIR": tmp_path / "hardware" / "output" / "annotations",
         "STEP_DIR": tmp_path / "hardware" / "output" / "step",
         "SVG_DIR": tmp_path / "hardware" / "output" / "svg",
         "BOM_DIR": tmp_path / "hardware" / "output" / "bom",
@@ -44,7 +44,18 @@ def repo(tmp_path, monkeypatch):
     helper = tmp_path / "hardware" / "parts" / "helper.py"
     helper.parent.mkdir(parents=True)
     helper.write_text("SIZE = 1\n", encoding="utf-8")
-    (dirs["MARK_DIR"] / "replay.py").write_text("ENGINE = 1\n", encoding="utf-8")
+    generator = procedure.parent.parent / "annotation" / "generator.py"
+    generator.parent.mkdir()
+    generator.with_name("__init__.py").write_text("", encoding="utf-8")
+    generator.write_text("ENGINE = 1\n", encoding="utf-8")
+    specs = generator.with_name("specs.py")
+    specs.write_text("FIGURES = {}\n", encoding="utf-8")
+
+    def expected_figures(stem):
+        figures = ast.literal_eval(specs.read_text().split("=", 1)[1])
+        return {name for name in figures if name.startswith(stem + "_")}
+
+    monkeypatch.setattr(cache, "figure_names", expected_figures)
     project = tmp_path / "pyproject.toml"
     project.write_text(
         '[project]\nname = "physiclaw"\nversion = "1.0"\n'
@@ -61,8 +72,24 @@ def repo(tmp_path, monkeypatch):
         encoding="utf-8",
     )
     return SimpleNamespace(
-        procedure=procedure, helper=helper, project=project, lock=lock, **dirs
+        procedure=procedure,
+        helper=helper,
+        project=project,
+        lock=lock,
+        generator=generator,
+        specs=specs,
+        **dirs,
     )
+
+
+def _set_figures(repo, *, present=True):
+    name = f"{STEM}_exploded_cam0_annotated_screws"
+    figures = {f"{name}.svg": {}} if present else {}
+    repo.specs.write_text(f"FIGURES = {figures!r}  # edited\n", encoding="utf-8")
+    if present:
+        (repo.ANNOTATION_DIR / f"{name}.paths.svg").write_text(
+            "paths", encoding="utf-8"
+        )
 
 
 def write_outputs(repo, *, bom: bool = True, cams: tuple[int, ...] = (0,)):
@@ -155,20 +182,20 @@ def test_source_key_changes_when_hardware_travel_changes(repo):
     assert cache.source_key(STEM) != before
 
 
-def test_patch_key_changes_when_patch_json_changes(repo):
-    before = cache.patch_key(STEM)
+def test_illustration_key_changes_when_specs_change(repo):
+    before = cache.illustration_key(STEM)
 
-    (repo.PATCH_DIR / f"{STEM}_exploded_cam0.json").write_text("[]", encoding="utf-8")
+    _set_figures(repo, present=False)
 
-    assert cache.patch_key(STEM) != before
+    assert cache.illustration_key(STEM) != before
 
 
-def test_patch_key_changes_when_replay_engine_changes(repo):
-    before = cache.patch_key(STEM)
+def test_illustration_key_changes_when_generator_changes(repo):
+    before = cache.illustration_key(STEM)
 
-    (repo.MARK_DIR / "replay.py").write_text("ENGINE = 2\n", encoding="utf-8")
+    repo.generator.write_text("ENGINE = 2\n", encoding="utf-8")
 
-    assert cache.patch_key(STEM) != before
+    assert cache.illustration_key(STEM) != before
 
 
 # ── source layer: store / hit / restore ───────────────────────────────────────
@@ -276,60 +303,74 @@ def test_store_source_replaces_the_layer_wholesale(repo):
     assert not (cache.CACHE_DIR / STEM / f"{STEM}_exploded_cam1.svg").exists()
 
 
-# ── snapshot layer ────────────────────────────────────────────────────────────
+# ── annotation layer ────────────────────────────────────────────────────────────
 
 
-def test_snapshots_cached_after_store_is_true(repo):
-    (repo.PATCH_DIR / f"{STEM}_exploded_cam0.json").write_text(
-        '[{"id":"abcd","preop":"orig"}]', encoding="utf-8"
-    )
-    (repo.SVG_DIR / f"{STEM}_exploded_cam0_abcd.svg").write_text(
+def test_annotations_cached_after_store_is_true(repo):
+    _set_figures(repo)
+    (repo.SVG_DIR / f"{STEM}_exploded_cam0_annotated_screws.svg").write_text(
         "snap", encoding="utf-8"
     )
 
-    cache.store_snapshots(STEM)
+    cache.store_annotations(STEM)
 
-    assert cache.snapshots_cached(STEM)
-
-
-def test_snapshots_cached_with_no_snapshots_is_trivially_true(repo):
-    cache.store_snapshots(STEM)
-
-    assert cache.snapshots_cached(STEM)
+    assert cache.annotations_cached(STEM)
 
 
-def test_snapshots_cached_after_patch_edit_is_false(repo):
-    cache.store_snapshots(STEM)
+def test_annotations_cached_with_no_annotations_is_trivially_true(repo):
+    cache.store_annotations(STEM)
 
-    (repo.PATCH_DIR / f"{STEM}_exploded_cam0.json").write_text("[]", encoding="utf-8")
-
-    assert not cache.snapshots_cached(STEM)
+    assert cache.annotations_cached(STEM)
 
 
-def test_clear_snapshots_drops_snapshots_but_keeps_source(repo):
-    # A patch re-replay must drop the old snapshot layer (a leaf op the
-    # edit removed) without touching the cached .step / raw .svg.
-    raw = repo.SVG_DIR / f"{STEM}_exploded_cam0.svg"
-    raw.write_text("render", encoding="utf-8")
-    step = repo.STEP_DIR / f"{STEM}_exploded.step"
-    step.write_text("geom", encoding="utf-8")
-    stale = repo.SVG_DIR / f"{STEM}_exploded_cam0_gone.svg"
-    stale.write_text("stale snapshot", encoding="utf-8")
+@pytest.mark.parametrize("damage", ["missing", "modified"])
+def test_path_intermediate_is_required_and_verified_independently_of_geometry(
+    repo, damage
+):
+    _set_figures(repo)
+    write_outputs(repo)
+    name = f"{STEM}_exploded_cam0_annotated_screws"
+    (repo.SVG_DIR / f"{name}.svg").write_text("manual figure", encoding="utf-8")
+    cache.store_source(STEM)
+    cache.store_annotations(STEM)
+    cached_paths = repo.CACHE_DIR / STEM / f"{name}.paths.svg"
+    if damage == "missing":
+        cached_paths.unlink()
+    else:
+        cached_paths.write_text("changed paths", encoding="utf-8")
+    assert cache.source_cached(STEM, want_bom=True)
+    assert not cache.annotations_cached(STEM)
 
-    cache.clear_snapshots(STEM)
 
-    assert not stale.exists()
-    assert raw.read_text(encoding="utf-8") == "render"
-    assert step.read_text(encoding="utf-8") == "geom"
+def test_restore_annotations_restores_paths_to_their_own_directory(repo):
+    _set_figures(repo)
+    name = f"{STEM}_exploded_cam0_annotated_screws"
+    final = repo.SVG_DIR / f"{name}.svg"
+    paths = repo.ANNOTATION_DIR / f"{name}.paths.svg"
+    final.write_text("manual figure", encoding="utf-8")
+    cache.store_annotations(STEM)
+    final.unlink()
+    paths.unlink()
+    cache.restore_annotations(STEM)
+    assert final.read_text() == "manual figure"
+    assert paths.read_text() == "paths"
 
 
-def test_restore_snapshots_reconstructs_deleted_snapshot(repo):
-    snap = repo.SVG_DIR / f"{STEM}_exploded_cam0_abcd.svg"
+def test_annotations_cached_after_declaration_edit_is_false(repo):
+    cache.store_annotations(STEM)
+
+    _set_figures(repo, present=False)
+
+    assert not cache.annotations_cached(STEM)
+
+
+def test_restore_annotations_reconstructs_deleted_annotation(repo):
+    snap = repo.SVG_DIR / f"{STEM}_exploded_cam0_annotated_screws.svg"
     snap.write_text("snap", encoding="utf-8")
-    cache.store_snapshots(STEM)
+    cache.store_annotations(STEM)
     snap.unlink()
 
-    cache.restore_snapshots(STEM)
+    cache.restore_annotations(STEM)
 
     assert snap.read_text(encoding="utf-8") == "snap"
 
@@ -386,7 +427,8 @@ def test_malformed_manifest_is_a_miss(repo, files):
     write_outputs(repo)
     cache.store_source(STEM)
     (cache.CACHE_DIR / STEM / "source.key").write_text(
-        json.dumps({"key": cache.source_key(STEM), "files": files}), encoding="utf-8"
+        json.dumps({"key": cache.source_key(STEM), "files": files, "inputs": {}}),
+        encoding="utf-8",
     )
     assert not cache.source_cached(STEM, want_bom=False)
 
@@ -400,12 +442,10 @@ def test_unmanifested_cache_file_is_never_restored(repo):
     assert not (repo.SVG_DIR / extra).exists()
 
 
-def test_missing_snapshot_cannot_be_manifested_as_complete(repo):
-    (repo.PATCH_DIR / f"{STEM}_exploded_cam0.json").write_text(
-        '[{"id":"abcd","preop":"orig"}]', encoding="utf-8"
-    )
-    cache.store_snapshots(STEM)
-    assert not cache.snapshots_cached(STEM)
+def test_missing_annotation_cannot_be_manifested_as_complete(repo):
+    _set_figures(repo)
+    cache.store_annotations(STEM)
+    assert not cache.annotations_cached(STEM)
 
 
 def test_added_relative_import_is_hashed_even_after_previous_lookup(repo):
@@ -447,12 +487,12 @@ def test_dependency_lock_changes_invalidate_source_cache(repo, old, new):
 def test_unrelated_project_changes_preserve_cached_outputs(repo, file, old, new):
     write_outputs(repo)
     cache.store_source(STEM)
-    cache.store_snapshots(STEM)
+    cache.store_annotations(STEM)
     before = cache.source_key(STEM), cache.annotation_key(STEM)
     replace_text(getattr(repo, file), old, new)
     assert (cache.source_key(STEM), cache.annotation_key(STEM)) == before
     assert cache.source_cached(STEM, want_bom=True)
-    assert cache.snapshots_cached(STEM)
+    assert cache.annotations_cached(STEM)
 
 
 def test_cad_requirements_and_new_transitive_dependencies_invalidate(repo):
@@ -471,33 +511,32 @@ def test_cad_requirements_and_new_transitive_dependencies_invalidate(repo):
     assert cache.source_key(STEM) != before
 
 
-def test_replay_only_edits_do_not_invalidate_geometry(repo):
+def test_annotation_only_edits_do_not_invalidate_geometry(repo):
     (repo.PROCEDURES_DIR.parent / "build_procedures.py").write_text(
-        "from hardware.assembly.mark.replay import replay_one\n", encoding="utf-8"
+        "from hardware.assembly.annotation.generator import generate\n",
+        encoding="utf-8",
     )
     write_outputs(repo)
     cache.store_source(STEM)
-    cache.store_snapshots(STEM)
-    (repo.MARK_DIR / "replay.py").write_text("ENGINE = 2\n", encoding="utf-8")
+    cache.store_annotations(STEM)
+    repo.generator.write_text("ENGINE = 2\n", encoding="utf-8")
     assert cache.source_cached(STEM, want_bom=True)
-    assert not cache.snapshots_cached(STEM)
+    assert not cache.annotations_cached(STEM)
 
 
-def test_replay_tracks_helpers_outside_mark(repo):
-    (repo.MARK_DIR / "replay.py").write_text(
-        "import hardware.parts.helper\n", encoding="utf-8"
-    )
+def test_annotation_generator_tracks_imported_helpers(repo):
+    repo.generator.write_text("import hardware.parts.helper\n", encoding="utf-8")
     before = cache.annotation_key(STEM)
     repo.helper.write_text("SIZE = 2\n", encoding="utf-8")
     assert cache.annotation_key(STEM) != before
 
 
-def test_direct_geometry_import_of_mark_helper_is_still_tracked(repo):
+def test_direct_geometry_import_of_annotation_helper_is_still_tracked(repo):
     repo.procedure.write_text(
-        "import hardware.assembly.mark.replay\n", encoding="utf-8"
+        "import hardware.assembly.annotation.generator\n", encoding="utf-8"
     )
     before = cache.source_key(STEM)
-    (repo.MARK_DIR / "replay.py").write_text("ENGINE = 2\n", encoding="utf-8")
+    repo.generator.write_text("ENGINE = 2\n", encoding="utf-8")
     assert cache.source_key(STEM) != before
 
 
@@ -569,15 +608,15 @@ def test_missing_included_group_cannot_produce_a_cache_key(repo):
         cache.source_key(STEM)
 
 
-def test_orchestration_geometry_helper_in_mark_remains_a_dependency(repo):
+def test_orchestration_geometry_helper_remains_a_dependency(repo):
     assembly = repo.PROCEDURES_DIR.parent
     (assembly / "build_procedures.py").write_text(
         "from .writer import export\n", encoding="utf-8"
     )
     (assembly / "writer.py").write_text(
-        "from .mark.geometry import SIZE\n", encoding="utf-8"
+        "from .geometry import SIZE\n", encoding="utf-8"
     )
-    helper = repo.MARK_DIR / "geometry.py"
+    helper = repo.PROCEDURES_DIR.parent / "geometry.py"
     helper.write_text("SIZE = 1\n", encoding="utf-8")
     before = cache.source_key(STEM)
     helper.write_text("SIZE = 2\n", encoding="utf-8")
@@ -597,18 +636,16 @@ def test_orchestration_dependencies_invalidate_source_cache(repo):
 
 
 @pytest.mark.parametrize("change_sources", [False, True])
-def test_interrupted_cache_update_cannot_pair_old_snapshots_with_new_geometry(
+def test_interrupted_cache_update_cannot_pair_old_annotations_with_new_geometry(
     repo, change_sources
 ):
     write_outputs(repo)
-    (repo.PATCH_DIR / f"{STEM}_exploded_cam0.json").write_text(
-        '[{"id":"abcd","preop":"orig"}]', encoding="utf-8"
-    )
-    snapshot = repo.SVG_DIR / f"{STEM}_exploded_cam0_abcd.svg"
-    snapshot.write_text("old annotated drawing", encoding="utf-8")
+    _set_figures(repo)
+    annotation = repo.SVG_DIR / f"{STEM}_exploded_cam0_annotated_screws.svg"
+    annotation.write_text("old annotated drawing", encoding="utf-8")
     cache.store_source(STEM)
-    cache.store_snapshots(STEM)
-    assert cache.snapshots_cached(STEM)
+    cache.store_annotations(STEM)
+    assert cache.annotations_cached(STEM)
 
     if change_sources:
         repo.helper.write_text("SIZE = 2\n", encoding="utf-8")
@@ -617,13 +654,13 @@ def test_interrupted_cache_update_cannot_pair_old_snapshots_with_new_geometry(
         "new raw drawing", encoding="utf-8"
     )
     cache.store_source(STEM)
-    # Simulate a crash before store_snapshots. The old snapshot is intact,
+    # Simulate a crash before store_annotations. The old annotation is intact,
     # but belongs to a different generation of the source layer.
     assert cache.source_cached(STEM, want_bom=True)
-    assert not cache.snapshots_cached(STEM)
-    snapshot.write_text("new annotated drawing", encoding="utf-8")
-    cache.store_snapshots(STEM)
-    assert cache.snapshots_cached(STEM)
+    assert not cache.annotations_cached(STEM)
+    annotation.write_text("new annotated drawing", encoding="utf-8")
+    cache.store_annotations(STEM)
+    assert cache.annotations_cached(STEM)
 
 
 def test_package_initialization_changes_invalidate_source_cache(repo):
@@ -747,30 +784,26 @@ def test_manual_only_edit_preserves_geometry_cache(repo, tmp_path):
     assert cache.source_cached(STEM, want_bom=True)
 
 
-@pytest.mark.parametrize("layer", ["source", "snapshots"])
+@pytest.mark.parametrize("layer", ["source", "annotations"])
 @pytest.mark.parametrize("change", ["bytes", "key"])
 def test_cache_changed_after_hit_cannot_be_restored(repo, layer, change):
     write_outputs(repo)
-    (repo.PATCH_DIR / f"{STEM}_exploded_cam0.json").write_text(
-        '[{"id":"abcd","preop":"orig"}]', encoding="utf-8"
-    )
-    snapshot = f"{STEM}_exploded_cam0_abcd.svg"
-    (repo.SVG_DIR / snapshot).write_text("snapshot", encoding="utf-8")
+    _set_figures(repo)
+    annotation = f"{STEM}_exploded_cam0_annotated_screws.svg"
+    (repo.SVG_DIR / annotation).write_text("annotation", encoding="utf-8")
     cache.store_source(STEM)
-    cache.store_snapshots(STEM)
+    cache.store_annotations(STEM)
     assert cache.source_cached(STEM, want_bom=True)
-    assert cache.snapshots_cached(STEM)
+    assert cache.annotations_cached(STEM)
 
     if change == "bytes":
-        name = f"{STEM}_exploded.step" if layer == "source" else snapshot
+        name = f"{STEM}_exploded.step" if layer == "source" else annotation
         (repo.CACHE_DIR / STEM / name).write_text("changed after hit", encoding="utf-8")
     elif layer == "source":
         repo.helper.write_text("SIZE = 2", encoding="utf-8")
     else:
-        (repo.PATCH_DIR / f"{STEM}_exploded_cam0.json").write_text(
-            "[]", encoding="utf-8"
-        )
-    restore = cache.restore_source if layer == "source" else cache.restore_snapshots
+        _set_figures(repo, present=False)
+    restore = cache.restore_source if layer == "source" else cache.restore_annotations
     with pytest.raises(RuntimeError, match="changed"):
         restore(STEM)
 
@@ -826,18 +859,17 @@ def test_cache_store_rejects_sources_edited_after_build_started(repo):
     assert not cache.source_cached(STEM, want_bom=True)
 
 
-@pytest.mark.parametrize("layer", ["source", "snapshots"])
+@pytest.mark.parametrize("layer", ["source", "annotations"])
 def test_inputs_changed_during_copy_cannot_publish_a_cache_hit(
     repo, monkeypatch, layer
 ):
     write_outputs(repo)
-    patch = repo.PATCH_DIR / f"{STEM}_exploded_cam0.json"
-    patch.write_text('[{"id":"abcd","preop":"orig"}]', encoding="utf-8")
-    (repo.SVG_DIR / f"{STEM}_exploded_cam0_abcd.svg").write_text(
-        "snapshot", encoding="utf-8"
+    _set_figures(repo)
+    (repo.SVG_DIR / f"{STEM}_exploded_cam0_annotated_screws.svg").write_text(
+        "annotation", encoding="utf-8"
     )
     cache.store_source(STEM)
-    cache.store_snapshots(STEM)
+    cache.store_annotations(STEM)
     copy = cache.shutil.copy2
 
     def edit_inputs(src, dest):
@@ -845,40 +877,38 @@ def test_inputs_changed_during_copy_cannot_publish_a_cache_hit(
         if layer == "source":
             repo.helper.write_text("SIZE = 2\n", encoding="utf-8")
         else:
-            patch.write_text("[]", encoding="utf-8")
+            _set_figures(repo, present=False)
         return result
 
     monkeypatch.setattr(cache.shutil, "copy2", edit_inputs)
-    store = cache.store_source if layer == "source" else cache.store_snapshots
+    store = cache.store_source if layer == "source" else cache.store_annotations
     with pytest.raises(RuntimeError, match="inputs changed"):
         store(STEM)
     if layer == "source":
         assert not cache.source_cached(STEM, want_bom=True)
-    assert not cache.snapshots_cached(STEM)
+    assert not cache.annotations_cached(STEM)
 
 
-def test_snapshot_store_rejects_patches_edited_during_render(repo):
+def test_annotation_store_rejects_declarations_edited_during_render(repo):
     write_outputs(repo)
-    patch = repo.PATCH_DIR / f"{STEM}_exploded_cam0.json"
-    patch.write_text('[{"id":"abcd","preop":"orig"}]', encoding="utf-8")
-    (repo.SVG_DIR / f"{STEM}_exploded_cam0_abcd.svg").write_text(
-        "old snapshot", encoding="utf-8"
+    _set_figures(repo)
+    (repo.SVG_DIR / f"{STEM}_exploded_cam0_annotated_screws.svg").write_text(
+        "old annotation", encoding="utf-8"
     )
     cache.store_source(STEM)
     expected = cache.annotation_key(STEM)
-    patch.write_text("[]", encoding="utf-8")
+    _set_figures(repo, present=False)
     with pytest.raises(RuntimeError, match="inputs changed"):
-        cache.store_snapshots(STEM, expected_annotation_key=expected)
-    assert not cache.snapshots_cached(STEM)
+        cache.store_annotations(STEM, expected_annotation_key=expected)
+    assert not cache.annotations_cached(STEM)
 
 
-@pytest.mark.parametrize("layer", ["source", "snapshots"])
+@pytest.mark.parametrize("layer", ["source", "annotations"])
 def test_corrupt_store_copy_cannot_become_a_valid_cache_entry(repo, monkeypatch, layer):
     write_outputs(repo)
-    patch = repo.PATCH_DIR / f"{STEM}_exploded_cam0.json"
-    patch.write_text('[{"id":"abcd","preop":"orig"}]', encoding="utf-8")
-    (repo.SVG_DIR / f"{STEM}_exploded_cam0_abcd.svg").write_text(
-        "snapshot", encoding="utf-8"
+    _set_figures(repo)
+    (repo.SVG_DIR / f"{STEM}_exploded_cam0_annotated_screws.svg").write_text(
+        "annotation", encoding="utf-8"
     )
     cache.store_source(STEM)
     monkeypatch.setattr(
@@ -886,12 +916,12 @@ def test_corrupt_store_copy_cannot_become_a_valid_cache_entry(repo, monkeypatch,
         "copy2",
         lambda src, dest: dest.write_text("bad copy", encoding="utf-8"),
     )
-    store = cache.store_source if layer == "source" else cache.store_snapshots
+    store = cache.store_source if layer == "source" else cache.store_annotations
     with pytest.raises(RuntimeError, match="Artifact changed while caching"):
         store(STEM)
     if layer == "source":
         assert not cache.source_cached(STEM, want_bom=True)
-    assert not cache.snapshots_cached(STEM)
+    assert not cache.annotations_cached(STEM)
 
 
 @pytest.mark.parametrize(
@@ -994,38 +1024,34 @@ def test_cache_miss_names_unrecorded_requested_output(repo):
     assert reasons == [f"cached output not recorded: {STEM}.md"]
 
 
-def test_legacy_entry_hits_but_explains_unavailable_change_history(repo):
+@pytest.mark.parametrize("layer", ["source", "annotation"])
+def test_cache_manifest_without_input_history_is_rejected(repo, layer):
     write_outputs(repo)
     cache.store_source(STEM)
-    path = repo.CACHE_DIR / STEM / "source.key"
+    cache.store_annotations(STEM)
+    path = repo.CACHE_DIR / STEM / f"{layer}.key"
     manifest = json.loads(path.read_text(encoding="utf-8"))
     del manifest["inputs"]
     path.write_text(json.dumps(manifest), encoding="utf-8")
     reasons = []
-    assert cache.source_cached(STEM, want_bom=True, reasons=reasons)
-    assert reasons == []
-
-    repo.helper.write_text("SIZE = 2\n", encoding="utf-8")
-    assert not cache.source_cached(STEM, want_bom=True, reasons=reasons)
-    assert "previous cache has no input history" in reasons[0]
-    cache.store_source(STEM)
-    repo.helper.write_text("SIZE = 3\n", encoding="utf-8")
-    reasons = []
-    assert not cache.source_cached(STEM, want_bom=True, reasons=reasons)
-    assert reasons == ["input changed: hardware/parts/helper.py"]
+    if layer == "source":
+        assert not cache.source_cached(STEM, want_bom=True, reasons=reasons)
+    else:
+        assert not cache.annotations_cached(STEM, reasons=reasons)
+    assert "cache manifest invalid or unreadable" in reasons[0]
 
 
-@pytest.mark.parametrize("kind", ["patch", "replay", "render"])
+@pytest.mark.parametrize("kind", ["declarations", "generator", "render"])
 def test_annotation_cache_miss_names_changed_file_and_preserves_geometry(repo, kind):
     write_outputs(repo)
-    patch = repo.PATCH_DIR / f"{STEM}_exploded_cam0.json"
-    patch.write_text("[]", encoding="utf-8")
+    declarations = repo.specs
+    _set_figures(repo, present=False)
     cache.store_source(STEM)
-    cache.store_snapshots(STEM)
-    if kind == "patch":
-        changed = patch
-    elif kind == "replay":
-        changed = repo.MARK_DIR / "replay.py"
+    cache.store_annotations(STEM)
+    if kind == "declarations":
+        changed = declarations
+    elif kind == "generator":
+        changed = repo.generator
     else:
         changed = repo.SVG_DIR / f"{STEM}_exploded_cam0.svg"
     changed.write_text(changed.read_text(encoding="utf-8") + "\n", encoding="utf-8")
@@ -1035,7 +1061,7 @@ def test_annotation_cache_miss_names_changed_file_and_preserves_geometry(repo, k
     reasons = []
 
     assert cache.source_cached(STEM, want_bom=True)
-    assert not cache.snapshots_cached(STEM, reasons=reasons)
+    assert not cache.annotations_cached(STEM, reasons=reasons)
     assert reasons == [
         f"input changed: {changed.relative_to(cache.REPO_ROOT).as_posix()}"
     ]
@@ -1044,10 +1070,10 @@ def test_annotation_cache_miss_names_changed_file_and_preserves_geometry(repo, k
 def test_diagnostic_history_is_not_part_of_artifact_identity(repo):
     write_outputs(repo)
     cache.store_source(STEM)
-    cache.store_snapshots(STEM)
+    cache.store_annotations(STEM)
     path = repo.CACHE_DIR / STEM / "source.key"
     manifest = json.loads(path.read_text(encoding="utf-8"))
     manifest["inputs"] = {"old diagnostic": "value"}
     path.write_text(json.dumps(manifest), encoding="utf-8")
     assert cache.source_cached(STEM, want_bom=True)
-    assert cache.snapshots_cached(STEM)
+    assert cache.annotations_cached(STEM)

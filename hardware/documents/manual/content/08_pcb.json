@@ -28,7 +28,7 @@
     "variant": "hero",
     "figures": [
       {
-        "src": "board_10_holder_tnut_exploded_cam1_bjiv.svg"
+        "src": "board_10_holder_tnut_exploded_cam1_annotated_holder_fasteners.svg"
       },
       {
         "src": "board_10_holder_tnut_assembled_cam0.svg"
@@ -100,11 +100,11 @@
     "variant": "hero",
     "figures": [
       {
-        "src": "board_20_frame_assembled_cam1_yszm.svg",
+        "src": "board_20_frame_assembled_cam1_annotated_pcb_holder_mount_cam1.svg",
         "alt": "board_20_frame assembled"
       },
       {
-        "src": "board_20_frame_assembled_cam0_zjie.svg"
+        "src": "board_20_frame_assembled_cam0_annotated_pcb_holder_mount_cam0.svg"
       }
     ],
     "notes": [
@@ -135,10 +135,10 @@
     "variant": "hero",
     "figures": [
       {
-        "src": "board_30_pcb_exploded_cam1_pyik.svg"
+        "src": "board_30_pcb_exploded_cam1_annotated_pcb_fasteners.svg"
       },
       {
-        "src": "board_30_pcb_assembled_cam0_ejhe.svg"
+        "src": "board_30_pcb_assembled_cam0_annotated_pcb_face.svg"
       }
     ],
     "notes": [
@@ -273,11 +273,11 @@
     "variant": "hero",
     "figures": [
       {
-        "src": "board_32_tube_holder_assembled_cam1_gors.svg",
+        "src": "board_32_tube_holder_assembled_cam1_annotated_tube_holder.svg",
         "alt": "board_32_tube_holder assembled"
       },
       {
-        "src": "board_32_tube_holder_assembled_cam0_xywn.svg"
+        "src": "board_32_tube_holder_assembled_cam0_annotated_tube_holder_mount.svg"
       }
     ],
     "notes": [
@@ -306,7 +306,7 @@
       "small": "board_40"
     },
     "main": {
-      "src": "board_40_teflon_assembled_cam0_nrvk.svg",
+      "src": "board_40_teflon_assembled_cam0_annotated_teflon_tube.svg",
       "style": "transform: translateX(-35mm);"
     },
     "notes": [
