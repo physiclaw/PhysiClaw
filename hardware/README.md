@@ -70,7 +70,7 @@ hardware/
 │   ├── manual/            Assembly instructions and manual builder
 │   ├── sourcing/          Suppliers and sourcing guide builder
 │   ├── drawing/           Frame cut-and-drill drawings
-│   └── assets/            Shared icons and illustrations
+│   └── assets/            Styles, scripts, icons and illustrations
 ├── port/                  Platform-specific helpers
 ├── __main__.py            Python command-line entry point
 ├── check.py               Source consistency checks

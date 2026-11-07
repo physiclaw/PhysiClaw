@@ -73,11 +73,13 @@ def world(tmp_path, monkeypatch):
         json.dumps(
             [
                 {
+                    "type": "solo",
+                    "page": "frame",
                     "figures": [
                         {"src": "frame_10_base_assembled_cam0.svg"},
                         {"src": figure.filename},
                         {"src": "wire_splice.svg"},
-                    ]
+                    ],
                 }
             ]
         ),
@@ -99,7 +101,8 @@ def write_bom(content, vendors, rows: list[dict], extrusions=EXTRUSION_ROWS) -> 
     of them."""
     rows = rows + extrusions
     (content / "11_bom.json").write_text(
-        json.dumps([{"type": "bom", "rows_source": "bom"}]), encoding="utf-8"
+        json.dumps([{"type": "bom", "page": "bom", "rows_source": "bom"}]),
+        encoding="utf-8",
     )
     (content.parent.parent / "bom" / "bom.json").write_text(
         json.dumps(rows), encoding="utf-8"
@@ -295,9 +298,26 @@ def test_invalid_annotation_declaration_is_reported(world, figure, message):
 # ── manual content ────────────────────────────────────────────────────────────
 
 
+def test_manual_layout_typo_is_reported_before_rendering(world):
+    (world.content / "02_x.json").write_text(
+        json.dumps([{"type": "tall-lefft", "page": "install", "figures": []}]),
+        encoding="utf-8",
+    )
+
+    assert_finding("02_x.json: page 'install'.type: unknown layout 'tall-lefft'")
+
+
 def test_manual_reference_to_unknown_render_is_flagged(world):
     (world.content / "02_x.json").write_text(
-        json.dumps([{"figures": [{"src": "ghost_10_gone_exploded_cam0.svg"}]}]),
+        json.dumps(
+            [
+                {
+                    "type": "solo",
+                    "page": "example",
+                    "figures": [{"src": "ghost_10_gone_exploded_cam0.svg"}],
+                }
+            ]
+        ),
         encoding="utf-8",
     )
 
@@ -306,7 +326,15 @@ def test_manual_reference_to_unknown_render_is_flagged(world):
 
 def test_manual_reference_to_undeclared_view_is_flagged(world):
     (world.content / "02_x.json").write_text(
-        json.dumps([{"figures": [{"src": "frame_10_base_exploded_cam7.svg"}]}]),
+        json.dumps(
+            [
+                {
+                    "type": "solo",
+                    "page": "example",
+                    "figures": [{"src": "frame_10_base_exploded_cam7.svg"}],
+                }
+            ]
+        ),
         encoding="utf-8",
     )
 
@@ -318,9 +346,11 @@ def test_manual_figure_without_annotation_is_flagged(world):
         json.dumps(
             [
                 {
+                    "type": "solo",
+                    "page": "frame",
                     "figures": [
                         {"src": "frame_10_base_assembled_cam0_annotated_screws.svg"}
-                    ]
+                    ],
                 }
             ]
         ),

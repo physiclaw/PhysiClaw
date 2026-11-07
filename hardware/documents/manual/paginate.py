@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import copy
 
+from hardware.documents.common import loc
+
 # Max table rows per BOM page. Tuned to the landscape page height for airy
 # spacing (leaving margin below the last row); if the parts list grows, more
 # pages are added automatically.
@@ -127,11 +129,13 @@ def paginate_bom_pages(pages: list[dict]) -> None:
         cont["rows"] = chunk
         # Tag the continuation in the masthead title (the in-body label was
         # dropped to give the table more room), per translation.
-        title = cont.get("head", {}).get("title")
+        title = (cont.get("head") or {}).get("title")
         if title:
+            languages = title if isinstance(title, dict) else BOM_CONT_SUFFIX
             cont["head"]["title"] = {
-                lang: text + BOM_CONT_SUFFIX.get(lang, BOM_CONT_SUFFIX["en"])
-                for lang, text in title.items()
+                lang: loc(title, lang)
+                + BOM_CONT_SUFFIX.get(lang, BOM_CONT_SUFFIX["en"])
+                for lang in languages
             }
         extras.append(cont)
     if extras:

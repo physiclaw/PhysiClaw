@@ -74,6 +74,8 @@ from hardware.parts.custom.xy_joint_left import (
 from hardware.parts.custom.xy_joint_right import XyJointRight
 from hardware.parts.standard.screw import FHCS_DIMS, Screw, head_skirt
 
+Vector3 = tuple[float, float, float]
+
 FHCS_LENGTH = 10  # mm — M3 FHCS overall length
 JOINT_EXPLODE = 30  # mm — exploded: joint lifted outboard along world -Y
 SCREW_EXPLODE = 25  # mm — exploded: FHCS lifted above its CSK pocket along
@@ -147,7 +149,7 @@ class LI20Joint(BaseAssembly):
 
         joints = []
         # Hooks for downstream consumers (linear_30_x, linear_41_idler_lj1, …):
-        # world (x, y, z) per joint of each feature center, indexed
+        # world (x, y, z) in mm per joint of each feature center, indexed
         # [0] = LEFT slider, [1] = RIGHT slider.
         #   * big_csk_world_centers       — big CSK (M5 → 1020 t-nut)
         #   * extra_hole_world_centers    — first extra_hole on top face (M4 thru)
@@ -160,13 +162,13 @@ class LI20Joint(BaseAssembly):
         # Plus world (dx, dy, dz) per joint of the slant face frame:
         #   * slant_x_dir_worlds          — direction along the slant edge
         #   * slant_z_dir_worlds          — slant face outward normal
-        self.big_csk_world_centers = []
-        self.extra_hole_world_centers = []
-        self.extra_hole2_world_centers = []
-        self.front_pocket_world_centers = []
-        self.slant_pocket_world_centers = []
-        self.slant_x_dir_worlds = []
-        self.slant_z_dir_worlds = []
+        self.big_csk_world_centers: list[Vector3] = []
+        self.extra_hole_world_centers: list[Vector3] = []
+        self.extra_hole2_world_centers: list[Vector3] = []
+        self.front_pocket_world_centers: list[Vector3] = []
+        self.slant_pocket_world_centers: list[Vector3] = []
+        self.slant_x_dir_worlds: list[Vector3] = []
+        self.slant_z_dir_worlds: list[Vector3] = []
         # LEFT slider (index 0) gets XyJointRight; RIGHT slider gets
         # XyJointLeft — the joints are swapped (and 180° spun via
         # x_dir below) so their cutout / slant features land on the

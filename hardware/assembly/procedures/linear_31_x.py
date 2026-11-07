@@ -57,6 +57,11 @@ class LI31X(BaseAssembly):
     camera = [MAIN_FRAME_VIEW, Camera(-1.95, -64.14, -1.85)]
     views = [EXPLODED_CAM1]
 
+    # Placement features available after build().
+    joint_base: LI20Joint
+    beam_slot_face_world_y: float
+    beam_center_world_z: float
+
     def _build(self) -> Compound:
         base = LI20Joint(exploded=False)
         base_compound = base.build()

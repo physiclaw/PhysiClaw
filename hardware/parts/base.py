@@ -15,12 +15,11 @@ BomCategory = Literal["standard", "custom"]
 # transformed part.
 BOM_REGISTRY: list[tuple[tuple, int, BomCategory, str | None]] = []
 
-# Geometry cache: geom_key → (pristine _build() result, post-build
-# state dict). `build()` returns copy.copy() of the shape (shares OCCT
-# TShape; fresh Python wrapper so anytree re-parenting works). State
-# carries post-build instance attrs downstream consumers read. Unbounded;
-# subprocess batching in build_procedures bounds total memory.
-_BUILD_CACHE: dict[tuple, tuple[object, dict]] = {}
+# Geometry cache: geom_key → pristine _build() shape. Each instance gets a
+# separate wrapper so assembly parenting and labels cannot mutate the template.
+# Only leaf parts opt in; assemblies recompose leaves to retain their anchors.
+# Subprocess batching in build_procedures bounds this cache's lifetime.
+_BUILD_CACHE: dict[tuple, object] = {}
 
 
 class BasePart:
@@ -87,21 +86,6 @@ class BasePart:
     def _build(self):
         raise NotImplementedError
 
-    def _snapshot_state(self):
-        """Capture instance state before `_build()` runs. Override to
-        opt into post-build state caching (assemblies do this).
-        Default: no state."""
-        return None
-
-    def _diff_state(self, snapshot):
-        """Return the state dict to cache. Receives whatever
-        `_snapshot_state` returned."""
-        return {}
-
-    def _restore_state(self, state):
-        """Apply cached state to `self` on a cache hit."""
-        pass
-
     def build(self):
         """Return the build123d shape (labeled, no STEP export).
 
@@ -110,28 +94,22 @@ class BasePart:
         process-wide ``_BUILD_CACHE`` keyed by ``geom_key()``: the first
         instance of each unique geometry runs ``_build()``; subsequent
         instances return ``copy.copy()`` of the cached pristine shape.
-        That copy is cheap relative to rebuilding an expensive leaf, but
-        it is a full geometry deepcopy (build123d's ``copy.copy`` ⇒
-        ``copy.deepcopy``), so assemblies opt OUT (``geom_key`` → None)
-        and are recomposed from their cached leaves instead of cached and
-        deep-copied. The ``_snapshot_state`` / ``_diff_state`` /
-        ``_restore_state`` hooks below let a caching subclass carry
-        post-build instance attrs across a cache hit; no subclass
-        currently needs them.
+        build123d's ``copy.copy`` deep-copies the wrapper before sharing the
+        OCCT TShape. Copying a whole assembly is expensive, so assemblies
+        opt out (``geom_key`` → None) and recompose their cached leaves.
+        A cached leaf must not depend on instance attributes set by ``_build``;
+        compute such attributes in ``__init__`` or opt out of caching.
         """
         if (cached := getattr(self, "_built", None)) is not None:
             return cached
         gkey = self.geom_key()
         if gkey is None:
             shape = self._build()
-        elif (entry := _BUILD_CACHE.get(gkey)) is not None:
-            cached_shape, cached_state = entry
-            shape = copy.copy(cached_shape)
-            self._restore_state(cached_state)
         else:
-            snap = self._snapshot_state()
-            shape = self._build()
-            _BUILD_CACHE[gkey] = (shape, self._diff_state(snap))
+            shape = _BUILD_CACHE.get(gkey)
+            if shape is None:
+                shape = self._build()
+                _BUILD_CACHE[gkey] = shape
             shape = copy.copy(shape)
         if not getattr(shape, "label", None):
             shape.label = type(self).__name__

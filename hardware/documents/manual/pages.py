@@ -6,6 +6,7 @@ from pathlib import Path
 from hardware.documents import BuildError
 from hardware.documents.bom.loader import load_bom_rows
 from hardware.documents.dimensions import resolve_dimensions
+from hardware.documents.manual.schema import validate_page
 
 CONTENT_DIR = Path(__file__).resolve().parent / "content"
 
@@ -20,7 +21,7 @@ def load_chapter(path: Path) -> list[dict]:
             f"{path.name}: manual chapter must be a JSON array of page objects"
         )
     chapter = resolve_dimensions(chapter, source=str(path))
-    for page in chapter:
+    for number, page in enumerate(chapter, start=1):
         if "rows_source" in page:
             if page.get("type") != "bom" or page["rows_source"] != "bom":
                 raise BuildError(
@@ -36,6 +37,7 @@ def load_chapter(path: Path) -> list[dict]:
             raise BuildError(
                 f"{path.name}: BOM pages must reference the shared list with rows_source: bom"
             )
+        validate_page(page, source=path.name, number=number)
     return chapter
 
 

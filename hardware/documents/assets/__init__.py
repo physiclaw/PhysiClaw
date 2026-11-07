@@ -59,3 +59,6 @@ class SvgFigures:
 
 icon = SvgIcons()
 figure = SvgFigures()
+
+# Authored note names shared by validation and rendering; SVGs stay lazy.
+NOTE_ICONS = {"info": lambda: icon.info_svg}

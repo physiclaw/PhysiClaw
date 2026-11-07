@@ -452,55 +452,22 @@ def _incomplete(stem: str, bom_flags: tuple[str, ...]) -> list[str]:
     return missing
 
 
-def _dispatch(
-    batch_size: int,
-    bom_flags: tuple[str, ...] = (),
-    use_cache: bool = True,
-    *,
-    jobs: int = 1,
-) -> int:
-    """Build every batch, skipping steps the cache already covers.
+def _restore_cached_batches(
+    batches: list[list[str]],
+    inputs: dict[str, tuple[str, str]],
+    bom_flags: tuple[str, ...],
+    use_cache: bool,
+) -> tuple[list[list[str]], int, int]:
+    """Restore validated geometry, refresh annotations, and return cache misses.
 
-    Per stem (see ``assembly/cache.py``): if the *source* layer is fresh
-    (.step / raw .svg / BOM unchanged) restore it instead of rebuilding,
-    then restore or regenerate annotation paths and manual figures.
-    The STEP and raw SVG stay cached when only annotation inputs change. Stems
-    with no cache hit go to a worker subprocess in family batches; crashed stems
-    solo-retry. ``bom_flags`` (--bom / --bom-delta)
-    pass through so workers also emit BOMs."""
+    The counts distinguish fully cached steps from steps whose geometry was
+    reused but whose annotations needed regeneration. Missing geometry is left
+    to the worker stage, preserving the original family batch order.
+    """
     want_bom = "--bom" in bom_flags
     want_delta = "--bom-delta" in bom_flags
     want_any_bom = want_bom or want_delta
-    # With the cache on, don't wipe everything up front (it would just be
-    # restored again) — the cache owns each stem's freshness, and only the
-    # miss stems are cleared, right before they rebuild. A --no-cache run
-    # still wipes all stale outputs so deleted/renamed steps don't survive.
-    if not use_cache:
-        _clear_outputs(clear_bom=want_any_bom)
-        buildlog.event(
-            "cache_bypassed",
-            "Cache bypassed: --no-cache requested; rebuilding all assemblies",
-        )
-
-    t_wall0 = time.monotonic()
-    _check_cancelled()
-    batches = _batches(batch_size)
-    stems = dict.fromkeys(s for batch in batches for s in batch)
-    total = len(stems)
-    buildlog.event(
-        "build_plan",
-        f"{total} assemblies, 2 variants each; {jobs} CAD workers; cache {'enabled' if use_cache else 'bypassed'}",
-        total=total,
-        jobs=jobs,
-        use_cache=use_cache,
-        batch_size=batch_size,
-    )
-
-    inputs = {}
-    for stem in stems:
-        _check_cancelled()
-        inputs[stem] = (stepcache.source_key(stem), stepcache.annotation_key(stem))
-
+    total = len(inputs)
     # Classify each stem once (source_cached verifies the entry's hashes — not
     # something to run twice); the loop below reuses this map.
     cached: dict[str, bool] = {}
@@ -515,8 +482,8 @@ def _dispatch(
         )
 
     if use_cache:
-        pruned = stepcache.prune(stems)
-        for s in stems:
+        pruned = stepcache.prune(inputs)
+        for s in inputs:
             _check_cancelled()
             reasons: list[str] = []
             cached[s] = stepcache.source_cached(
@@ -588,7 +555,24 @@ def _dispatch(
             for s in misses:
                 stepcache.clear_outputs(s)
         pending.append(misses)
+    return pending, n_fresh, n_reannotated
 
+
+def _build_batches(
+    pending: list[list[str]],
+    inputs: dict[str, tuple[str, str]],
+    bom_flags: tuple[str, ...],
+    *,
+    jobs: int,
+) -> tuple[int, int]:
+    """Supervise CAD workers, recover crashes, and cache completed outputs.
+
+    Each worker owns distinct stems. The nested callbacks share only this run's
+    input hashes and progress; cancellation joins workers before salvaging steps.
+    Return counts of failed batches and recovery attempts.
+    """
+    want_bom = "--bom" in bom_flags
+    want_delta = "--bom-delta" in bom_flags
     retry_attempts: list[tuple[str, int]] = []
     stored = set()
 
@@ -670,7 +654,7 @@ def _dispatch(
     # concurrently within one interpreter. Each batch owns distinct stems.
     try:
         with ThreadPoolExecutor(max_workers=jobs) as executor:
-            results = list(executor.map(build_batch, pending))
+            failed_batches = sum(not ok for ok in executor.map(build_batch, pending))
         _check_cancelled()
     except KeyboardInterrupt:
         # The executor has joined every worker and drained its events. Keep
@@ -695,16 +679,31 @@ def _dispatch(
                     traceback=traceback.format_exc(),
                 )
         raise
+    return failed_batches, len(retry_attempts)
+
+
+def _verify_build(
+    inputs: dict[str, tuple[str, str]],
+    bom_flags: tuple[str, ...],
+    failed_batches: int,
+    *,
+    n_fresh: int,
+    n_reannotated: int,
+    retries: int,
+    started: float,
+) -> int:
+    """Reject changed sources or incomplete outputs, then report the whole run."""
+    total = len(inputs)
     for stem, expected in inputs.items():
         _check_cancelled()
         if (stepcache.source_key(stem), stepcache.annotation_key(stem)) != expected:
             raise RuntimeError(f"Build inputs changed during the run; rebuild {stem}")
-    wall = time.monotonic() - t_wall0
-    failed_variants = [(s, v) for s in stems for v in _incomplete(s, bom_flags)]
+    wall = time.monotonic() - started
+    failed_variants = [(s, v) for s in inputs for v in _incomplete(s, bom_flags)]
     ok_assemblies = total - len({s for s, _ in failed_variants})
     n_step = len(list(STEP_DIR.glob("*.step")))
     n_svg = len(list(SVG_DIR.glob("*.svg")))
-    failed = bool(failed_variants) or not all(results)
+    failed = bool(failed_variants) or bool(failed_batches)
     for stem, variant in failed_variants:
         buildlog.event(
             "output_missing",
@@ -713,7 +712,7 @@ def _dispatch(
             stem=stem,
             variant=variant,
         )
-    if not all(results):
+    if failed_batches:
         buildlog.event(
             "verification_failed",
             "Worker verification failed even though output files may exist; inspect the error events",
@@ -722,7 +721,7 @@ def _dispatch(
     buildlog.event(
         "build_summary",
         f"{ok_assemblies}/{total} assemblies have complete outputs; {n_fresh} cached, {n_reannotated} reannotated, "
-        f"{ok_assemblies - n_fresh - n_reannotated} rebuilt; {len(retry_attempts)} retries; "
+        f"{ok_assemblies - n_fresh - n_reannotated} rebuilt; {retries} retries; "
         f"{n_step} STEP and {n_svg} SVG files present",
         level="error" if failed else "info",
         status="failed" if failed else "success",
@@ -731,14 +730,68 @@ def _dispatch(
         cached=n_fresh,
         reannotated=n_reannotated,
         rebuilt=ok_assemblies - n_fresh - n_reannotated,
-        retries=len(retry_attempts),
+        retries=retries,
         failed_outputs=len(failed_variants),
-        failed_batches=results.count(False),
+        failed_batches=failed_batches,
         step_files=n_step,
         svg_files=n_svg,
         duration_s=round(wall, 3),
     )
     return int(failed)
+
+
+def _dispatch(
+    batch_size: int,
+    bom_flags: tuple[str, ...] = (),
+    use_cache: bool = True,
+    *,
+    jobs: int = 1,
+) -> int:
+    """Plan inputs, restore cache hits, build missing steps, and verify the run."""
+    want_any_bom = "--bom" in bom_flags or "--bom-delta" in bom_flags
+    # With the cache on, don't wipe everything up front (it would just be
+    # restored again) — the cache owns each stem's freshness, and only the
+    # miss stems are cleared, right before they rebuild. A --no-cache run
+    # still wipes all stale outputs so deleted/renamed steps don't survive.
+    if not use_cache:
+        _clear_outputs(clear_bom=want_any_bom)
+        buildlog.event(
+            "cache_bypassed",
+            "Cache bypassed: --no-cache requested; rebuilding all assemblies",
+        )
+
+    t_wall0 = time.monotonic()
+    _check_cancelled()
+    batches = _batches(batch_size)
+    stems = dict.fromkeys(s for batch in batches for s in batch)
+    total = len(stems)
+    buildlog.event(
+        "build_plan",
+        f"{total} assemblies, 2 variants each; {jobs} CAD workers; cache {'enabled' if use_cache else 'bypassed'}",
+        total=total,
+        jobs=jobs,
+        use_cache=use_cache,
+        batch_size=batch_size,
+    )
+
+    inputs = {}
+    for stem in stems:
+        _check_cancelled()
+        inputs[stem] = (stepcache.source_key(stem), stepcache.annotation_key(stem))
+
+    pending, n_fresh, n_reannotated = _restore_cached_batches(
+        batches, inputs, bom_flags, use_cache
+    )
+    failed_batches, retries = _build_batches(pending, inputs, bom_flags, jobs=jobs)
+    return _verify_build(
+        inputs,
+        bom_flags,
+        failed_batches,
+        n_fresh=n_fresh,
+        n_reannotated=n_reannotated,
+        retries=retries,
+        started=t_wall0,
+    )
 
 
 @locked_main

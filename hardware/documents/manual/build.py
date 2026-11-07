@@ -46,6 +46,7 @@ from typing import Callable
 from hardware import buildlog
 from hardware.build_lock import locked_main
 from hardware.documents import BuildError
+from hardware.documents.assets import NOTE_ICONS as NOTE_ICONS
 from hardware.documents.assets import icon
 from hardware.documents.common import (
     HTML_LANG,
@@ -71,15 +72,13 @@ from hardware.port.desktop import find_browser
 from hardware.scheme import OUTPUT_DIR as _OUTPUT_ROOT
 from hardware.scheme import SVG_NAME_RE
 
-# Note "icon" keys -> SVG accessors for the leading icon of a flex callout.
-NOTE_ICONS = {"info": lambda: icon.info_svg}
-
 # --------------------------------------------------------------------------- #
 # Paths — package files are resolved relative to this file; output paths come
 # from hardware.scheme, so the cwd does not matter.
 # --------------------------------------------------------------------------- #
 SCRIPT_DIR = Path(__file__).resolve().parent
-STYLES_CSS = SCRIPT_DIR / "styles.css"
+ASSETS_DIR = SCRIPT_DIR.parent / "assets" / "manual"
+STYLES_CSS = ASSETS_DIR / "styles.css"
 OUTPUT_DIR = _OUTPUT_ROOT / "manual"
 
 # Output filename per language.
@@ -235,7 +234,7 @@ def page_shell(page: dict, ctx: Ctx, body: str, section_class: str = "") -> str:
     This is the single place the header/footer boilerplate is written. Every
     interior page carries the masthead (openers get an empty title), while the
     cover and back render their own bespoke chrome and so opt out via
-    ``section_class``; those two also omit ``page`` and get no `.foot`.
+    ``section_class``. They keep their page IDs but have no `.foot`.
     """
     cls = f"page {section_class}".strip()
     # Each page's semantic ``page`` id doubles as its HTML anchor (so TOC and

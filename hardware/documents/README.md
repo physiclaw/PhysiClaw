@@ -10,7 +10,11 @@ The website serves generated hardware documents from published release assets.
 | Suppliers, reference prices and ordering instructions | `sourcing/vendors/cn.json` or `sourcing/vendors/global.json` |
 | Optional tools and their suppliers | `sourcing/optional_tools.json` |
 | Assembly instructions and chapter layout | `manual/content/*.json` |
-| Manual or sourcing appearance | The respective `styles.css` |
+| Manual appearance | `assets/manual/styles.css` |
+| Sourcing appearance | `assets/sourcing/styles.css` |
+| Sourcing checklist and copy interactions | `assets/sourcing/checklist.js` (inlined into HTML) |
+| Manual page structure and required fields | `manual/schema.py` |
+| Extrusion parts and BOM validation | `drawing/extrusion_parts.py` |
 | Extrusion drawing presentation | `drawing/extrusion.py` |
 | Engineering dimensions and profiles | `../assembly/travel_ranges.py` and `../parts/standard/extrusion_spec.py` |
 | Document date | `MANUAL_VERSION`, updated at the user's discretion |
@@ -52,6 +56,12 @@ fresh documents in its private tree, using the validated persistent CAD cache.
 
 Direct Python entry points are `hardware.documents.manual.build`,
 `hardware.documents.sourcing.build`, and `hardware.documents.drawing.extrusion`.
+
+The manual loader validates page layouts and required fields before rendering.
+Errors name the chapter, page ID and field; `make hw-check` runs the same
+validation. Add new page types to both `manual/schema.py` and `manual/build.py`.
+Inline HTML and styles remain authored content, and empty translations still
+fall back to English.
 
 The manual builder's `--browser` option accepts `chrome` (default, Chrome/Chromium)
 or `edge` (Windows only). macOS and Linux use Chrome/Chromium. The selection

@@ -47,7 +47,7 @@ from hardware.assembly.annotation.specs import FIGURES
 from hardware.documents import BuildError
 from hardware.documents.bom.loader import bom_row_findings, read_bom_rows
 from hardware.documents.dimensions import resolve_dimensions
-from hardware.documents.drawing.extrusion import cut_list
+from hardware.documents.drawing.extrusion_parts import cut_list
 from hardware.documents.manual.assets import HAND_FIGURES
 from hardware.documents.manual.pages import CONTENT_DIR, load_chapter
 from hardware.documents.sourcing import VENDOR_FILES
@@ -364,7 +364,7 @@ def check_sourcing(rows: list) -> list[str]:
 
 
 def check_extrusions(rows: list) -> list[str]:
-    """Each extrusion the model cuts (``drawing.extrusion.SPECS``,
+    """Each extrusion the model cuts (``drawing.extrusion_parts.SPECS``,
     lengths from ``travel_ranges``) needs a BOM row stating that length in
     both languages — the join the drawing builder makes; its refusal is the
     finding."""

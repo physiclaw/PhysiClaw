@@ -102,8 +102,8 @@ class BaseAssembly(BasePart):
     # Assemblies deliberately DO NOT opt into the geometry cache
     # (``geom_key`` stays the BasePart default of ``None``). The cache
     # returns ``copy.copy()`` of the cached shape, and build123d's
-    # ``copy.copy`` is a full ``copy.deepcopy`` — every face is
-    # ``BRepBuilderAPI_Copy``'d and the anytree children recursed. For a
+    # ``copy.copy`` first deep-copies the wrapper and its anytree children
+    # before restoring the shared OCCT TShape. For a
     # leaf part that's one cheap copy of an expensive-to-build solid, a
     # clear win. For an assembly *compound* it deep-duplicates the entire
     # accumulated tree, so caching it costs O(all faces) per reuse and
