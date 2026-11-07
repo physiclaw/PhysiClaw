@@ -17,7 +17,6 @@ import cv2
 import numpy as np
 
 from physiclaw.common.logger.evidence import record_event
-from physiclaw.core.arm_geometry import X_TRAVEL, Y_TRAVEL
 from physiclaw.core.bridge import CalibrationState
 from physiclaw.core.calibration._common import (
     _tap_and_read,
@@ -27,7 +26,7 @@ from physiclaw.core.calibration._common import (
 )
 from physiclaw.core.calibration.transforms import PARK_PCT
 from physiclaw.core.geometry import apply_affine, validate_affine
-from physiclaw.core.hardware.arm import StylusArm
+from physiclaw.core.hardware.arm import X_TRAVEL, Y_TRAVEL, StylusArm
 
 log = logging.getLogger(__name__)
 

@@ -28,6 +28,7 @@ from hardware.build_lock import locked_main
 from hardware.documents import BuildError
 from hardware.documents.bom.loader import load_bom_rows
 from hardware.documents.common import loc
+from hardware.documents.dimensions import resolve_dimensions
 from hardware.documents.sourcing import VENDOR_FILES
 from hardware.documents.sourcing.build import (
     OPTIONAL_TOOLS_FILE,
@@ -240,6 +241,7 @@ def collect_candidates(
                 candidate.usages.append(usage)
 
     for lang, authored in vendors.items():
+        authored = resolve_dimensions(authored, source=str(VENDOR_FILES[lang]))
         entries, added, stale = sync_entries(rows, authored)
         if added or stale:
             raise BuildError(

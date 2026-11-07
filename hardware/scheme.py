@@ -24,6 +24,11 @@ _HW = REPO_ROOT / "hardware"
 # Release preparation gives every subprocess a fresh, private output tree.
 # Interactive builds retain the usual location.
 OUTPUT_DIR = Path(os.environ.get("PHYSICLAW_HW_OUTPUT", _HW / "output")).resolve()
+# Internal CAD subprocess profile. Its STEP files and cache must never replace
+# manufacturing outputs, even when it inherits the same output override.
+MANUAL_ILLUSTRATIONS = os.environ.get("PHYSICLAW_HW_MANUAL_ILLUSTRATIONS") == "1"
+if MANUAL_ILLUSTRATIONS:
+    OUTPUT_DIR /= "manual-illustrations"
 STEP_DIR = OUTPUT_DIR / "step"
 SVG_DIR = OUTPUT_DIR / "svg"
 BOM_DIR = OUTPUT_DIR / "bom"

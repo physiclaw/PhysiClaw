@@ -8,6 +8,7 @@ from collections import Counter
 from pathlib import Path
 
 from hardware.documents import BuildError
+from hardware.documents.dimensions import resolve_dimensions
 
 BOM_FILE = Path(__file__).resolve().parent / "bom.json"
 
@@ -20,7 +21,7 @@ def read_bom_rows() -> list:
         raise BuildError(f"Cannot read purchasing BOM {BOM_FILE}: {exc}") from exc
     if not isinstance(rows, list):
         raise BuildError(f"Purchasing BOM {BOM_FILE} must be a JSON array")
-    return rows
+    return resolve_dimensions(rows, source=str(BOM_FILE))
 
 
 def bom_row_findings(rows: list) -> list[str]:

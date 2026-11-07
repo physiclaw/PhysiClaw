@@ -107,7 +107,7 @@
             "en": "Linear rail",
             "zh": "直线导轨"
           },
-          "spec": "MGN9H, 240 mm",
+          "spec": "MGN9H, {Y_RAIL_LENGTH} mm",
           "qty": "2"
         },
         {
@@ -116,7 +116,7 @@
             "zh": "半圆头螺栓"
           },
           "spec": "M3×8",
-          "qty": "24"
+          "qty": "{Y_RAIL_FASTENERS}"
         },
         {
           "component": {
@@ -127,7 +127,7 @@
             "en": "Drop-In M3",
             "zh": "船形螺母 M3"
           },
-          "qty": "24"
+          "qty": "{Y_RAIL_FASTENERS}"
         }
       ]
     }
@@ -300,7 +300,7 @@
             "en": "Extrusion 1020",
             "zh": "1020 铝型材"
           },
-          "spec": "185 mm",
+          "spec": "{X_BEAM_LENGTH} mm",
           "qty": "1"
         },
         {
@@ -417,7 +417,7 @@
             "en": "Linear rail",
             "zh": "直线导轨"
           },
-          "spec": "MGN9H, 150 mm",
+          "spec": "MGN9H, {X_RAIL_LENGTH} mm",
           "qty": "1"
         },
         {
@@ -426,7 +426,7 @@
             "zh": "半圆头螺栓"
           },
           "spec": "M3×8",
-          "qty": "7"
+          "qty": "{X_RAIL_FASTENERS}"
         },
         {
           "component": {
@@ -437,7 +437,7 @@
             "en": "Drop-In M3",
             "zh": "船形螺母 M3"
           },
-          "qty": "7"
+          "qty": "{X_RAIL_FASTENERS}"
         }
       ]
     }

@@ -14,9 +14,15 @@ from functools import cache
 from pathlib import Path
 from typing import Protocol
 
+from hardware.assembly.travel_ranges import ILLUSTRATION_TRAVEL, X_TRAVEL, Y_TRAVEL
 from hardware.documents import BuildError
 from hardware.documents.assets import figure, icon
-from hardware.scheme import SVG_DIR, SVG_NAME_RE
+from hardware.scheme import OUTPUT_DIR, SVG_DIR, SVG_NAME_RE
+
+# Never fall back to resized manufacturing renders: their crops and annotation
+# coordinates no longer match the authored manual layout.
+if (X_TRAVEL, Y_TRAVEL) != ILLUSTRATION_TRAVEL:
+    SVG_DIR = OUTPUT_DIR / "manual-illustrations" / "svg"
 
 ASSETS_SUBDIR = "assets"  # where external mode writes images, relative to the HTML.
 
@@ -34,7 +40,7 @@ def _render_stem(basename: str) -> str:
 
 def _require_renders(names) -> None:
     """Raise a clear ``BuildError`` if any referenced SVG render is absent from
-    output/svg. Those files come from the assembly render pipeline (not this
+    the selected render pool. Those files come from the assembly pipeline (not this
     package), so the message names exactly what's missing and the command that
     regenerates precisely those stems."""
     missing = sorted(n for n in names if not (SVG_DIR / n).exists())
@@ -43,18 +49,22 @@ def _require_renders(names) -> None:
     stems = sorted({_render_stem(n) for n in missing})
     listed = "\n".join(f"    {n}" for n in missing)
     raise BuildError(
-        f"{len(missing)} referenced SVG render(s) missing from output/svg:\n"
+        f"{len(missing)} referenced SVG render(s) missing from {SVG_DIR}:\n"
         f"{listed}\n\n"
         "These are produced by the assembly render pipeline.\n"
         "Regenerate them with:\n"
-        f"    uv run --group cad python -m hardware.assembly.build_procedures "
-        f"--stems {' '.join(stems)}"
+        "    uv run --group cad python -m hardware build"
+        + (
+            f"\nAffected stems: {' '.join(stems)}"
+            if (X_TRAVEL, Y_TRAVEL) != ILLUSTRATION_TRAVEL
+            else f" --stems {' '.join(stems)}"
+        )
     )
 
 
 @cache
 def _read_svg(basename: str) -> str:
-    """Read one SVG render from output/svg (cached — several are reused)."""
+    """Read one SVG from the selected pool (cached — several are reused)."""
     _require_renders([basename])
     return (SVG_DIR / basename).read_text(encoding="utf-8")
 

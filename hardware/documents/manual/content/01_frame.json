@@ -56,8 +56,8 @@
             "zh": "2040 铝型材"
           },
           "spec": {
-            "en": "345 mm · CB",
-            "zh": "345 mm · 沉孔"
+            "en": "{Y_EXTRUSION_LENGTH} mm · CB",
+            "zh": "{Y_EXTRUSION_LENGTH} mm · 沉孔"
           },
           "qty": "2"
         },
@@ -66,7 +66,7 @@
             "en": "Extrusion 2040",
             "zh": "2040 铝型材"
           },
-          "spec": "190 mm",
+          "spec": "{X_EXTRUSION_LENGTH} mm",
           "qty": "2"
         },
         {

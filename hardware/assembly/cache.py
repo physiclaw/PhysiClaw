@@ -3,8 +3,8 @@
 Three output kinds, two invalidation layers (their "subtly different logic"):
 
   * ``.step`` (geometry) and the raw ``.svg`` (render) share one **source
-    key** — a content hash of the procedure's transitive project
-    import closure (hardware and shared ``src.physiclaw`` sources) plus
+    key** — a content hash of the procedure's transitive hardware
+    import closure plus
     the CAD dependency group's locked transitive toolchain and platform.
     Unrelated application metadata and agent/dev dependencies are excluded.
     Source tracking is conservative at file granularity. The cumulative /
@@ -55,6 +55,7 @@ from pathlib import Path
 from hardware.scheme import (
     BOM_DIR,
     CACHE_DIR,
+    MANUAL_ILLUSTRATIONS,
     MARK_DIR,
     PATCH_DIR,
     PROCEDURES_DIR,
@@ -75,15 +76,8 @@ _PATCH_KEY = "patch.key"
 
 
 def _module_to_path(mod: str) -> Path | None:
-    """Resolve hardware and shared runtime source modules within this checkout."""
-    if mod == "physiclaw" or mod.startswith("physiclaw."):
-        mod = f"src.{mod}"
-    if not (
-        mod == "hardware"
-        or mod.startswith("hardware.")
-        or mod == "src.physiclaw"
-        or mod.startswith("src.physiclaw.")
-    ):
+    """Resolve hardware source modules within this checkout."""
+    if mod != "hardware" and not mod.startswith("hardware."):
         return None
     p = REPO_ROOT / Path(*mod.split("."))
     if p.with_suffix(".py").is_file():
@@ -240,6 +234,7 @@ def source_key(stem: str) -> str:
     Governs the ``.step``, the raw ``.svg``, and the BOM ``.md``."""
     h = hashlib.sha256()
     h.update(b"hardware-cache-v3\n")
+    h.update(f"manual-illustrations={MANUAL_ILLUSTRATIONS}\n".encode())
     h.update(b"build123d=" + _kernel_version().encode() + b"\n")
     h.update(platform.python_version().encode())
     h.update(platform.platform().encode())

@@ -2,7 +2,7 @@
   {
     "part_id": "ext-2040-y",
     "ref": "¥60",
-    "inquiry": "用于 PhysiClaw 组装的欧标铝型材定制切割，共 7 根 4 种规格：\n1. 2040 黑色阳极氧化 345 mm ×2，M6 沉孔开在 40 mm 宽面，每端各开两个，距端面 10 mm\n2. 2040 黑色阳极氧化 190 mm ×2，两端攻丝 M6\n3. 1020 185 mm ×1\n4. 1020 230 mm ×2，距两端 10 mm 开 M5 通孔\n5. 内六角圆柱头螺栓 M6×20 ×8\n请帮忙报价",
+    "inquiry": "用于 PhysiClaw 组装的欧标铝型材定制切割，共 7 根 4 种规格：\n1. 2040 黑色阳极氧化 {Y_EXTRUSION_LENGTH} mm ×2，M6 沉孔开在 40 mm 宽面，每端各开两个，距端面 10 mm\n2. 2040 黑色阳极氧化 {X_EXTRUSION_LENGTH} mm ×2，两端攻丝 M6\n3. 1020 {X_BEAM_LENGTH} mm ×1\n4. 1020 {PHONE_BED_BEAM_LENGTH} mm ×2，距两端 10 mm 开 M5 通孔\n5. 内六角圆柱头螺栓 M6×20 ×8\n请帮忙报价",
     "suppliers": [
       {
         "name": "TDT 铝型材",
@@ -62,7 +62,7 @@
   {
     "part_id": "rail-y",
     "ref": "¥120",
-    "inquiry": "用于 PhysiClaw 组装的 MGN9H 微型直线导轨套装，共 3 根导轨 + 3 个滑块：\n导轨 240 mm ×2\n导轨 150 mm ×1\nH 型加长滑块 ×3\n请帮忙报价",
+    "inquiry": "用于 PhysiClaw 组装的 MGN9H 微型直线导轨套装，共 3 根导轨 + 3 个滑块：\n导轨 {Y_RAIL_LENGTH} mm ×2\n导轨 {X_RAIL_LENGTH} mm ×1\nH 型加长滑块 ×3\n请帮忙报价",
     "suppliers": [
       {
         "name": "HIWIN台湾上银",

@@ -40,7 +40,7 @@ make hw-sourcing ARGS=--scaffold
 make hw-url
 make hw-drawing
 make hw-check
-uv run --locked --group cad pytest tests/hardware
+uv run --locked --group cad pytest tests/hardware tests/test_architecture.py
 ```
 
 Document builders and static checks use only the Python standard library.
@@ -59,10 +59,37 @@ applies only when `--pdf` is requested; a missing or unsupported selected browse
 fails before existing manual outputs are cleared.
 
 ```sh
-uv run python -m hardware.documents.manual.build --pdf --browser chrome
+uv run --locked python -m hardware.documents.manual.build --pdf --browser chrome
 ```
 
-The existing Make targets and `ARGS` forwarding are unchanged.
+## Travel-dependent content
+
+Set `X_TRAVEL` and `Y_TRAVEL` in
+[assembly/travel_ranges.py](../assembly/travel_ranges.py) and update the matching
+[runtime constants](../../src/physiclaw/core/hardware/arm.py) to the same values.
+Hardware generators use the hardware copy; architecture tests check that both
+copies agree.
+
+Keep travel-dependent lengths and quantities as named tokens in the BOM, manual
+chapters and vendor files, for example `"{X_RAIL_LENGTH} mm"`.
+[dimensions.py](dimensions.py) defines and resolves these tokens, including those
+inside supplier part codes and copyable inquiries. Undefined dimension tokens
+fail validation.
+
+Manual assembly and exploded-view illustrations use the original 110 × 200 mm
+travel proportions. Tables and technical drawings state the configured
+dimensions and quantities. The default output locations are:
+
+| Output | Purpose |
+| --- | --- |
+| `hardware/output/step/` | Manufacturing STEP files used in release downloads |
+| `hardware/output/svg/` | Assembly SVGs; used by the manual at 110 × 200 mm travel |
+| `hardware/output/manual-illustrations/` | Reference SVGs, intermediate STEP files and a separate CAD cache for custom travel |
+
+`PHYSICLAW_HW_OUTPUT` changes the output root for all of these paths. A full
+`make hw-build` generates the required illustrations; the manual build fails if
+any are missing. `make hw-step` builds only the requested step. Release preparation
+uses the same full build and reuses the validated caches.
 
 ## Manual supplier URL review
 

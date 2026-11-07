@@ -6,7 +6,7 @@ The build rejects BOM lengths that disagree with the CAD.
 
 English output: EN then ZH (2 pages). Chinese output: ZH (1 page).
 Each sheet keeps its "1 of 1" footer. Sections and details are 1:1;
-machined faces are 1:2.
+machined faces use 1:2, reducing their labelled scale for longer builds.
 
 Run ``python -m hardware drawing`` for HTML; add ``--pdf`` for headless
 Chrome PDFs. HTML is deterministic and stamped with ``MANUAL_VERSION``.
@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import html
+import math
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -278,8 +279,8 @@ UI: dict[str, dict[str, str]] = {
     "total_label": {"en": "Total", "zh": "合计"},
     "total": {"en": "{pieces} pieces", "zh": "{pieces} 根"},
     "section": {"en": "Section 1:1", "zh": "截面 1:1"},
-    "face_40": {"en": "40 mm face · 1:2", "zh": "40 mm 宽面 · 1:2"},
-    "face_slot": {"en": "Slot face · 1:2", "zh": "槽面 · 1:2"},
+    "face_40": {"en": "40 mm face · 1:{scale}", "zh": "40 mm 宽面 · 1:{scale}"},
+    "face_slot": {"en": "Slot face · 1:{scale}", "zh": "槽面 · 1:{scale}"},
     "detail_a": {"en": "A · counterbore section 1:1", "zh": "A · 沉孔剖面 1:1"},
     "end_view": {"en": "End view · 1:1", "zh": "端面 · 1:1"},
     "notes": {"en": "Notes", "zh": "技术要求"},
@@ -368,7 +369,7 @@ def callout_lines(kind: str, lang: str) -> tuple[str, ...]:
 # --------------------------------------------------------------------------- #
 PAGE_W, PAGE_H = 297.0, 210.0  # A4 landscape
 MARGIN = 8.0
-ELEV = 0.5  # the machined-face views are drawn at 1:2
+ELEV = 0.5  # default machined-face scale (1:2)
 
 ARROW = 2.4  # dimension arrowhead length, mm
 DIM_GAP = 0.8  # extension line stands off the feature by this
@@ -493,7 +494,7 @@ def leader(fx: float, fy: float, tx: float, ty: float, lines: tuple[str, ...]) -
             lines,
             "note",
             anchor,
-            3.0,
+            NOTE_LEAD,
         )
     )
 
@@ -539,10 +540,17 @@ def section_1020(ox: float, oy: float) -> str:
     return profile_1020(ox, oy) + overall_dims(ox, oy, PROFILES["1020"])
 
 
-def face_plate(x0: float, y0: float, length: float, W: float, profile: Profile) -> str:
-    """A machined-face view's plate at 1:2 — the rectangle, the length
-    dimension above and the nominal width beside."""
-    L = length * ELEV
+def face_plate(
+    x0: float,
+    y0: float,
+    length: float,
+    W: float,
+    profile: Profile,
+    *,
+    scale: float = ELEV,
+) -> str:
+    """A scaled face outline with its true length and nominal width dimensions."""
+    L = length * scale
     return (
         rect(x0, y0, L, W)
         + dim_h(x0, x0 + L, y0 - DIM_STANDOFF, fmt(length), y0)
@@ -550,9 +558,11 @@ def face_plate(x0: float, y0: float, length: float, W: float, profile: Profile) 
     )
 
 
-def end_offset_dims(x0: float, L: float, y: float, offset: float) -> str:
+def end_offset_dims(
+    x0: float, L: float, y: float, offset: float, *, scale: float = ELEV
+) -> str:
     """The two 'offset from the end' dimensions under a face view."""
-    off = offset * ELEV
+    off = offset * scale
     at = y + DIM_STANDOFF
     return dim_h(x0, x0 + off, at, fmt(offset), y) + dim_h(
         x0 + L - off, x0 + L, at, fmt(offset), y
@@ -564,31 +574,40 @@ def end_offset_dims(x0: float, L: float, y: float, offset: float) -> str:
 Ink = tuple[str, float]
 
 
-def face_2040_cb(x0: float, y0: float, length: float, lang: str) -> Ink:
-    """The long 2040's 40 mm face at 1:2: four counterbores, dimensioned
+def face_2040_cb(
+    x0: float, y0: float, length: float, lang: str, *, scale: float = ELEV
+) -> Ink:
+    """The long 2040's scaled 40 mm face: four counterbores, dimensioned
     from the ends and across the width, with the callout."""
-    L, W = length * ELEV, PROFILES["2040"].size[0] * ELEV
-    off, pitch = spec.cb_end_offset * ELEV, 2 * spec.cell_offset * ELEV
+    L, W = length * scale, PROFILES["2040"].size[0] * scale
+    off, pitch = spec.cb_end_offset * scale, 2 * spec.cell_offset * scale
     rows = (y0 + W / 2 - pitch / 2, y0 + W / 2 + pitch / 2)
     cols = (x0 + off, x0 + L - off)
-    r = spec.cb_head_d / 2 * ELEV
-    parts = [face_plate(x0, y0, length, W, PROFILES["2040"])]
+    r = spec.cb_head_d / 2 * scale
+    parts = [face_plate(x0, y0, length, W, PROFILES["2040"], scale=scale)]
     for cx in cols:
         for cy in rows:
             parts.append(circle(cx, cy, r))
-            parts.append(circle(cx, cy, spec.cb_shaft_d / 2 * ELEV))
-    parts.append(end_offset_dims(x0, L, y0 + W, spec.cb_end_offset))
+            parts.append(circle(cx, cy, spec.cb_shaft_d / 2 * scale))
+    parts.append(end_offset_dims(x0, L, y0 + W, spec.cb_end_offset, scale=scale))
     parts.append(dim_v(x0 - 5, rows[0], rows[1], fmt(2 * spec.cell_offset), x0))
+    callout = callout_lines(CB, lang)
+    callout_y = y0 + W / 2 + 0.6
+    ink_end = y0 + W + DIM_STANDOFF + DIM_OVER
+    if W / 2 < NOTE_LEAD * len(callout):
+        # Reduced views cannot fit the text between the centre and lower edge.
+        callout_y = y0 + W + 4.5
+        ink_end = max(ink_end, callout_y + NOTE_LEAD * len(callout))
     parts.append(
         leader(
             cols[0] + r * 0.7,
             rows[1] - r * 0.7,
             cols[0] + 14,
-            y0 + W / 2 + 0.6,
-            callout_lines(CB, lang),
+            callout_y,
+            callout,
         )
     )
-    return "".join(parts), y0 + W + DIM_STANDOFF + DIM_OVER
+    return "".join(parts), ink_end
 
 
 def detail_counterbore(ox: float, oy: float, lang: str) -> Ink:
@@ -628,10 +647,10 @@ def detail_counterbore(ox: float, oy: float, lang: str) -> Ink:
     return svg, label_y
 
 
-def face_2040_tap(x0: float, y0: float, length: float) -> Ink:
-    """The short 2040's face at 1:2 — cut only, so just the plate."""
-    W = PROFILES["2040"].size[0] * ELEV
-    return face_plate(x0, y0, length, W, PROFILES["2040"]), y0 + W
+def face_2040_tap(x0: float, y0: float, length: float, *, scale: float = ELEV) -> Ink:
+    """The short 2040's scaled face — cut only, so just the plate."""
+    W = PROFILES["2040"].size[0] * scale
+    return face_plate(x0, y0, length, W, PROFILES["2040"], scale=scale), y0 + W
 
 
 def end_2040_tap(ox: float, oy: float, lang: str) -> Ink:
@@ -655,21 +674,29 @@ def end_2040_tap(ox: float, oy: float, lang: str) -> Ink:
     return "".join(parts), label_y
 
 
-def face_1020(x0: float, y0: float, length: float, lang: str, holes: bool) -> Ink:
-    """A 1020's slot face at 1:2: the slot mouth as two lines, and for the
+def face_1020(
+    x0: float,
+    y0: float,
+    length: float,
+    lang: str,
+    holes: bool,
+    *,
+    scale: float = ELEV,
+) -> Ink:
+    """A scaled 1020 slot face: the slot mouth as two lines, and for the
     phone-bed beam the two vertical end holes with their callout."""
-    L, W = length * ELEV, PROFILES["1020"].size[0] * ELEV
-    mouth = 2 * spec.half_vertices_1020[3][0] * ELEV  # the top-face opening
+    L, W = length * scale, PROFILES["1020"].size[0] * scale
+    mouth = 2 * spec.half_vertices_1020[3][0] * scale  # the top-face opening
     parts = [
-        face_plate(x0, y0, length, W, PROFILES["1020"]),
+        face_plate(x0, y0, length, W, PROFILES["1020"], scale=scale),
         line(x0, y0 + W / 2 - mouth / 2, x0 + L, y0 + W / 2 - mouth / 2, "outline"),
         line(x0, y0 + W / 2 + mouth / 2, x0 + L, y0 + W / 2 + mouth / 2, "outline"),
     ]
     if holes:
-        off, r = spec.end_hole_offset * ELEV, spec.end_hole_d / 2 * ELEV
+        off, r = spec.end_hole_offset * scale, spec.end_hole_d / 2 * scale
         for cx in (x0 + off, x0 + L - off):
             parts.append(circle(cx, y0 + W / 2, r))
-        parts.append(end_offset_dims(x0, L, y0 + W, spec.end_hole_offset))
+        parts.append(end_offset_dims(x0, L, y0 + W, spec.end_hole_offset, scale=scale))
         # Below the plate: above it, the band between the top edge and the
         # length dimension is too narrow for a line of text.
         parts.append(
@@ -744,6 +771,7 @@ svg { font-family: "Inter", "Helvetica Neue", "Segoe UI", "PingFang SC", "Hiragi
 TD_FS = 2.9  # .td
 LABEL_FS = 2.5  # .label
 DIMTEXT_FS = 2.5  # .dimtext
+NOTE_LEAD = 3.0  # line pitch for leader callouts
 NOTES_FS = 2.5  # .notes
 FOOT_FS = 2.4  # .foot
 
@@ -884,6 +912,19 @@ def render_sheet(items: list[CutItem], lang: str, *, include_defs: bool = True) 
     number = {it.spec.machining: no for no, it in enumerate(items, start=1)}
     length = {it.spec.machining: it.spec.length for it in items}
     face_x = x0 + 66
+    # Keep the dimension lines clear of the fixed 1:1 end/section details.
+    # Default lengths keep their original 1:2 views and byte-identical SVG.
+    clearance = DIM_STANDOFF + DIM_OVER + 2
+    right_edges = {
+        CB: x0 + w - 21 - spec.cb_head_d,
+        TAP: x0 + w - 60 - PROFILES["2040"].size[0] / 2,
+        PLAIN: x0 + w - 4,
+        HOLE: x0 + w - 60 - PROFILES["1020"].size[0] / 2,
+    }
+    denominators = {
+        kind: max(2, math.ceil(length[kind] / (right - clearance - face_x)))
+        for kind, right in right_edges.items()
+    }
 
     def group(gy: float, designation: str, section: str) -> None:
         heading = f"{designation} · {PROFILES[designation].heading}"
@@ -900,7 +941,13 @@ def render_sheet(items: list[CutItem], lang: str, *, include_defs: bool = True) 
     def row(ry: float, kind: str, label: str, views: list[Ink]) -> Ink:
         svg = (
             text(face_x - 2, ry + 3.2, str(number[kind]), "no", "end")
-            + text(face_x, ry - 0.5, ui(label, lang), "label", "start")
+            + text(
+                face_x,
+                ry - 0.5,
+                ui(label, lang, scale=denominators[kind]),
+                "label",
+                "start",
+            )
             + "".join(svg for svg, _ in views)
         )
         return svg, max(end for _, end in views)
@@ -910,7 +957,9 @@ def render_sheet(items: list[CutItem], lang: str, *, include_defs: bool = True) 
             CB,
             "face_40",
             lambda ry: [
-                face_2040_cb(face_x, ry + PLATE, length[CB], lang),
+                face_2040_cb(
+                    face_x, ry + PLATE, length[CB], lang, scale=1 / denominators[CB]
+                ),
                 detail_counterbore(x0 + w - 21, ry + 15, lang),
             ],
         ),
@@ -918,7 +967,9 @@ def render_sheet(items: list[CutItem], lang: str, *, include_defs: bool = True) 
             TAP,
             "face_40",
             lambda ry: [
-                face_2040_tap(face_x, ry + PLATE, length[TAP]),
+                face_2040_tap(
+                    face_x, ry + PLATE, length[TAP], scale=1 / denominators[TAP]
+                ),
                 end_2040_tap(x0 + w - 60, ry + 12, lang),
             ],
         ),
@@ -926,14 +977,28 @@ def render_sheet(items: list[CutItem], lang: str, *, include_defs: bool = True) 
             PLAIN,
             "face_slot",
             lambda ry: [
-                face_1020(face_x, ry + PLATE, length[PLAIN], lang, holes=False)
+                face_1020(
+                    face_x,
+                    ry + PLATE,
+                    length[PLAIN],
+                    lang,
+                    holes=False,
+                    scale=1 / denominators[PLAIN],
+                )
             ],
         ),
         (
             HOLE,
             "face_slot",
             lambda ry: [
-                face_1020(face_x, ry + PLATE, length[HOLE], lang, holes=True),
+                face_1020(
+                    face_x,
+                    ry + PLATE,
+                    length[HOLE],
+                    lang,
+                    holes=True,
+                    scale=1 / denominators[HOLE],
+                ),
                 end_1020_hole(x0 + w - 60, ry + 12, lang),
             ],
         ),
@@ -1012,7 +1077,7 @@ def build(langs: list[str], out_dir: Path, pdf: bool = False) -> list[Path]:
         path = out_dir / LANG_FILENAME[lang]
         with _step(f"Render HTML [{lang}]"):
             doc = render_document(items, lang)
-            path.write_text(doc, encoding="utf-8")
+            path.write_text(doc, encoding="utf-8", newline="\n")
         written.append(path)
         if chrome:
             pdf_path = out_dir / PDF_FILENAME[lang]

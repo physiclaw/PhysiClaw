@@ -5,6 +5,8 @@ the rendered sheet."""
 from __future__ import annotations
 
 import re
+from dataclasses import replace
+from xml.etree import ElementTree
 
 import pytest
 
@@ -309,3 +311,55 @@ def test_build_prints_the_same_sheets_as_the_selected_html(
 def test_output_names_are_ascii_release_asset_names():
     assert bed.PDF_FILENAME["zh"] == "physiclaw_extrusion_drawing_zh.pdf"
     assert all(name.isascii() for name in bed.LANG_FILENAME.values())
+
+
+def _face_widths(svg: str) -> list[float]:
+    return [
+        float(node.get("width"))
+        for node in ElementTree.fromstring(svg).iter("{http://www.w3.org/2000/svg}rect")
+        if float(node.get("x", "-1")) == bed.MARGIN + 66
+    ]
+
+
+def test_long_extrusions_reduce_labelled_face_scale_to_clear_the_details():
+    items = [
+        replace(item, spec=replace(item.spec, length=600))
+        for item in bed.cut_list(bom_rows())
+    ]
+    svg = bed.render_sheet(items, "en")
+    # All four face views keep the real 600 mm dimension. Their drawn lengths
+    # agree with the individual scale labels; the 1:1 details stay unchanged.
+    assert _face_widths(svg) == pytest.approx(
+        [600 / 4, 600 / 5, 600 / 3, 600 / 5], abs=0.01
+    )
+    assert ">600 mm<" in svg and ">600<" in svg
+    for denominator in (3, 4, 5):
+        assert f"1:{denominator}" in svg
+    assert "Section 1:1" in svg
+
+
+def test_original_frame_keeps_its_one_to_two_face_views():
+    original_lengths = {bed.CB: 345, bed.TAP: 190, bed.PLAIN: 185, bed.HOLE: 230}
+    items = [
+        replace(
+            item, spec=replace(item.spec, length=original_lengths[item.spec.machining])
+        )
+        for item in bed.cut_list(bom_rows())
+    ]
+    svg = bed.render_sheet(items, "en")
+    assert _face_widths(svg) == [172.5, 95, 92.5, 115]
+    assert svg.count("face · 1:2") == 4
+
+
+@pytest.mark.parametrize("lang", ["en", "zh"])
+@pytest.mark.parametrize("scale", [1 / 3, 1 / 4, 1 / 6])
+def test_reduced_counterbore_callout_clears_plate_and_fits_reported_ink(lang, scale):
+    svg, end = bed.face_2040_cb(74, 20, 545, lang, scale=scale)
+    root = ElementTree.fromstring(f"<svg>{svg}</svg>")
+    plate = next(n for n in root.iter("rect") if n.get("class") == "outline")
+    bottom = float(plate.get("y")) + float(plate.get("height"))
+    notes = [n for n in root.iter("text") if n.get("class") == "note"]
+    assert notes
+    # Account for glyph height above each text baseline and descenders below it.
+    assert min(float(n.get("y")) for n in notes) - 2.6 > bottom
+    assert max(float(n.get("y")) for n in notes) + 1 <= end

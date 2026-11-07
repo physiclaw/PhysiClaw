@@ -20,6 +20,10 @@ Unchanged stems restore from ``output/.cache``; patch-only edits replay their
 annotations without rebuilding geometry. ``--no-cache`` forces a fresh build
 and refreshes the cache. See ``assembly/cache.py`` for invalidation rules.
 
+A full build at custom travel also builds reference-proportion manual artwork
+in ``output/manual-illustrations``. Its geometry and cache stay separate from
+the manufacturing outputs; workers and single-step builds do not start this pass.
+
 Run from the repo root:
 
     uv run --group cad python -m hardware.assembly.build_procedures
@@ -65,6 +69,7 @@ from hardware.assembly.dispatch import (
 )
 from hardware.assembly.mark.patch import patch_path
 from hardware.assembly.mark.replay import replay_one
+from hardware.assembly.travel_ranges import ILLUSTRATION_TRAVEL, X_TRAVEL, Y_TRAVEL
 from hardware.build_lock import locked_main
 from hardware.port.processes import (
     CancellationEvent,
@@ -74,6 +79,7 @@ from hardware.port.processes import (
 )
 from hardware.scheme import (
     BOM_DIR,
+    MANUAL_ILLUSTRATIONS,
     OUTPUT_DIR,
     RENDER_WORK_DIR,
     REPO_ROOT,
@@ -814,6 +820,8 @@ def main(argv: list[str] | None = None) -> int:
             )
         try:
             rc = _execute(args)
+            if rc == 0 and not args.stems:
+                _build_manual_illustrations(args.jobs, use_cache=not args.no_cache)
             if not args.worker_events:
                 _check_cancelled()
         except KeyboardInterrupt:
@@ -859,6 +867,30 @@ def main(argv: list[str] | None = None) -> int:
             crash_log=str(crash_log) if crash_log.exists() else None,
         )
         return rc
+
+
+def _build_manual_illustrations(jobs: int, *, use_cache: bool = True) -> None:
+    """Keep authored manual framing stable when manufacturing travel changes."""
+    if MANUAL_ILLUSTRATIONS or (X_TRAVEL, Y_TRAVEL) == ILLUSTRATION_TRAVEL:
+        return
+    with buildlog.step("Reference-proportion manual illustrations"):
+        buildlog.run_process(
+            [
+                sys.executable,
+                "-u",
+                "-m",
+                "hardware.assembly.build_procedures",
+                "--jobs",
+                str(jobs),
+                *(() if use_cache else ("--no-cache",)),
+            ],
+            env={
+                **os.environ,
+                "PHYSICLAW_HW_OUTPUT": str(OUTPUT_DIR),
+                "PHYSICLAW_HW_MANUAL_ILLUSTRATIONS": "1",
+            },
+            cwd=REPO_ROOT,
+        )
 
 
 def _execute(args: argparse.Namespace) -> int:

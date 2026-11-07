@@ -5,6 +5,7 @@ from pathlib import Path
 
 from hardware.documents import BuildError
 from hardware.documents.bom.loader import load_bom_rows
+from hardware.documents.dimensions import resolve_dimensions
 
 CONTENT_DIR = Path(__file__).resolve().parent / "content"
 
@@ -18,6 +19,7 @@ def load_chapter(path: Path) -> list[dict]:
         raise BuildError(
             f"{path.name}: manual chapter must be a JSON array of page objects"
         )
+    chapter = resolve_dimensions(chapter, source=str(path))
     for page in chapter:
         if "rows_source" in page:
             if page.get("type") != "bom" or page["rows_source"] != "bom":

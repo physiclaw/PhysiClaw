@@ -2,7 +2,7 @@
   {
     "part_id": "ext-2040-y",
     "ref": "$25",
-    "inquiry": "EU-standard aluminum extrusion for a PhysiClaw build, T slot, cut to size, 7 pcs in 4 specs:\n1. 2040 black anodized, 345 mm ×2, M6 counterbores on the 40 mm-wide face, two at each end, 10 mm from the end face\n2. 2040 black anodized, 190 mm ×2, both ends tapped M6\n3. 1020, 185 mm ×1\n4. 1020, 230 mm ×2, M5 through-hole 10 mm from each end\n5. SHCS M6×20 ×8\nPlease kindly quote.",
+    "inquiry": "EU-standard aluminum extrusion for a PhysiClaw build, T slot, cut to size, 7 pcs in 4 specs:\n1. 2040 black anodized, {Y_EXTRUSION_LENGTH} mm ×2, M6 counterbores on the 40 mm-wide face, two at each end, 10 mm from the end face\n2. 2040 black anodized, {X_EXTRUSION_LENGTH} mm ×2, both ends tapped M6\n3. 1020, {X_BEAM_LENGTH} mm ×1\n4. 1020, {PHONE_BED_BEAM_LENGTH} mm ×2, M5 through-hole 10 mm from each end\n5. SHCS M6×20 ×8\nPlease kindly quote.",
     "suppliers": [
       {
         "name": "PMGN",
@@ -22,24 +22,24 @@
           "instructions": "Sign in to <a href=\"https://us.misumi-ec.com/\" target=\"_blank\" rel=\"noopener\">MISUMI USA</a>, open <strong>Quote / Order</strong>, and enter the part numbers and quantities below.",
           "parts": [
             {
-              "part_number": "HFSB5-2040-345-Z5-YA10-YB335",
+              "part_number": "HFSB5-2040-{Y_EXTRUSION_LENGTH}-Z5-YA10-YB{Y_EXTRUSION_FAR_HOLE}",
               "qty": 2,
-              "description": "Black 2040 · 345 mm · 4 × M5 counterbores"
+              "description": "Black 2040 · {Y_EXTRUSION_LENGTH} mm · 4 × M5 counterbores"
             },
             {
-              "part_number": "HFSB5-2040-190-TPW",
+              "part_number": "HFSB5-2040-{X_EXTRUSION_LENGTH}-TPW",
               "qty": 2,
-              "description": "Black 2040 · 190 mm · M5 taps, both ends"
+              "description": "Black 2040 · {X_EXTRUSION_LENGTH} mm · M5 taps, both ends"
             },
             {
-              "part_number": "HFSFIN5-1020-185",
+              "part_number": "HFSFIN5-1020-{X_BEAM_LENGTH}",
               "qty": 1,
-              "description": "1020 · 185 mm · Cut to length"
+              "description": "1020 · {X_BEAM_LENGTH} mm · Cut to length"
             },
             {
-              "part_number": "HFSFIN5-1020-230-Z5-XA10-XB220",
+              "part_number": "HFSFIN5-1020-{PHONE_BED_BEAM_LENGTH}-Z5-XA10-XB{PHONE_BED_FAR_HOLE}",
               "qty": 2,
-              "description": "1020 · 230 mm · 2 × M5 counterbores"
+              "description": "1020 · {PHONE_BED_BEAM_LENGTH} mm · 2 × M5 counterbores"
             }
           ]
         }
@@ -228,7 +228,7 @@
   {
     "part_id": "rail-y",
     "ref": "$40",
-    "inquiry": "MGN9H miniature linear guide set for a PhysiClaw build, 3 rails + 3 carriages:\nRail 240 mm ×2\nRail 150 mm ×1\nH-type long carriage ×3\nPlease kindly quote.",
+    "inquiry": "MGN9H miniature linear guide set for a PhysiClaw build, 3 rails + 3 carriages:\nRail {Y_RAIL_LENGTH} mm ×2\nRail {X_RAIL_LENGTH} mm ×1\nH-type long carriage ×3\nPlease kindly quote.",
     "suppliers": [
       {
         "name": "HIWIN",

@@ -23,6 +23,45 @@ from hardware.assembly import build_procedures as bp  # noqa: E402
 STEM = "frame_10_base"
 
 
+@pytest.mark.parametrize("profile,travel", [(False, (110, 200)), (True, (220, 400))])
+def test_reference_build_is_unnecessary_at_reference_size_or_inside_profile(
+    monkeypatch, mocker, profile, travel
+):
+    monkeypatch.setattr(bp, "MANUAL_ILLUSTRATIONS", profile)
+    monkeypatch.setattr(bp, "X_TRAVEL", travel[0])
+    monkeypatch.setattr(bp, "Y_TRAVEL", travel[1])
+    run = mocker.patch.object(bp.buildlog, "run_process")
+    bp._build_manual_illustrations(2)
+    run.assert_not_called()
+
+
+def test_changed_travel_builds_reference_in_separate_subprocess(
+    tmp_path, monkeypatch, mocker
+):
+    monkeypatch.setattr(bp, "MANUAL_ILLUSTRATIONS", False)
+    monkeypatch.setattr(bp, "X_TRAVEL", 220)
+    monkeypatch.setattr(bp, "OUTPUT_DIR", tmp_path)
+    run = mocker.patch.object(bp.buildlog, "run_process")
+    with bp.buildlog.session(tmp_path):
+        bp._build_manual_illustrations(1, use_cache=False)
+    args, kwargs = run.call_args
+    assert args[0][-3:] == ["--jobs", "1", "--no-cache"]
+    assert kwargs["env"]["PHYSICLAW_HW_MANUAL_ILLUSTRATIONS"] == "1"
+    assert kwargs["env"]["PHYSICLAW_HW_OUTPUT"] == str(tmp_path)
+
+
+def test_failed_reference_build_fails_complete_hardware_build(tmp_path, monkeypatch):
+    monkeypatch.setattr(bp, "OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr("hardware.build_lock.OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(bp, "_execute", lambda args: 0)
+
+    def fail(*args, **kwargs):
+        raise RuntimeError("reference illustration failed")
+
+    monkeypatch.setattr(bp, "_build_manual_illustrations", fail)
+    assert bp.main([]) == 1
+
+
 # ── _build_stems: BOM failure accounting (worker mode) ────────────────────────
 
 

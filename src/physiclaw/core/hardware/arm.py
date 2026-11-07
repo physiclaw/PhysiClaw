@@ -44,6 +44,12 @@ from physiclaw.core.hardware.transport import SerialTransport
 log = logging.getLogger(__name__)
 
 
+# Total usable axis spans, not work-coordinate limits: calibration places
+# the origin on the phone. A test checks these against the CAD build's copy.
+X_TRAVEL = 110  # mm — toolhead carriage travel along the X crossbeam
+Y_TRAVEL = 200  # mm — gantry travel along the long extrusions
+
+
 # ─── G-code templates ────────────────────────────────────────
 # Transport + XY motion only. Solenoid (M3/M5) G-code lives in solenoid.py.
 

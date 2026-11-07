@@ -86,6 +86,12 @@ def test_source_key_is_stable_across_calls(repo):
     assert cache.source_key(STEM) == cache.source_key(STEM)
 
 
+def test_reference_illustrations_cannot_restore_manufacturing_cache(repo, monkeypatch):
+    actual = cache.source_key(STEM)
+    monkeypatch.setattr(cache, "MANUAL_ILLUSTRATIONS", True)
+    assert cache.source_key(STEM) != actual
+
+
 def test_source_key_changes_when_procedure_source_changes(repo):
     before = cache.source_key(STEM)
 
@@ -134,18 +140,17 @@ def test_unchanged_imports_resolve_new_and_removed_modules_on_every_check(repo):
     assert cache.source_key(STEM) == before
 
 
-def test_source_key_changes_when_shared_arm_travel_changes(repo, tmp_path):
-    shared = tmp_path / "src" / "physiclaw" / "core" / "arm_geometry.py"
-    shared.parent.mkdir(parents=True)
-    shared.write_text("X_TRAVEL = 110\nY_TRAVEL = 200\n", encoding="utf-8")
+def test_source_key_changes_when_hardware_travel_changes(repo):
+    travel = repo.PROCEDURES_DIR.parent / "travel_ranges.py"
+    travel.write_text("X_TRAVEL = 110\nY_TRAVEL = 200\n", encoding="utf-8")
     repo.helper.write_text(
         "from __future__ import annotations\n"
-        "from src.physiclaw.core.arm_geometry import X_TRAVEL\n",
+        "from hardware.assembly.travel_ranges import X_TRAVEL\n",
         encoding="utf-8",
     )
     before = cache.source_key(STEM)
 
-    shared.write_text("X_TRAVEL = 120\nY_TRAVEL = 200\n", encoding="utf-8")
+    travel.write_text("X_TRAVEL = 120\nY_TRAVEL = 200\n", encoding="utf-8")
 
     assert cache.source_key(STEM) != before
 
@@ -629,21 +634,18 @@ def test_package_initialization_changes_invalidate_source_cache(repo):
     assert cache.source_key(STEM) != before
 
 
-def test_installed_project_import_changes_invalidate_source_cache(repo, tmp_path):
-    shared = tmp_path / "src" / "physiclaw" / "core" / "arm_geometry.py"
-    shared.parent.mkdir(parents=True)
-    shared.write_text("X_TRAVEL = 110\n", encoding="utf-8")
-    repo.helper.write_text(
-        "from physiclaw.core.arm_geometry import X_TRAVEL\n", encoding="utf-8"
-    )
+def test_runtime_travel_changes_preserve_source_cache(repo, tmp_path):
+    runtime = tmp_path / "src" / "physiclaw" / "core" / "hardware" / "arm.py"
+    runtime.parent.mkdir(parents=True)
+    runtime.write_text("X_TRAVEL = 110\n", encoding="utf-8")
     before = cache.source_key(STEM)
-    shared.write_text("X_TRAVEL = 120\n", encoding="utf-8")
-    assert cache.source_key(STEM) != before
+    runtime.write_text("X_TRAVEL = 120\n", encoding="utf-8")
+    assert cache.source_key(STEM) == before
 
 
 @pytest.fixture
 def lazy_package(repo, tmp_path):
-    package = tmp_path / "src" / "physiclaw" / "core"
+    package = tmp_path / "hardware" / "lazy"
     package.mkdir(parents=True)
     shared = package / "arm_geometry.py"
     shared.write_text("X_TRAVEL = 110\n", encoding="utf-8")
@@ -659,7 +661,7 @@ def lazy_package(repo, tmp_path):
         encoding="utf-8",
     )
     repo.helper.write_text(
-        "from src.physiclaw.core.arm_geometry import X_TRAVEL\n",
+        "from hardware.lazy.arm_geometry import X_TRAVEL\n",
         encoding="utf-8",
     )
     return SimpleNamespace(shared=shared, runtime=runtime, eager=eager)
@@ -688,8 +690,8 @@ def test_implicit_initializer_eager_imports_remain_dependencies(repo, lazy_packa
 @pytest.mark.parametrize(
     "imports",
     [
-        "from src.physiclaw.core import PhysiClaw\n",
-        "import src.physiclaw.core\n",
+        "from hardware.lazy import PhysiClaw\n",
+        "import hardware.lazy\n",
     ],
 )
 def test_explicit_package_import_tracks_lazy_exports(repo, lazy_package, imports):

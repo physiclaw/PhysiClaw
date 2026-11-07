@@ -59,8 +59,8 @@
             "zh": "1020 铝型材"
           },
           "spec": {
-            "en": "230 mm, M5 end holes",
-            "zh": "230 mm，端孔 M5"
+            "en": "{PHONE_BED_BEAM_LENGTH} mm, M5 end holes",
+            "zh": "{PHONE_BED_BEAM_LENGTH} mm，端孔 M5"
           },
           "qty": "2"
         },

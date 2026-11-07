@@ -111,6 +111,7 @@ from hardware.documents.common import (
     manual_version,
     typeset_quantities,
 )
+from hardware.documents.dimensions import resolve_dimensions
 from hardware.documents.sourcing import VENDOR_FILES
 from hardware.scheme import OUTPUT_DIR as _OUTPUT_ROOT
 
@@ -797,6 +798,7 @@ document.querySelectorAll('.supplier-guide').forEach(function (guide) {
 
 
 def render_document(rows: list[dict], entries: list[dict], css: str, lang: str) -> str:
+    entries = resolve_dimensions(entries, source=str(VENDOR_FILES[lang]))
     optional_tools = json.loads(OPTIONAL_TOOLS_FILE.read_text(encoding="utf-8"))
     # The checklist line sits left-aligned just above the table: the tally
     # (JS fills it from the localized templates) and the reset / highlight
@@ -878,7 +880,11 @@ def build(langs: list[str], out_dir: Path, scaffold: bool) -> list[Path]:
 
         path = out_dir / LANG_FILENAME[lang]
         with _step(f"Render HTML [{lang}]"):
-            path.write_text(render_document(rows, entries, css, lang), encoding="utf-8")
+            path.write_text(
+                render_document(rows, entries, css, lang),
+                encoding="utf-8",
+                newline="\n",
+            )
         written.append(path)
     return written
 

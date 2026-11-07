@@ -108,6 +108,45 @@ def _violations(from_pkg: str, forbidden_prefix: str) -> list[str]:
     return bad
 
 
+def test_hardware_does_not_import_runtime() -> None:
+    """CAD and document tooling must work independently of src/."""
+    hardware_root = SRC_ROOT.parent / "hardware"
+    bad = []
+    for directory, dirs, files in hardware_root.walk():
+        if directory == hardware_root:
+            dirs[:] = [name for name in dirs if name != "output"]
+        dirs.sort()
+        for name in sorted(files):
+            if not name.endswith(".py"):
+                continue
+            path = directory / name
+            relative = path.relative_to(hardware_root)
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for node in ast.walk(tree):
+                modules = []
+                if isinstance(node, ast.Import):
+                    modules = [alias.name for alias in node.names]
+                elif (
+                    isinstance(node, ast.ImportFrom) and node.level == 0 and node.module
+                ):
+                    modules = [node.module]
+                for module in modules:
+                    if module.split(".")[0] in {"src", "physiclaw"}:
+                        bad.append(f"{relative}:{node.lineno} -> {module}")
+    assert not bad, "hardware must not import runtime sources:\n" + "\n".join(bad)
+
+
+def test_hardware_and_runtime_travel_limits_match() -> None:
+    """Separate copies keep CAD independent; changes must update both."""
+    from hardware.assembly import travel_ranges
+    from physiclaw.core.hardware import arm
+
+    assert (travel_ranges.X_TRAVEL, travel_ranges.Y_TRAVEL) == (
+        arm.X_TRAVEL,
+        arm.Y_TRAVEL,
+    )
+
+
 def test_agent_does_not_import_core() -> None:
     """The agent reaches core only through the MCP server interface."""
     bad = _violations("agent", "physiclaw.core")

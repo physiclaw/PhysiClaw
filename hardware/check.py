@@ -47,6 +47,7 @@ from hardware.assembly.mark.patch import ID_RE, ORIG_SENTINEL
 from hardware.assembly.mark.replay import find_leaves
 from hardware.documents import BuildError
 from hardware.documents.bom.loader import bom_row_findings, read_bom_rows
+from hardware.documents.dimensions import resolve_dimensions
 from hardware.documents.drawing.extrusion import cut_list
 from hardware.documents.manual.assets import HAND_FIGURES
 from hardware.documents.manual.pages import CONTENT_DIR, load_chapter
@@ -380,6 +381,11 @@ def check_sourcing(rows: list) -> list[str]:
             entries = json.loads(vendor_file.read_text(encoding="utf-8"))
         except ValueError as exc:
             findings.append(f"sourcing: {vendor_file.name} is not valid JSON ({exc})")
+            continue
+        try:
+            entries = resolve_dimensions(entries, source=str(vendor_file))
+        except BuildError as exc:
+            findings.append(f"sourcing: {exc}")
             continue
         vendor_ids = [e.get("part_id") for e in entries if isinstance(e, dict)]
         if dupes := _duplicates(vendor_ids):

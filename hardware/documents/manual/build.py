@@ -592,7 +592,7 @@ def build(
         path = out_dir / LANG_FILENAME[lang]
         with _step(f"Render HTML [{lang}]"):
             html = render_document(pages, css, Ctx(lang, assets))
-            path.write_text(html, encoding="utf-8")
+            path.write_text(html, encoding="utf-8", newline="\n")
         written.append(path)
         docs[lang] = (path, html)
     with _step("Write assets"):
