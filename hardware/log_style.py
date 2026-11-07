@@ -394,8 +394,11 @@ class ConsoleHandler(logging.StreamHandler):
             self.addFilter(ConsoleFilter(verbose=verbose))
 
     def emit(self, record):
-        self.stream = sys.stdout
         event = record.hardware_event
+        # Cache explanations belong only in the saved log, in every console mode.
+        if event["event"] in {"cache_miss", "cache_bypassed"}:
+            return
+        self.stream = sys.stdout
         if (
             self._progress_stream is not None
             and self._progress_stream is not self.stream

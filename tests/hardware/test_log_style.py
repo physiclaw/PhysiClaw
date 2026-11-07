@@ -153,6 +153,40 @@ def test_interactive_tasks_print_separate_rows(tmp_path, terminal_output):
     assert output.endswith("\n")
 
 
+@pytest.mark.parametrize(
+    "log_format,verbose,worker",
+    [
+        ("text", False, False),
+        ("text", True, False),
+        ("json", False, False),
+        ("text", False, True),
+    ],
+)
+def test_cache_diagnostics_are_saved_without_any_console_output(
+    tmp_path, terminal_output, log_format, verbose, worker
+):
+    stream = terminal_output()
+    path = "hardware/assembly/procedures/" + "long_assembly_name_" * 4 + ".py"
+    reasons = [f"input changed: {path}"]
+    with buildlog.BuildLog(
+        path=tmp_path / "events.jsonl",
+        log_format=log_format,
+        verbose=verbose,
+        worker=worker,
+    ) as log:
+        log.emit(
+            "cache_miss",
+            f"Geometry cache miss: {reasons[0]}",
+            stem="frame_10",
+            layer="geometry",
+            reasons=reasons,
+        )
+        log.emit("cache_bypassed", "Cache bypassed: --no-cache requested")
+    assert stream.getvalue() == ""
+    assert saved_events(log)[0]["reasons"] == reasons
+    assert saved_events(log)[1]["event"] == "cache_bypassed"
+
+
 @pytest.mark.parametrize("mode", ["pipe", "verbose", "json", "worker", "dumb", "ci"])
 def test_append_only_modes_never_receive_live_control_characters(
     tmp_path, terminal_output, monkeypatch, mode

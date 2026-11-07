@@ -570,6 +570,16 @@ def cache_pipeline(outputs, tmp_path, monkeypatch):
         "annotation_key",
         lambda stem: f"{stem}:{annotation_versions.get(stem, 1)}",
     )
+    monkeypatch.setattr(
+        bp.stepcache,
+        "_source_inputs",
+        lambda stem: {"source": bp.stepcache.source_key(stem)},
+    )
+    monkeypatch.setattr(
+        bp.stepcache,
+        "_snapshot_inputs",
+        lambda stem: {"annotations": bp.stepcache.annotation_key(stem)},
+    )
     monkeypatch.setattr(bp, "_batches", lambda size: [stems])
 
     def write(stem, flags=()):
@@ -667,6 +677,48 @@ def test_rebuild_bypasses_existing_cache_and_next_build_restores_fresh_outputs(
         assert bp._dispatch(5) == 0
     assert len(builds) == 2  # A normal build always reuses the valid entry.
     assert target.read_text(encoding="utf-8") == "build 2"
+
+
+def test_cache_miss_reasons_are_only_in_saved_events(
+    cache_pipeline, tmp_path, monkeypatch, capsys
+):
+    import json
+
+    monkeypatch.setattr(
+        bp.stepcache,
+        "_source_inputs",
+        lambda stem: {"hardware/parts/helper.py": bp.stepcache.source_key(stem)},
+    )
+
+    def run(batch, flags):
+        for stem in batch:
+            cache_pipeline.write(stem, flags)
+        return 0
+
+    monkeypatch.setattr(bp, "_run_subprocess", run)
+    with bp.buildlog.session(tmp_path):
+        assert bp._dispatch(5) == 0
+    capsys.readouterr()
+    cache_pipeline.sources[STEM] = 2
+    with bp.buildlog.session(tmp_path) as log:
+        assert bp._dispatch(5) == 0
+    output = capsys.readouterr().out
+    assert "Geometry cache miss" not in output
+    assert "hardware/parts/helper.py" not in output
+    records = [
+        json.loads(line) for line in log.path.read_text(encoding="utf-8").splitlines()
+    ]
+    miss = next(record for record in records if record["event"] == "cache_miss")
+    assert miss["stem"] == STEM
+    assert miss["layer"] == "geometry"
+    assert miss["reasons"] == ["input changed: hardware/parts/helper.py"]
+
+    with bp.buildlog.session(tmp_path) as warm:
+        assert bp._dispatch(5) == 0
+    assert not any(
+        json.loads(line)["event"] == "cache_miss"
+        for line in warm.path.read_text(encoding="utf-8").splitlines()
+    )
 
 
 @pytest.mark.parametrize("edited", ["sources", "annotations"])
@@ -796,7 +848,7 @@ def test_patch_replay_branch_clears_stale_snapshots_before_replaying(
         source_key=lambda stem: f"source:{stem}",
         annotation_key=lambda stem: f"annotations:{stem}",
         source_cached=lambda stem, **kwargs: True,
-        snapshots_cached=lambda stem: False,  # patch edited → re-replay
+        snapshots_cached=lambda stem, **kwargs: False,  # patch edited → re-replay
         restore_source=record("restore_source"),
         restore_snapshots=record("restore_snapshots"),
         store_snapshots=record("store_snapshots"),

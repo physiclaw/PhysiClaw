@@ -909,3 +909,145 @@ def test_cache_store_excludes_unrequested_boms(repo, want_bom, want_delta):
     assert cache.source_cached(STEM, want_bom=want_bom, want_delta=want_delta)
     assert cache.source_cached(STEM, want_bom=True) is want_bom
     assert cache.source_cached(STEM, want_bom=False, want_delta=True) is want_delta
+
+
+def test_cache_miss_names_changed_added_and_removed_source_inputs(repo):
+    write_outputs(repo)
+    cache.store_source(STEM)
+    second = repo.helper.with_name("second.py")
+    second.write_text("SIZE = 2\n", encoding="utf-8")
+    repo.procedure.write_text("import hardware.parts.second\n", encoding="utf-8")
+    reasons = []
+
+    assert not cache.source_cached(STEM, want_bom=True, reasons=reasons)
+    assert reasons == [
+        f"input changed: hardware/assembly/procedures/{STEM}.py",
+        "input removed: hardware/parts/helper.py",
+        "input added: hardware/parts/second.py",
+    ]
+
+
+@pytest.mark.parametrize(
+    "file,old,new,label",
+    [
+        ("project", ">=0.11", ">=0.12", "pyproject.toml (CAD requirements)"),
+        ("lock", 'version = "7.8"', 'version = "7.9"', "uv.lock (CAD dependencies)"),
+    ],
+)
+def test_cache_miss_names_relevant_toolchain_file(repo, file, old, new, label):
+    write_outputs(repo)
+    cache.store_source(STEM)
+    replace_text(getattr(repo, file), old, new)
+    reasons = []
+
+    assert not cache.source_cached(STEM, want_bom=True, reasons=reasons)
+    assert reasons == [f"input changed: {label}"]
+
+
+def test_cache_miss_explains_python_version_change(repo, monkeypatch):
+    write_outputs(repo)
+    cache.store_source(STEM)
+    monkeypatch.setattr(cache.platform, "python_version", lambda: "different Python")
+    reasons = []
+
+    assert not cache.source_cached(STEM, want_bom=True, reasons=reasons)
+    assert reasons == ["input changed: Python version"]
+
+
+@pytest.mark.parametrize("change", ["missing", "damaged", "empty"])
+def test_cache_miss_names_damaged_or_missing_artifact(repo, change):
+    write_outputs(repo)
+    cache.store_source(STEM)
+    artifact = repo.CACHE_DIR / STEM / f"{STEM}_assembled.step"
+    if change == "missing":
+        artifact.unlink()
+    else:
+        artifact.write_bytes(b"" if change == "empty" else b"damaged")
+    reasons = []
+
+    assert not cache.source_cached(STEM, want_bom=True, reasons=reasons)
+    kind = "missing" if change == "missing" else "damaged"
+    assert reasons == [
+        f"cached artifact {kind}: {artifact.relative_to(cache.REPO_ROOT).as_posix()}"
+    ]
+
+
+@pytest.mark.parametrize("invalid", [False, True])
+def test_cache_miss_explains_missing_or_invalid_manifest(repo, invalid):
+    manifest = repo.CACHE_DIR / STEM / "source.key"
+    if invalid:
+        manifest.parent.mkdir()
+        manifest.write_text("{partial", encoding="utf-8")
+    reasons = []
+
+    assert not cache.source_cached(STEM, want_bom=False, reasons=reasons)
+    assert ("invalid or unreadable" if invalid else "missing") in reasons[0]
+    assert manifest.relative_to(cache.REPO_ROOT).as_posix() in reasons[0]
+
+
+def test_cache_miss_names_unrecorded_requested_output(repo):
+    write_outputs(repo, bom=False)
+    cache.store_source(STEM)
+    reasons = []
+
+    assert not cache.source_cached(STEM, want_bom=True, reasons=reasons)
+    assert reasons == [f"cached output not recorded: {STEM}.md"]
+
+
+def test_legacy_entry_hits_but_explains_unavailable_change_history(repo):
+    write_outputs(repo)
+    cache.store_source(STEM)
+    path = repo.CACHE_DIR / STEM / "source.key"
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    del manifest["inputs"]
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+    reasons = []
+    assert cache.source_cached(STEM, want_bom=True, reasons=reasons)
+    assert reasons == []
+
+    repo.helper.write_text("SIZE = 2\n", encoding="utf-8")
+    assert not cache.source_cached(STEM, want_bom=True, reasons=reasons)
+    assert "previous cache has no input history" in reasons[0]
+    cache.store_source(STEM)
+    repo.helper.write_text("SIZE = 3\n", encoding="utf-8")
+    reasons = []
+    assert not cache.source_cached(STEM, want_bom=True, reasons=reasons)
+    assert reasons == ["input changed: hardware/parts/helper.py"]
+
+
+@pytest.mark.parametrize("kind", ["patch", "replay", "render"])
+def test_annotation_cache_miss_names_changed_file_and_preserves_geometry(repo, kind):
+    write_outputs(repo)
+    patch = repo.PATCH_DIR / f"{STEM}_exploded_cam0.json"
+    patch.write_text("[]", encoding="utf-8")
+    cache.store_source(STEM)
+    cache.store_snapshots(STEM)
+    if kind == "patch":
+        changed = patch
+    elif kind == "replay":
+        changed = repo.MARK_DIR / "replay.py"
+    else:
+        changed = repo.SVG_DIR / f"{STEM}_exploded_cam0.svg"
+    changed.write_text(changed.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+    if kind == "render":
+        cache.store_source(STEM)
+        changed = repo.CACHE_DIR / STEM / changed.name
+    reasons = []
+
+    assert cache.source_cached(STEM, want_bom=True)
+    assert not cache.snapshots_cached(STEM, reasons=reasons)
+    assert reasons == [
+        f"input changed: {changed.relative_to(cache.REPO_ROOT).as_posix()}"
+    ]
+
+
+def test_diagnostic_history_is_not_part_of_artifact_identity(repo):
+    write_outputs(repo)
+    cache.store_source(STEM)
+    cache.store_snapshots(STEM)
+    path = repo.CACHE_DIR / STEM / "source.key"
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    manifest["inputs"] = {"old diagnostic": "value"}
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+    assert cache.source_cached(STEM, want_bom=True)
+    assert cache.snapshots_cached(STEM)

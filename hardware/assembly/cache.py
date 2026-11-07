@@ -70,6 +70,7 @@ from hardware.scheme import (
 
 _SOURCE_KEY = "source.key"
 _PATCH_KEY = "patch.key"
+_SOURCE_SALT = b"hardware-cache-v4\n"
 
 
 # ── content hashing ──────────────────────────────────────────────────────────
@@ -229,17 +230,7 @@ def _parsed_cad_toolchain(project_source: bytes, lock_source: bytes) -> bytes:
     return json.dumps({"cad": cad, "packages": selected}, sort_keys=True).encode()
 
 
-def source_key(stem: str) -> str:
-    """Content hash of ``stem``'s import closure, CAD toolchain and platform.
-    Governs the ``.step``, the raw ``.svg``, and the BOM ``.md``."""
-    h = hashlib.sha256()
-    # Reject v3 entries that may contain geometry built from stale bytecode.
-    h.update(b"hardware-cache-v4\n")
-    h.update(f"manual-illustrations={MANUAL_ILLUSTRATIONS}\n".encode())
-    h.update(b"build123d=" + _kernel_version().encode() + b"\n")
-    h.update(platform.python_version().encode())
-    h.update(platform.platform().encode())
-    h.update(_cad_toolchain())
+def _source_files(stem: str) -> frozenset[Path]:
     # Export orchestration and BOM code aren't necessarily imported by the
     # procedure. Only these known replay imports belong to the other layer.
     # Follow mark helpers reached by any other importer, including exporters
@@ -255,10 +246,23 @@ def source_key(stem: str) -> str:
         for caller in ("build_procedures.py", "cache.py")
         for module in ("patch.py", "replay.py")
     )
-    sources = _closure(
+    return _closure(
         PROCEDURES_DIR / f"{stem}.py", *inputs, skip_imports=annotation_imports
     )
-    _hash_files(h, sources)
+
+
+def source_key(stem: str) -> str:
+    """Content hash of ``stem``'s import closure, CAD toolchain and platform.
+    Governs the ``.step``, the raw ``.svg``, and the BOM ``.md``."""
+    h = hashlib.sha256()
+    # Reject v3 entries that may contain geometry built from stale bytecode.
+    h.update(_SOURCE_SALT)
+    h.update(f"manual-illustrations={MANUAL_ILLUSTRATIONS}\n".encode())
+    h.update(b"build123d=" + _kernel_version().encode() + b"\n")
+    h.update(platform.python_version().encode())
+    h.update(platform.platform().encode())
+    h.update(_cad_toolchain())
+    _hash_files(h, _source_files(stem))
     return h.hexdigest()
 
 
@@ -285,6 +289,84 @@ def patch_key(stem: str, *, inputs_key: str | None = None) -> str:
     h.update(json.dumps(_read_layer(stem, _SOURCE_KEY), sort_keys=True).encode())
     h.update((annotation_key(stem) if inputs_key is None else inputs_key).encode())
     return h.hexdigest()
+
+
+def _shown(path: Path) -> str:
+    return (
+        path.relative_to(REPO_ROOT).as_posix()
+        if path.is_relative_to(REPO_ROOT)
+        else str(path)
+    )
+
+
+def _file_inputs(paths) -> dict[str, str]:
+    return {_shown(p): _sha256_file(p) for p in paths}
+
+
+def _source_inputs(stem: str) -> dict[str, str]:
+    """Diagnostic fingerprints of the same inputs used by source_key."""
+    toolchain = json.loads(_cad_toolchain())
+    return {
+        **_file_inputs(_source_files(stem)),
+        "cache format": _SOURCE_SALT.decode().strip(),
+        "manual illustration profile": str(MANUAL_ILLUSTRATIONS),
+        "build123d version": _kernel_version(),
+        "Python version": platform.python_version(),
+        "platform": platform.platform(),
+        "pyproject.toml (CAD requirements)": hashlib.sha256(
+            json.dumps(toolchain["cad"], sort_keys=True).encode()
+        ).hexdigest(),
+        "uv.lock (CAD dependencies)": hashlib.sha256(
+            json.dumps(toolchain["packages"], sort_keys=True).encode()
+        ).hexdigest(),
+    }
+
+
+def _snapshot_inputs(stem: str) -> dict[str, str]:
+    key, files = _read_layer(stem, _SOURCE_KEY)
+    return {
+        **_file_inputs(_closure(MARK_DIR / "replay.py") | set(_patch_files(stem))),
+        **{_shown(_entry(stem) / name): sha for name, sha in files.items()},
+        "geometry source key": key or "missing",
+    }
+
+
+def _changed_inputs(stem: str, key_file: str, current_inputs) -> list[str]:
+    try:
+        previous = json.loads((_entry(stem) / key_file).read_text(encoding="utf-8"))[
+            "inputs"
+        ]
+        if not isinstance(previous, dict) or any(
+            not isinstance(name, str) or not isinstance(value, str)
+            for name, value in previous.items()
+        ):
+            raise ValueError("Invalid input history")
+    except (ValueError, KeyError, TypeError, OSError):
+        return [
+            "build inputs changed; previous cache has no input history; rebuilding records it"
+        ]
+    current = current_inputs(stem)
+    changes = []
+    for name in sorted(previous.keys() | current.keys()):
+        if name not in previous:
+            changes.append(f"input added: {name}")
+        elif name not in current:
+            changes.append(f"input removed: {name}")
+        elif previous[name] != current[name]:
+            changes.append(f"input changed: {name}")
+    return changes or ["build input key changed"]
+
+
+def _miss(reasons: list[str] | None, *messages: str) -> bool:
+    if reasons is not None:
+        reasons.extend(messages)
+    return False
+
+
+def _missing_manifest(stem: str, key_file: str) -> str:
+    path = _entry(stem) / key_file
+    status = "invalid or unreadable" if path.exists() else "missing"
+    return f"cache manifest {status}: {_shown(path)}"
 
 
 # ── store / restore / prune ──────────────────────────────────────────────────
@@ -383,11 +465,18 @@ def _sha256_file(p: Path) -> str:
 
 
 def _store_layer(
-    stem: str, *, key_file: str, current_key, expected_key=None, belongs, outputs
+    stem: str,
+    *,
+    key_file: str,
+    current_key,
+    inputs,
+    expected_key=None,
+    belongs,
+    outputs,
 ) -> None:
     """Replace one layer of ``stem``'s entry: drop its old files (the layer's
     key + everything it ``belongs`` to), copy in the current ``outputs``, then
-    write the key file LAST as a manifest ``{"key", "files": {name: sha256}}``.
+    write the key file LAST with the key, file digests and diagnostic input history.
     The other layer is untouched.
 
     Writing the manifest last makes the layer self-describing and crash-safe;
@@ -398,6 +487,7 @@ def _store_layer(
     key_value = current_key(stem)
     if expected_key is not None and key_value != expected_key:
         raise RuntimeError(f"Build inputs changed before caching: {stem}")
+    fingerprints = inputs(stem)
     entry = _entry(stem)
     entry.mkdir(parents=True, exist_ok=True)
     for f in entry.iterdir():
@@ -411,10 +501,11 @@ def _store_layer(
         if _sha256_file(dest) != digest:
             raise RuntimeError(f"Artifact changed while caching: {f}")
         files[f.name] = digest
-    if current_key(stem) != key_value:
+    if current_key(stem) != key_value or inputs(stem) != fingerprints:
         raise RuntimeError(f"Build inputs changed while caching: {stem}")
     (entry / key_file).write_text(
-        json.dumps({"key": key_value, "files": files}), encoding="utf-8"
+        json.dumps({"key": key_value, "files": files, "inputs": fingerprints}),
+        encoding="utf-8",
     )
 
 
@@ -443,20 +534,21 @@ def _read_layer(stem: str, key_file: str) -> tuple[str | None, dict[str, str]]:
         return None, {}
 
 
-def _entry_intact(stem: str, files: dict[str, str]) -> bool:
+def _entry_intact(
+    stem: str, files: dict[str, str], reasons: list[str] | None = None
+) -> bool:
     """Every manifested file is present in the entry with its recorded hash.
     The expensive check (it reads each stored file), so callers run the cheap
     key/manifest checks first and only reach here on a key match."""
     entry = _entry(stem)
     for name, sha in files.items():
         p = entry / name
-        if (
-            p.is_symlink()
-            or not p.is_file()
-            or p.stat().st_size == 0
-            or _sha256_file(p) != sha
-        ):
-            return False
+        if p.is_symlink():
+            return _miss(reasons, f"cached artifact is a symlink: {_shown(p)}")
+        if not p.is_file():
+            return _miss(reasons, f"cached artifact missing: {_shown(p)}")
+        if p.stat().st_size == 0 or _sha256_file(p) != sha:
+            return _miss(reasons, f"cached artifact damaged: {_shown(p)}")
     return True
 
 
@@ -472,6 +564,7 @@ def store_source(
         stem,
         key_file=_SOURCE_KEY,
         current_key=source_key,
+        inputs=_source_inputs,
         expected_key=expected_key,
         belongs=lambda n: _is_source(stem, n),
         outputs=_source_outputs(stem, want_bom=want_bom, want_delta=want_delta),
@@ -484,6 +577,7 @@ def store_snapshots(stem: str, *, expected_annotation_key: str | None = None) ->
         stem,
         key_file=_PATCH_KEY,
         current_key=patch_key,
+        inputs=_snapshot_inputs,
         expected_key=patch_key(stem, inputs_key=expected_annotation_key)
         if expected_annotation_key is not None
         else None,
@@ -499,15 +593,18 @@ def source_cached(
     want_delta: bool = False,
     expected_svgs: set[str] | None = None,
     expected_key: str | None = None,
+    reasons: list[str] | None = None,
 ) -> bool:
     """True only if the source key matches AND every recorded file is present
     with its recorded hash — a changed, damaged, incomplete, or corrupted entry
     all fall back to a rebuild. Cheap checks first; the integrity hash runs only
     on a key match (a rebuild from a source edit pays no hashing)."""
     key, files = _read_layer(stem, _SOURCE_KEY)
-    if key is None or key != (
-        source_key(stem) if expected_key is None else expected_key
-    ):
+    if key is None:
+        return _miss(reasons, _missing_manifest(stem, _SOURCE_KEY))
+    if key != (source_key(stem) if expected_key is None else expected_key):
+        if reasons is not None:
+            reasons.extend(_changed_inputs(stem, _SOURCE_KEY, _source_inputs))
         return False
     required = {f"{stem}_{v}.step" for v in VARIANTS}
     if expected_svgs is not None:
@@ -516,18 +613,29 @@ def source_cached(
         required.add(f"{stem}.md")
     if want_delta:
         required.add(f"{stem}_delta.md")
-    if not required.issubset(files):
-        return False
-    if any(not _is_source(stem, name) for name in files):
-        return False
-    return _entry_intact(stem, files)
+    missing = required - files.keys()
+    if missing:
+        return _miss(
+            reasons,
+            *(f"cached output not recorded: {name}" for name in sorted(missing)),
+        )
+    unexpected = sorted(name for name in files if not _is_source(stem, name))
+    if unexpected:
+        return _miss(
+            reasons, *(f"unexpected cached artifact: {name}" for name in unexpected)
+        )
+    return _entry_intact(stem, files, reasons)
 
 
-def snapshots_cached(stem: str) -> bool:
+def snapshots_cached(stem: str, *, reasons: list[str] | None = None) -> bool:
     """True only if the patch key matches AND every recorded snapshot is present
     with its hash (a stem with no patches records an empty set — trivially true)."""
     key, files = _read_layer(stem, _PATCH_KEY)
-    if key is None or key != patch_key(stem):
+    if key is None:
+        return _miss(reasons, _missing_manifest(stem, _PATCH_KEY))
+    if key != patch_key(stem):
+        if reasons is not None:
+            reasons.extend(_changed_inputs(stem, _PATCH_KEY, _snapshot_inputs))
         return False
     from hardware.assembly.mark.replay import find_leaves
 
@@ -537,8 +645,18 @@ def snapshots_cached(stem: str) -> bool:
         for leaf in find_leaves(json.loads(patch.read_text(encoding="utf-8")))
     }
     if set(files) != expected:
-        return False
-    return _entry_intact(stem, files)
+        return _miss(
+            reasons,
+            *(
+                f"annotation output missing: {name}"
+                for name in sorted(expected - files.keys())
+            ),
+            *(
+                f"unexpected annotation output: {name}"
+                for name in sorted(files.keys() - expected)
+            ),
+        )
+    return _entry_intact(stem, files, reasons)
 
 
 def restore_source(stem: str, *, want_bom: bool = True) -> None:

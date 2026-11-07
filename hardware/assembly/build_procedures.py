@@ -481,6 +481,10 @@ def _dispatch(
     # still wipes all stale outputs so deleted/renamed steps don't survive.
     if not use_cache:
         _clear_outputs(clear_bom=want_any_bom)
+        buildlog.event(
+            "cache_bypassed",
+            "Cache bypassed: --no-cache requested; rebuilding all assemblies",
+        )
 
     t_wall0 = time.monotonic()
     _check_cancelled()
@@ -504,10 +508,21 @@ def _dispatch(
     # Classify each stem once (source_cached verifies the entry's hashes — not
     # something to run twice); the loop below reuses this map.
     cached: dict[str, bool] = {}
+
+    def log_cache_miss(stem: str, layer: str, reasons: list[str]) -> None:
+        buildlog.event(
+            "cache_miss",
+            f"{layer.capitalize()} cache miss: {'; '.join(reasons)}",
+            stem=stem,
+            layer=layer,
+            reasons=reasons,
+        )
+
     if use_cache:
         pruned = stepcache.prune(stems)
         for s in stems:
             _check_cancelled()
+            reasons: list[str] = []
             cached[s] = stepcache.source_cached(
                 s,
                 expected_key=inputs[s][0],
@@ -518,7 +533,10 @@ def _dispatch(
                     for _, exploded in _VARIANTS
                     for i in _view_indices(s, exploded)
                 },
+                reasons=reasons,
             )
+            if not cached[s]:
+                log_cache_miss(s, "geometry", reasons)
         n_cached = sum(cached.values())
         buildlog.event(
             "cache_checked",
@@ -541,7 +559,8 @@ def _dispatch(
                 continue
             stepcache.clear_outputs(s)
             stepcache.restore_source(s, want_bom=want_any_bom)
-            if stepcache.snapshots_cached(s):
+            reasons = []
+            if stepcache.snapshots_cached(s, reasons=reasons):
                 stepcache.restore_snapshots(s)
                 n_fresh += 1
                 buildlog.event(
@@ -551,6 +570,7 @@ def _dispatch(
                     stem=s,
                 )
             else:
+                log_cache_miss(s, "annotations", reasons)
                 # Patch edited but geometry/render unchanged: keep the cached
                 # .step + raw .svg, just re-apply the (build123d-free) replay.
                 # clear_outputs already removed the old snapshots, so removed
