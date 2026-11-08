@@ -369,6 +369,7 @@ def test_run_finalizes_when_already_calibrated(
         "api",
         side_effect=[
             {"ready": False, "calibrated": True},  # GET /api/status
+            {"status": "ok"},  # POST /api/setup/begin
             {"ok": True},  # POST /api/phone/home
             {"ok": True},  # POST /api/ready
             {"ready": False},  # ready poll: settle still running
@@ -400,7 +401,9 @@ def test_run_finalizes_when_already_calibrated(
 def test_regression_setup_does_not_report_unconfirmed_readiness(
     mocker, capsys, responses
 ):
-    mocker.patch.object(hw_mod, "api", side_effect=responses)
+    mocker.patch.object(
+        hw_mod, "api", side_effect=[responses[0], {"status": "ok"}, *responses[1:]]
+    )
     mocker.patch.object(hw_mod.time, "sleep")
     mocker.patch.object(hw_mod.time, "monotonic", side_effect=iter(range(1000)))
 
@@ -741,7 +744,9 @@ def _patch_auto_worker(mocker, *, port_ok=True):
         hw_mod, "BASE", hw_mod.BASE
     )  # restore after (worker mutates it)
     return {
-        "api": mocker.patch.object(hw_mod, "api", return_value={"bridge": True}),
+        "api": mocker.patch.object(
+            hw_mod, "api", return_value={"status": "ok", "bridge": True}
+        ),
         "sleep": mocker.patch.object(hw_mod.time, "sleep"),
         "run": mocker.patch.object(hw_mod, "run"),
     }
@@ -767,7 +772,12 @@ def test_await_bridge_and_calibrate_skips_on_port_timeout(mocker) -> None:
 def test_await_bridge_and_calibrate_polls_until_bridge(mocker) -> None:
     m = _patch_auto_worker(mocker)
     # No response, then not-connected, then connected — waits through both.
-    m["api"].side_effect = [None, {"bridge": False}, {"bridge": True}]
+    m["api"].side_effect = [
+        {"status": "ok"},  # Begin recording before waiting for the phone.
+        None,
+        {"bridge": False},
+        {"bridge": True},
+    ]
 
     hw_mod.await_bridge_and_calibrate("127.0.0.1", 8048)
 
@@ -779,7 +789,7 @@ def test_await_bridge_and_calibrate_starts_on_already_calibrated(mocker) -> None
     # A resumed server may already be calibrated/ready — proceed (run() itself
     # short-circuits) rather than waiting forever for a fresh bridge flag.
     m = _patch_auto_worker(mocker)
-    m["api"].return_value = {"calibrated": True}
+    m["api"].return_value = {"status": "ok", "calibrated": True}
 
     hw_mod.await_bridge_and_calibrate("127.0.0.1", 8048)
 
@@ -908,6 +918,7 @@ def test_regression_auto_setup_dials_configured_host(
 @pytest.mark.parametrize(
     "path",
     [
+        "/api/setup/begin",
         "/api/phone/home",
         "/api/calibrate/trace-edge",
         "/api/calibrate/assistive-touch/show",
@@ -936,7 +947,12 @@ def test_regression_failed_ready_request_never_polls_stale_ready(wizard_server):
     result = runner.invoke(app, ["--auto"])
 
     assert result.exit_code == 1
-    assert wizard_server.paths() == ["/api/status", "/api/phone/home", "/api/ready"]
+    assert wizard_server.paths() == [
+        "/api/status",
+        "/api/setup/begin",
+        "/api/phone/home",
+        "/api/ready",
+    ]
 
 
 @pytest.mark.parametrize("poll_delay", [0.1, 1, 5, 1000])
@@ -994,6 +1010,7 @@ def test_regression_auto_setup_stops_before_arm_when_phone_absent(
     result = runner.invoke(app, ["--auto"])
 
     assert result.exit_code == 1
+    assert wizard_server.paths()[:2] == ["/api/status", "/api/setup/begin"]
     assert "/api/connect-arm" not in wizard_server.paths()
 
 
@@ -1077,6 +1094,7 @@ def test_setup_interactive_happy_path_uses_verified_steps(
     assert result.exit_code == 0, result.output
     assert wizard_server.paths() == [
         "/api/status",
+        "/api/setup/begin",
         "/api/connect-arm",
         "/api/connect-camera",
         "/api/calibrate/viewport-shift",
@@ -1254,6 +1272,18 @@ def test_auto_worker_reports_unexpected_calibration_exception(
     assert "transport broke" in caplog.text
 
 
+def test_auto_worker_stops_if_setup_cannot_begin(mocker, caplog):
+    mocks = _patch_auto_worker(mocker)
+    mocks["api"].return_value = {"error": "server stopping"}
+
+    hw_mod.await_bridge_and_calibrate("127.0.0.1", 8048)
+
+    mocks["api"].assert_called_once_with("POST", "/api/setup/begin")
+    mocks["run"].assert_not_called()
+    mocks["sleep"].assert_not_called()
+    assert "couldn't begin setup: server stopping" in caplog.text
+
+
 def test_setup_does_not_treat_text_calibration_flag_as_success(wizard_server):
     wizard_server.initial["calibrated"] = "false"
 
@@ -1276,7 +1306,12 @@ def test_auto_worker_waits_for_boolean_bridge_confirmation(wizard_server, mocker
     hw_mod.await_bridge_and_calibrate("127.0.0.1", 8048)
 
     assert wizard_server.clock == 1
-    assert wizard_server.paths() == ["/api/status", "/api/status", "/api/status"]
+    assert wizard_server.paths() == [
+        "/api/setup/begin",
+        "/api/status",
+        "/api/status",
+        "/api/status",
+    ]
 
 
 @pytest.mark.parametrize(

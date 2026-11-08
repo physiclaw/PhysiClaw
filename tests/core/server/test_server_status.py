@@ -1,7 +1,10 @@
-"""The shared status endpoint starts setup observation without moving hardware."""
+"""Shared status polling is observational, including during saved-calibration resume."""
 
 import json
+import logging
 from types import SimpleNamespace
+
+import pytest
 
 from physiclaw.core.server import status
 from physiclaw.core.setup.run_log import SetupRecorder
@@ -15,18 +18,26 @@ async def test_status_preserves_hardware_payload(async_request):
     assert json.loads(response.body) == {"arm": True, "camera": False}
 
 
-async def test_status_starts_journal_before_cli_connects_phone(async_request):
-    recorder = SetupRecorder(lambda: {"bridge_connected": False})
-    rig = SimpleNamespace(status=lambda: {"ready": False}, setup_recording=recorder)
+@pytest.mark.parametrize("calibrated", [False, True])
+async def test_readiness_polling_never_starts_setup(
+    async_request, calibrated, physiclaw_home, caplog
+):
+    recorder = SetupRecorder(lambda: {})
+    payload = {"ready": False, "calibrated": calibrated}
+    rig = SimpleNamespace(status=lambda: payload, setup_recording=recorder)
 
     try:
-        await status.handle_status(async_request(), rig)
-        journal = (recorder.directory / "events.jsonl").read_text(encoding="utf-8")
+        with caplog.at_level(logging.INFO):
+            for ready in (False, False, True):
+                payload["ready"] = ready
+                response = await status.handle_status(async_request(), rig)
+                assert json.loads(response.body) == payload
+        assert recorder.directory is None
     finally:
         recorder.close()
 
-    assert '"event": "setup.initial_state"' in journal
-    assert '"bridge_connected": false' in journal
+    assert not (physiclaw_home / "log" / "setup").exists()
+    assert "Setup evidence:" not in caplog.text
 
 
 async def test_status_route_is_registered_outside_setup(fake_mcp, async_request):

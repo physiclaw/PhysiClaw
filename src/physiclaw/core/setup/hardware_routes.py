@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse
 
+from physiclaw.common.ready import ready_from_status
 from physiclaw.core.bridge import PageState
 from physiclaw.core.setup.hardware_handlers import (
     handle_camera_preview,
@@ -24,11 +25,20 @@ if TYPE_CHECKING:
 def register(mcp: "MCPServer", rig: "HardwareRig", phone: PageState) -> None:
     """Register hardware setup routes."""
 
+    async def begin_recording() -> None:
+        recorder = getattr(rig, "setup_recording", None)
+        if recorder is not None and not ready_from_status(rig.status()):
+            await asyncio.to_thread(recorder.begin)
+
+    @mcp.custom_route("/api/setup/begin", methods=["POST"])
+    async def _begin_setup(request: Request) -> JSONResponse:
+        # Explicit setup intent, before CLI/auto waits for phone connection.
+        await begin_recording()
+        return JSONResponse({"status": "ok"})
+
     @mcp.custom_route("/setup-hardware", methods=["GET"])
     async def _setup_page(request: Request) -> HTMLResponse:
-        recorder = getattr(rig, "setup_recording", None)
-        if recorder is not None:
-            await asyncio.to_thread(recorder.begin)
+        await begin_recording()
         return await handle_setup_page(request)
 
     @mcp.custom_route("/api/connect-arm", methods=["POST"])

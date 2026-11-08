@@ -115,6 +115,9 @@ they cannot prove an unmeasured physical cause, such as a loose cable.
 
 Setup completes at confirmed readiness. Earlier checks may have been reused;
 inspect recorded attempts and initial state rather than assuming every step ran.
+Recording begins with explicit setup intent (wizard, CLI/auto, or a setup
+operation). Status polling and saved-calibration startup never begin recording.
+Opening setup on a ready rig creates no empty run.
 Warnings can accompany readiness: inspect their details.
 An unclosed step after a process crash has an unknown outcome; an in-progress
 run may instead be waiting for input. Clean server shutdown records interruption.
@@ -505,7 +508,7 @@ class SetupRecorder:
         log.info("Setup evidence: %s", self.directory, extra={"console": True})
 
     def begin(self) -> None:
-        """Opening the wizard starts observation, including phone connection.
+        """Explicit setup intent starts observation, including phone connection.
 
         A refresh of a completed wizard is observational; only another setup
         operation starts a new run after readiness.

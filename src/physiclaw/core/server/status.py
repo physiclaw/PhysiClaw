@@ -1,6 +1,5 @@
 """Shared hardware-service status, used by setup, runtime and diagnostics."""
 
-import asyncio
 from typing import TYPE_CHECKING
 
 from starlette.requests import Request
@@ -15,13 +14,8 @@ if TYPE_CHECKING:
 
 
 async def handle_status(request: Request, rig: "HardwareRig") -> JSONResponse:
-    status = rig.status()
-    recorder = getattr(rig, "setup_recording", None)
-    # The CLI starts with a status request rather than opening the wizard.
-    # Begin server observation before it waits for the phone or rig placement.
-    if recorder is not None and not status.get("ready"):
-        await asyncio.to_thread(recorder.begin)
-    return JSONResponse(status)
+    """Readiness probes must not start setup or create evidence directories."""
+    return JSONResponse(rig.status())
 
 
 def register(mcp: "MCPServer", rig: "HardwareRig") -> None:

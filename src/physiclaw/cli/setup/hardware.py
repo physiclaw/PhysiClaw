@@ -465,6 +465,9 @@ def run(auto: bool = False, trace: bool = False) -> None:
     if ready_from_status(status):
         print("PhysiClaw is already ready.")
         return
+    response = api("POST", "/api/setup/begin")
+    if not ok(response):
+        sys.exit(f"Couldn't begin setup: {_msg(response)}")
     if status.get("calibrated") is True:
         print("Already calibrated, finalizing...")
         _return_home_and_ready()
@@ -510,6 +513,10 @@ def await_bridge_and_calibrate(host: str, port: int) -> None:
         return
 
     BASE = f"http://{config.url_host(host)}:{port}"
+    response = api("POST", "/api/setup/begin")
+    if not ok(response):
+        log.error("auto: couldn't begin setup: %s", _msg(response))
+        return
     log.info(
         "auto: waiting for the phone bridge to connect…",
         extra={
