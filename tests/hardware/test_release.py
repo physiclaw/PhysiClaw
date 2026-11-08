@@ -56,8 +56,8 @@ def build_outputs(root):
         root / "print_3d" / rel.PRINT_ZIP,
         {
             "part_x1.step": STEP,
-            "3d_printed_parts_guide.txt": b"English guide",
-            "3d打印零件说明.txt": "中文指南".encode(),
+            "3d_printed_parts_guide.txt": b"part_x1.step  1  Part\n",
+            "3d打印零件说明.txt": "part_x1.step  1  零件\n".encode(),
         },
     )
 
@@ -188,6 +188,14 @@ def test_prepare_excludes_unrelated_files_but_keeps_referenced_assets(
             "sourcing/preview.html": HTML,
             "drawing/visual-review.json": b"{}",
             "drawing/screenshots/preview.png": b"preview",
+            "review/cache-build-profile.json": b'{"timing":2.0}',
+            "logs/user-created.log": b"local log",
+            "svg/user_created.svg": svg,
+            "step/user_created.step": STEP,
+            "print_3d/user_created.step": STEP,
+            "print_3d/user_notes.txt": b"local notes",
+            "manual/assets/.DS_Store": b"Finder metadata",
+            ".cache/complete-build.json": b'{"schema":2}',
         }.items():
             path = output / name
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -208,6 +216,12 @@ def test_prepare_excludes_unrelated_files_but_keeps_referenced_assets(
     assert (
         set(rel._read_zip(bundle / rel.SOURCING_ZIP)) == rel.DOCUMENTS[rel.SOURCING_ZIP]
     )
+    assert set(rel._read_zip(bundle / rel.PRINT_ZIP)) == {
+        "part_x1.step",
+        "3d_printed_parts_guide.txt",
+        "3d打印零件说明.txt",
+    }
+    assert set(rel._read_zip(bundle / rel.FRAME_ZIP)) == {rel.FRAME_STEP}
     rel.verify(VERSION)
 
 
@@ -334,6 +348,8 @@ def test_manifest_cannot_bless_broken_offline_document(bundle):
         (rel.SOURCING_ZIP, "drawing/preview.html", HTML),
         (rel.PRINT_ZIP, "visual-review.json", b"{}"),
         (rel.PRINT_ZIP, "nested/part_x1.step", STEP),
+        (rel.PRINT_ZIP, "user_created_x1.step", STEP),
+        (rel.PRINT_ZIP, "stale_part_x99.step", STEP),
         (rel.FRAME_ZIP, "extra.txt", b"unrelated"),
     ],
 )
@@ -342,6 +358,25 @@ def test_manifest_cannot_bless_unexpected_archive_files(bundle, archive, name, d
     members[name] = data
     rewrite_zip_and_rehash(bundle, archive, members)
     with pytest.raises(rel.ReleaseError, match="unexpected|exactly"):
+        rel.verify(VERSION)
+
+
+@pytest.mark.parametrize(
+    "guide",
+    [
+        b"no inventory",
+        b"part_x1.step  2  Wrong quantity\n",
+        b"part_x1.step  1  Part\npart_x1.step  1  Duplicate\n",
+        b"part_x2.step  2  Different part\n",
+        b"\xffinvalid UTF-8",
+    ],
+)
+def test_print_inventory_must_match_bilingual_guides(bundle, guide):
+    members = rel._read_zip(bundle / rel.PRINT_ZIP)
+    members["3d_printed_parts_guide.txt"] = guide
+    rewrite_zip_and_rehash(bundle, rel.PRINT_ZIP, members)
+
+    with pytest.raises(rel.ReleaseError, match="guide"):
         rel.verify(VERSION)
 
 

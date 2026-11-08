@@ -43,7 +43,7 @@ from hardware.port.processes import (
 # Subcommand → argv it delegates to (after ``sys.executable``), every one a
 # ``-m`` module run.
 _DELEGATED: dict[str, list[str]] = {
-    "build": ["-m", "hardware.assembly.build_procedures"],
+    "build": ["-m", "hardware.cached_build"],
     "check": ["-m", "hardware.check"],
     "print": ["-m", "hardware.parts.build_custom_parts"],
     "manual": ["-m", "hardware.documents.manual.build"],

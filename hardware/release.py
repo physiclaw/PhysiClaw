@@ -203,6 +203,36 @@ def _document_files(output: Path, required: set[str]) -> list[Path]:
     return [output / name for name in names]
 
 
+def _print_inventory(members: dict[str, bytes], guides: set[str]) -> set[str]:
+    """Both generated guides must declare the same filenames and print quantities."""
+    inventories = []
+    for name in sorted(guides):
+        try:
+            lines = members[name].decode("utf-8").splitlines()
+        except UnicodeDecodeError as exc:
+            raise ReleaseError(f"Invalid print parts guide: {name}") from exc
+        rows = [
+            match
+            for line in lines
+            if (
+                match := re.fullmatch(
+                    r"(\S+_x([1-9][0-9]*)\.step)\s+([1-9][0-9]*)\s+.+", line.strip()
+                )
+            )
+        ]
+        filenames = {row[1] for row in rows}
+        if (
+            not rows
+            or len(filenames) != len(rows)
+            or any(row[2] != row[3] for row in rows)
+        ):
+            raise ReleaseError(f"Invalid print parts guide inventory: {name}")
+        inventories.append(filenames)
+    if inventories[0] != inventories[1]:
+        raise ReleaseError("Bilingual print parts guides list different parts")
+    return inventories[0]
+
+
 def validate_assets(bundle: Path) -> None:
     for name in ASSETS:
         path = bundle / name
@@ -220,6 +250,8 @@ def validate_assets(bundle: Path) -> None:
         raise ReleaseError("Print package is missing its parts or bilingual guides")
     if set(print_parts) != guides | steps:
         raise ReleaseError("Print package contains unexpected files")
+    if steps != _print_inventory(print_parts, guides):
+        raise ReleaseError("Print package contains missing or unexpected STEP files")
     frame = _read_zip(bundle / FRAME_ZIP)
     if set(frame) != {FRAME_STEP}:
         raise ReleaseError(

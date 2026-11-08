@@ -22,6 +22,26 @@ import pytest
 from hardware.assembly import cache
 
 STEM = "frame_10_base"
+CHECKED_VIEWS = {
+    STEM: {f"{STEM}_{variant}_cam0.svg" for variant in ("exploded", "assembled")}
+}
+
+
+@pytest.fixture
+def warm_build(repo, monkeypatch):
+    from hardware import cached_build
+
+    monkeypatch.setattr(cached_build, "list_procedures", lambda: [STEM])
+    monkeypatch.setattr(cached_build, "OUTPUT_DIR", repo.STEP_DIR.parent)
+    write_outputs(repo, bom=False)
+    _set_figures(repo)
+    (repo.SVG_DIR / f"{STEM}_exploded_cam0_annotated_screws.svg").write_text(
+        "manual figure", encoding="utf-8"
+    )
+    cache.store_source(STEM)
+    cache.store_annotations(STEM)
+    assert cached_build._record_build(CHECKED_VIEWS, {STEM: cache.source_key(STEM)})
+    return cached_build
 
 
 @pytest.fixture
@@ -107,6 +127,368 @@ def write_outputs(repo, *, bom: bool = True, cams: tuple[int, ...] = (0,)):
             )
     if bom:
         (repo.BOM_DIR / f"{STEM}.md").write_text("| bom |", encoding="utf-8")
+
+
+# ── CAD-free complete builds ───────────────────────────────────────────────────
+
+
+def test_warm_build_checks_contents_without_recopying_outputs(
+    repo, warm_build, monkeypatch
+):
+    _, _, plan = warm_build._cached_plan()
+    before = {p: p.stat().st_mtime_ns for p in repo.STEP_DIR.iterdir()}
+
+    def unexpected_copy(*args):
+        pytest.fail("Intact outputs should not be recopied")
+
+    monkeypatch.setattr(cache, "_restore", unexpected_copy)
+    warm_build._restore(plan)
+
+    assert {p: p.stat().st_mtime_ns for p in before} == before
+
+
+@pytest.mark.parametrize("damage", ["deleted", "modified", "symlink", "directory"])
+@pytest.mark.parametrize("kind", ["step", "raw", "figure", "paths"])
+def test_warm_build_restores_damaged_outputs(repo, warm_build, damage, kind):
+    paths = {
+        "step": repo.STEP_DIR / f"{STEM}_assembled.step",
+        "raw": repo.SVG_DIR / f"{STEM}_exploded_cam0.svg",
+        "figure": repo.SVG_DIR / f"{STEM}_exploded_cam0_annotated_screws.svg",
+        "paths": repo.ANNOTATION_DIR
+        / f"{STEM}_exploded_cam0_annotated_screws.paths.svg",
+    }
+    target = paths[kind]
+    original = target.read_bytes()
+    target.unlink()
+    linked = target.with_suffix(".external")
+    if damage == "modified":
+        target.write_bytes(b"corrupted")
+    elif damage == "symlink":
+        linked.write_bytes(original)
+        target.symlink_to(linked)
+    elif damage == "directory":
+        target.mkdir()
+        (target / "partial").write_bytes(b"interrupted output")
+
+    _, _, plan = warm_build._cached_plan()
+    warm_build._restore(plan)
+
+    assert not target.is_symlink()
+    assert target.read_bytes() == original
+    if damage == "symlink":
+        assert linked.read_bytes() == original
+
+
+@pytest.mark.parametrize("kind", ["source", "annotation"])
+def test_warm_build_rejects_damaged_cached_artifact(repo, warm_build, kind):
+    key_file = f"{kind}.key"
+    _, files = cache._read_layer(STEM, key_file)
+    target = repo.CACHE_DIR / STEM / next(iter(files))
+    target.write_bytes(b"corrupted")
+
+    assert warm_build._cached_plan() is None
+
+
+def test_warm_build_receipt_preserves_required_view_check(repo, warm_build):
+    path = repo.CACHE_DIR / STEM / "source.key"
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    name = f"{STEM}_exploded_cam0.svg"
+    del manifest["files"][name]
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+    (repo.CACHE_DIR / STEM / name).unlink()
+
+    assert warm_build._cached_plan() is None
+
+
+@pytest.mark.parametrize("kind", ["source", "annotations"])
+def test_warm_build_detects_same_size_same_mtime_source_edits(repo, warm_build, kind):
+    target = repo.helper if kind == "source" else repo.generator
+    original = target.stat()
+    before = target.read_bytes()
+    target.write_bytes(before.replace(b"1", b"2"))
+    os.utime(target, ns=(original.st_atime_ns, original.st_mtime_ns))
+
+    assert target.stat().st_size == original.st_size
+    assert warm_build._cached_plan() is None
+
+
+def test_warm_build_detects_newly_resolvable_import(repo, warm_build):
+    repo.helper.write_text("import hardware.parts.optional\n", encoding="utf-8")
+    cache.store_source(STEM)
+    cache.store_annotations(STEM)
+    assert warm_build._record_build(CHECKED_VIEWS, {STEM: cache.source_key(STEM)})
+    assert warm_build._cached_plan() is not None
+
+    repo.helper.with_name("optional.py").write_text("SIZE = 2\n", encoding="utf-8")
+
+    assert warm_build._cached_plan() is None
+
+
+@pytest.mark.parametrize(
+    "contents", ["{partial", "[]", '{"schema": 2}', '{"schema": 1, "steps": {}}']
+)
+def test_warm_build_rejects_incomplete_receipt(repo, warm_build, contents):
+    (repo.CACHE_DIR / warm_build.RECEIPT).write_text(contents, encoding="utf-8")
+
+    assert warm_build._cached_plan() is None
+
+
+def test_warm_build_does_not_hide_new_procedures(repo, warm_build, monkeypatch):
+    monkeypatch.setattr(warm_build, "list_procedures", lambda: [STEM, "frame_20_new"])
+
+    assert warm_build._cached_plan() is None
+
+
+@pytest.mark.parametrize(
+    ("target", "contents", "message"),
+    [
+        ("helper", "SIZE = 2\n", "Build inputs changed"),
+        ("manifest", "{interrupted", "Cached manifests changed"),
+    ],
+)
+def test_warm_build_rechecks_after_restoring(
+    repo, warm_build, monkeypatch, capsys, target, contents, message
+):
+    restore = warm_build._restore
+
+    def edit_during_restore(plan):
+        restore(plan)
+        path = (
+            repo.helper
+            if target == "helper"
+            else repo.CACHE_DIR / STEM / "annotation.key"
+        )
+        path.write_text(contents, encoding="utf-8")
+
+    monkeypatch.setattr(warm_build, "_restore", edit_during_restore)
+    with pytest.raises(SystemExit) as exc:
+        warm_build.main.__wrapped__(["--log-format", "json"])
+
+    assert exc.value.code == 1
+    events = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert events[-1]["status"] == "failed"
+    assert any(message in row["message"] for row in events)
+    assert not any(row.get("status") == "success" for row in events)
+
+
+def test_warm_build_success_uses_no_cad_dispatcher(
+    repo, warm_build, monkeypatch, capsys
+):
+    import builtins
+
+    original_import = builtins.__import__
+
+    def guard(name, *args, **kwargs):
+        assert name not in ("build123d", "hardware.assembly.build_procedures")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", guard)
+    assert warm_build.main.__wrapped__(["--log-format", "json"]) == 0
+    events = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    summary = next(row for row in events if row["event"] == "build_summary")
+    assert summary["cached"] == 1
+    assert summary["rebuilt"] == 0
+    assert events[-1]["status"] == "success"
+
+
+@pytest.mark.parametrize(
+    "arguments", [[], ["--no-cache"], ["--bom"], ["--stems", STEM]]
+)
+def test_warm_build_falls_back_to_existing_dispatcher(
+    repo, warm_build, monkeypatch, arguments
+):
+    import sys
+
+    (repo.CACHE_DIR / warm_build.RECEIPT).unlink()
+    calls = []
+    dispatcher = SimpleNamespace(main=lambda args: calls.append(args) or 7)
+    monkeypatch.setitem(sys.modules, "hardware.assembly.build_procedures", dispatcher)
+    monkeypatch.setattr(
+        sys.modules["hardware.assembly"], "build_procedures", dispatcher, raising=False
+    )
+
+    assert warm_build.main.__wrapped__(arguments) == 7
+    assert calls == [arguments]
+
+
+def test_warm_build_removes_stale_views(repo, warm_build):
+    stale = repo.SVG_DIR / f"{STEM}_assembled_cam9.svg"
+    stale.write_text("removed view", encoding="utf-8")
+    _, _, plan = warm_build._cached_plan()
+
+    warm_build._restore(plan)
+
+    assert not stale.exists()
+    assert (repo.SVG_DIR / f"{STEM}_assembled_cam0.svg").is_file()
+
+
+def test_warm_build_does_not_record_missing_required_views(repo, warm_build):
+    path = repo.CACHE_DIR / STEM / "source.key"
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    del manifest["files"][f"{STEM}_exploded_cam0.svg"]
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+    cache.store_annotations(STEM)
+
+    assert not warm_build._record_build(CHECKED_VIEWS, {STEM: cache.source_key(STEM)})
+
+    assert warm_build._cached_plan() is None
+
+
+def test_warm_build_rejects_manifest_changed_after_integrity_check(
+    repo, warm_build, monkeypatch
+):
+    intact = cache._entry_intact
+
+    def truncate_manifest_after_annotation_check(stem, files, reasons=None):
+        result = intact(stem, files, reasons)
+        if any(name.endswith(".paths.svg") for name in files):
+            path = repo.CACHE_DIR / STEM / "source.key"
+            manifest = json.loads(path.read_text(encoding="utf-8"))
+            manifest["files"] = {}
+            path.write_text(json.dumps(manifest), encoding="utf-8")
+        return result
+
+    monkeypatch.setattr(
+        cache, "_entry_intact", truncate_manifest_after_annotation_check
+    )
+
+    assert warm_build._cached_plan() is None
+
+
+@pytest.mark.parametrize(
+    "steps",
+    [[STEM], {STEM: []}, {STEM: {"key": "x", "svgs": [None]}}],
+)
+def test_warm_build_rejects_malformed_receipt_shapes(repo, warm_build, steps):
+    (repo.CACHE_DIR / warm_build.RECEIPT).write_text(
+        json.dumps({"schema": warm_build.RECEIPT_SCHEMA, "steps": steps}),
+        encoding="utf-8",
+    )
+
+    assert warm_build._cached_plan() is None
+
+
+def test_warm_build_does_not_trust_old_receipt_schema(repo, warm_build):
+    path = repo.CACHE_DIR / warm_build.RECEIPT
+    receipt = json.loads(path.read_text(encoding="utf-8"))
+    receipt["schema"] -= 1
+    path.write_text(json.dumps(receipt), encoding="utf-8")
+
+    assert warm_build._cached_plan() is None
+
+
+@pytest.mark.parametrize("failure", [OSError, KeyboardInterrupt])
+def test_warm_build_receipt_publish_is_atomic(repo, warm_build, monkeypatch, failure):
+    path = repo.CACHE_DIR / warm_build.RECEIPT
+    original = path.read_bytes()
+
+    def interrupted_replace(*args):
+        raise failure("interrupted receipt publication")
+
+    monkeypatch.setattr(Path, "replace", interrupted_replace)
+    if failure is OSError:
+        assert not warm_build._record_build(
+            CHECKED_VIEWS, {STEM: cache.source_key(STEM)}
+        )
+    else:
+        with pytest.raises(KeyboardInterrupt):
+            warm_build._record_build(CHECKED_VIEWS, {STEM: cache.source_key(STEM)})
+
+    assert path.read_bytes() == original
+    assert not list(repo.CACHE_DIR.glob(".complete-build-*"))
+
+
+def test_warm_build_recovers_from_interrupted_restore(repo, warm_build, monkeypatch):
+    _, _, plan = warm_build._cached_plan()
+    cache.clear_outputs(STEM)
+    copy = shutil.copy2
+    copied = 0
+
+    def interrupted_copy(*args, **kwargs):
+        nonlocal copied
+        copied += 1
+        if copied == 2:
+            raise KeyboardInterrupt
+        return copy(*args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(shutil, "copy2", interrupted_copy)
+        with pytest.raises(KeyboardInterrupt):
+            warm_build._restore(plan)
+
+    _, _, resumed = warm_build._cached_plan()
+    warm_build._restore(resumed)
+    assert all(
+        cache._sha256_file(cache._dest_dir(name) / name) == sha
+        for name, sha in resumed[STEM].files.items()
+    )
+    assert not list(repo.STEP_DIR.glob("*.tmp"))
+
+
+def test_warm_build_checks_bytes_copied_after_cache_validation(
+    repo, warm_build, monkeypatch
+):
+    _, _, plan = warm_build._cached_plan()
+    cache.clear_outputs(STEM)
+    copy = shutil.copy2
+
+    def damaged_copy(source, target, *args, **kwargs):
+        result = copy(source, target, *args, **kwargs)
+        Path(target).write_bytes(b"damaged during restore")
+        return result
+
+    monkeypatch.setattr(shutil, "copy2", damaged_copy)
+    with pytest.raises(RuntimeError, match="Cached artifact changed during restore"):
+        warm_build._restore(plan)
+    assert not list(repo.STEP_DIR.glob("*.tmp"))
+
+
+@pytest.mark.parametrize("kind", ["step", "raw", "paths", "checkpoint"])
+def test_warm_build_clears_interrupted_build_transients(repo, warm_build, kind):
+    if kind == "checkpoint":
+        leftover = repo.RENDER_WORK_DIR / f"{STEM}_assembled"
+        leftover.mkdir()
+        (leftover / "checkpoint.brep").write_text("old geometry", encoding="utf-8")
+    else:
+        directory, suffix = {
+            "step": (repo.STEP_DIR, "_assembled.step.tmp"),
+            "raw": (repo.SVG_DIR, "_assembled_cam0.svg.tmp"),
+            "paths": (
+                repo.ANNOTATION_DIR,
+                "_assembled_cam0_annotated_screws.paths.svg.tmp",
+            ),
+        }[kind]
+        leftover = directory / f"{STEM}{suffix}"
+        leftover.write_text("interrupted output", encoding="utf-8")
+    _, _, plan = warm_build._cached_plan()
+
+    warm_build._restore(plan)
+
+    assert not leftover.exists()
+    assert (repo.STEP_DIR / f"{STEM}_assembled.step").is_file()
+
+
+def test_warm_build_obeys_cancellation_before_restoring(repo, warm_build, monkeypatch):
+    _, _, plan = warm_build._cached_plan()
+    marker = repo.STEP_DIR.parent / "cancel"
+    marker.touch()
+    monkeypatch.setenv("PHYSICLAW_HW_CANCEL_FILE", str(marker))
+
+    with pytest.raises(KeyboardInterrupt):
+        warm_build._restore(plan)
+
+
+def test_warm_build_receipt_cannot_bind_old_views_to_new_sources(repo, warm_build):
+    receipt = repo.CACHE_DIR / warm_build.RECEIPT
+    original = receipt.read_bytes()
+    before_build = {STEM: cache.source_key(STEM)}
+    repo.helper.write_text("SIZE = 2\n", encoding="utf-8")
+    cache.store_source(STEM)
+    cache.store_annotations(STEM)
+
+    assert not warm_build._record_build(CHECKED_VIEWS, before_build)
+    assert receipt.read_bytes() == original
+    assert warm_build._cached_plan() is None
 
 
 # ── keys ──────────────────────────────────────────────────────────────────────
