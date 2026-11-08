@@ -8,10 +8,13 @@ under ``REPO_ROOT``) and its store/restore run against tmp files only.
 from __future__ import annotations
 
 import ast
+import errno
 import json
 import os
+import random
 import shutil
-from itertools import permutations
+from itertools import count, permutations
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -1118,3 +1121,232 @@ def test_diagnostic_history_is_not_part_of_artifact_identity(repo):
     path.write_text(json.dumps(manifest), encoding="utf-8")
     assert cache.source_cached(STEM, want_bom=True)
     assert cache.annotations_cached(STEM)
+
+
+@pytest.fixture
+def stored_layers(repo):
+    """Several cameras and both BOMs, plus a figure and its path intermediate."""
+    write_outputs(repo, cams=(0, 1))
+    (repo.BOM_DIR / f"{STEM}_delta.md").write_text("delta BOM", encoding="utf-8")
+    _set_figures(repo)
+    (repo.SVG_DIR / f"{STEM}_exploded_cam0_annotated_screws.svg").write_text(
+        "manual figure", encoding="utf-8"
+    )
+    layers = {
+        "source": cache._source_outputs(STEM),
+        "annotation": cache._annotation_outputs(STEM),
+    }
+    cache.store_source(STEM)
+    cache.store_annotations(STEM)
+    return {
+        layer: {p: p.read_bytes() for p in paths} for layer, paths in layers.items()
+    }
+
+
+@pytest.mark.parametrize("layer", ["source", "annotation"])
+@pytest.mark.parametrize("target", ["artifact", "manifest"])
+def test_rebuild_repairs_cached_file_replaced_by_directory(
+    repo, stored_layers, layer, target
+):
+    entry = repo.CACHE_DIR / STEM
+    name = (
+        next(iter(stored_layers[layer])).name
+        if target == "artifact"
+        else f"{layer}.key"
+    )
+    damaged = entry / name
+    damaged.unlink()
+    damaged.mkdir()
+    (damaged / "junk").write_bytes(b"invalid cache artifact")
+
+    if layer == "source":
+        assert not cache.source_cached(STEM, want_bom=True)
+        cache.store_source(STEM)
+    else:
+        assert not cache.annotations_cached(STEM)
+    cache.store_annotations(STEM)
+
+    cache.clear_outputs(STEM)
+    cache.restore_source(STEM)
+    cache.restore_annotations(STEM)
+    assert cache.source_cached(STEM, want_bom=True, want_delta=True)
+    assert cache.annotations_cached(STEM)
+    for files in stored_layers.values():
+        assert all(p.read_bytes() == data for p, data in files.items())
+
+
+_COPY_POINTS = [
+    (layer, index)
+    for layer, count in (("source", 8), ("annotation", 2))
+    for index in range(count)
+]
+_STORE_POINTS = [*_COPY_POINTS, ("source", "manifest"), ("annotation", "manifest")]
+
+
+def _interrupt_cache_io(failure):
+    if failure == "disk-full":
+        raise OSError(errno.ENOSPC, "injected cache disk full")
+    raise KeyboardInterrupt("injected cache interruption")
+
+
+@pytest.mark.parametrize("layer,point", _STORE_POINTS)
+@pytest.mark.parametrize("failure", ["disk-full", "interrupt"])
+def test_every_store_write_can_fail_then_recover(
+    repo, stored_layers, monkeypatch, layer, point, failure
+):
+    expected = {
+        p: data + b" new generation" for p, data in stored_layers[layer].items()
+    }
+    for path, data in expected.items():
+        path.write_bytes(data)
+    store = cache.store_source if layer == "source" else cache.store_annotations
+    copy = shutil.copy2
+    write = Path.write_text
+    copies = count()
+
+    def interrupted_copy(src, dest):
+        if next(copies) == point:
+            dest.write_bytes(src.read_bytes()[:3])
+            _interrupt_cache_io(failure)
+        return copy(src, dest)
+
+    def interrupted_manifest(path, data, **kwargs):
+        if path == repo.CACHE_DIR / STEM / f"{layer}.key":
+            write(path, data[: len(data) // 2], **kwargs)
+            _interrupt_cache_io(failure)
+        return write(path, data, **kwargs)
+
+    with monkeypatch.context() as patch:
+        if point == "manifest":
+            patch.setattr(Path, "write_text", interrupted_manifest)
+        else:
+            patch.setattr(shutil, "copy2", interrupted_copy)
+        error = OSError if failure == "disk-full" else KeyboardInterrupt
+        with pytest.raises(error, match="injected cache"):
+            store(STEM)
+
+    if layer == "source":
+        assert not cache.source_cached(STEM, want_bom=True)
+    else:
+        assert cache.source_cached(STEM, want_bom=True)
+    assert not cache.annotations_cached(STEM)
+
+    if layer == "source":
+        cache.store_source(STEM)
+    cache.store_annotations(STEM)
+    cache.clear_outputs(STEM)
+    cache.restore_source(STEM)
+    cache.restore_annotations(STEM)
+    assert cache.source_cached(STEM, want_bom=True, want_delta=True)
+    assert cache.annotations_cached(STEM)
+    for name, files in stored_layers.items():
+        assert all(
+            p.read_bytes() == (expected[p] if name == layer else data)
+            for p, data in files.items()
+        )
+
+
+@pytest.mark.parametrize("layer,point", _COPY_POINTS)
+@pytest.mark.parametrize("operation", ["copy", "replace"])
+@pytest.mark.parametrize("failure", ["disk-full", "interrupt"])
+def test_every_restore_write_can_fail_then_recover(
+    stored_layers, monkeypatch, layer, point, operation, failure
+):
+    expected = stored_layers[layer]
+    for path, data in expected.items():
+        path.write_bytes(b"previous complete output " + data)
+    restore = cache.restore_source if layer == "source" else cache.restore_annotations
+    original = shutil.copy2 if operation == "copy" else Path.replace
+    calls = count()
+
+    def interrupted(src, dest):
+        if next(calls) == point:
+            if operation == "copy":
+                dest.write_bytes(src.read_bytes()[:3])
+            _interrupt_cache_io(failure)
+        return original(src, dest)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            shutil if operation == "copy" else Path,
+            "copy2" if operation == "copy" else "replace",
+            interrupted,
+        )
+        error = OSError if failure == "disk-full" else KeyboardInterrupt
+        with pytest.raises(error, match="injected cache"):
+            restore(STEM)
+
+    assert all(
+        p.read_bytes() in (data, b"previous complete output " + data)
+        for p, data in expected.items()
+    )
+    assert not any(p.with_suffix(p.suffix + ".tmp").exists() for p in expected)
+    assert cache.source_cached(STEM, want_bom=True, want_delta=True)
+    assert cache.annotations_cached(STEM)
+    restore(STEM)
+    assert all(p.read_bytes() == data for p, data in expected.items())
+
+
+@pytest.mark.parametrize("seed", range(5))
+def test_repeated_damage_edits_and_rebuilds_preserve_output_identity(
+    repo, stored_layers, seed
+):
+    """A reproducible 40-operation lifecycle with recovery after every mutation."""
+    rng = random.Random(seed)
+    actions = [
+        "source-edit",
+        "annotation-edit",
+        "source-damage",
+        "annotation-damage",
+        "source-manifest",
+        "annotation-manifest",
+        "output-damage",
+        "refresh",
+    ]
+    expected_svgs = {p.name for p in stored_layers["source"] if p.suffix == ".svg"}
+    for round_number in range(5):
+        rng.shuffle(actions)
+        for action in actions:
+            layer, _, change = action.partition("-")
+            if change == "edit":
+                path = repo.helper if layer == "source" else repo.generator
+                stat = path.stat()
+                path.write_text(f"VALUE = {round_number + 2}\n", encoding="utf-8")
+                os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+            elif change == "manifest":
+                (repo.CACHE_DIR / STEM / f"{layer}.key").write_bytes(b'{"key":')
+            elif change == "damage":
+                files = stored_layers["source" if layer == "output" else layer]
+                path = rng.choice(list(files))
+                if layer != "output":
+                    path = repo.CACHE_DIR / STEM / path.name
+                path.write_bytes(b"corrupted")
+            else:
+                # Same inputs, different exported bytes: annotations must still
+                # be bound to this generation of the source artifacts.
+                path = next(iter(stored_layers["source"]))
+                stored_layers["source"][path] += b" refreshed"
+                path.write_bytes(stored_layers["source"][path])
+                cache.store_source(STEM)
+
+            source_hit = cache.source_cached(
+                STEM, want_bom=True, want_delta=True, expected_svgs=expected_svgs
+            )
+            assert source_hit is (layer != "source"), (seed, round_number, action)
+            if not source_hit:
+                for path, data in stored_layers["source"].items():
+                    path.write_bytes(data)
+                cache.store_source(STEM)
+            annotation_hit = cache.annotations_cached(STEM)
+            if source_hit:
+                assert annotation_hit is (layer == "output")
+            if not annotation_hit:
+                for path, data in stored_layers["annotation"].items():
+                    path.write_bytes(data)
+                cache.store_annotations(STEM)
+
+            cache.clear_outputs(STEM)
+            cache.restore_source(STEM)
+            cache.restore_annotations(STEM)
+            for files in stored_layers.values():
+                assert all(p.read_bytes() == data for p, data in files.items())

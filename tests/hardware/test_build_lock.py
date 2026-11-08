@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import time
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
@@ -79,3 +81,57 @@ with output_lock(path):
 
     assert child.returncode != 0
     assert b"BlockingIOError" in child.stderr
+
+
+def test_contending_builds_are_rejected_and_killed_writer_releases_lock(tmp_path):
+    """Real processes contend in three waves, then recover after a hard kill."""
+    marker = tmp_path / "ready"
+    env = {**os.environ, "PHYSICLAW_HW_OUTPUT": str(tmp_path)}
+    holder_code = """
+import sys
+from pathlib import Path
+from hardware.build_lock import build_lock
+with build_lock():
+    Path(sys.argv[1]).write_text('ready')
+    sys.stdin.read()
+"""
+    contender_code = (
+        "from hardware.build_lock import build_lock\n"
+        "with build_lock(): print('acquired')"
+    )
+
+    def contend(_):
+        return subprocess.run(
+            [sys.executable, "-c", contender_code],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+
+    with subprocess.Popen(
+        [sys.executable, "-c", holder_code, str(marker)],
+        env=env,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    ) as holder:
+        try:
+            deadline = time.monotonic() + 15
+            while not marker.exists():
+                assert holder.poll() is None, holder.communicate(timeout=1)
+                assert time.monotonic() < deadline, "lock holder did not start"
+                time.sleep(0.01)
+            with ThreadPoolExecutor(max_workers=8) as pool:
+                for _ in range(3):
+                    for result in pool.map(contend, range(8)):
+                        assert result.returncode != 0
+                        assert "already running" in result.stderr
+                        assert "acquired" not in result.stdout
+        finally:
+            holder.kill()
+            holder.communicate(timeout=5)
+
+    result = contend(0)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "acquired"

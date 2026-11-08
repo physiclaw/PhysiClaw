@@ -498,7 +498,12 @@ def _store_layer(
     entry.mkdir(parents=True, exist_ok=True)
     for f in entry.iterdir():
         if f.name == key_file or belongs(f.name):
-            f.unlink()
+            # A malformed entry must not prevent the next rebuild from healing
+            # it. Unlink symlinks without touching their targets.
+            if f.is_dir() and not f.is_symlink():
+                shutil.rmtree(f)
+            else:
+                f.unlink()
     files: dict[str, str] = {}
     for f in outputs:
         dest = entry / f.name
