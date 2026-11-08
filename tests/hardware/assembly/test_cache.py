@@ -18,6 +18,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from symlink_helpers import symlink_to
 
 from hardware.assembly import cache
 
@@ -165,7 +166,7 @@ def test_warm_build_restores_damaged_outputs(repo, warm_build, damage, kind):
         target.write_bytes(b"corrupted")
     elif damage == "symlink":
         linked.write_bytes(original)
-        target.symlink_to(linked)
+        symlink_to(target, linked)
     elif damage == "directory":
         target.mkdir()
         (target / "partial").write_bytes(b"interrupted output")
