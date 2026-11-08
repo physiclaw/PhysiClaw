@@ -20,7 +20,19 @@ Run from the repo root:
     uv run --group cad python -m hardware.parts.standard.teflon
 """
 
-from build123d import *
+from build123d import (
+    MM,
+    BuildPart,
+    BuildSketch,
+    Circle,
+    Location,
+    Mode,
+    Plane,
+    RigidJoint,
+    Spline,
+    Vector,
+    sweep,
+)
 
 from hardware.parts.base import BaseStandardPart
 

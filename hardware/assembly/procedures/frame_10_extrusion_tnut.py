@@ -19,11 +19,11 @@ The two variants use intentionally different layouts:
                 matching short's end-cell bore. Nuts seated at their
                 destinations; single layer.
 
-  * 2 x 335 mm long extrusion (cb), each with 2 standard M5 T-nuts
+  * 2 x LONG_LENGTH extrusions (cb), each with 2 standard M5 T-nuts
     (top nut LONG_TOP_GAP from the frame top edge, bottom nut
     LONG_BOT_GAP from the frame bottom edge)
-  * 1 x 170 mm short extrusion (top) with 4 standard M5 T-nuts
-  * 1 x 170 mm short extrusion (bottom), plain
+  * 1 x SHORT_LENGTH extrusion (top) with 4 standard M5 T-nuts
+  * 1 x SHORT_LENGTH extrusion (bottom), plain
 
 Run from the repo root:
 

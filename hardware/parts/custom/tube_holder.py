@@ -15,7 +15,19 @@ Run from the repo root:
     uv run --group cad python -m hardware.parts.custom.tube_holder
 """
 
-from build123d import *
+from build123d import (
+    MM,
+    Align,
+    Axis,
+    Box,
+    BuildPart,
+    CounterSinkHole,
+    Cylinder,
+    Locations,
+    Mode,
+    Plane,
+    fillet,
+)
 
 from hardware.parts._fits import CSK_ANGLE, M5_CSK_HEAD, M5_NORMAL
 from hardware.parts.base import BaseCustomPart
@@ -94,7 +106,7 @@ class TubeHolder(BaseCustomPart):
                 )
 
             # Cylinder boss along the +Y region: axis along +Y (outward — points
-            # world +Y once installed), centered in X at mid-thickness, embedded
+            # world -Y once installed), centered in X at mid-thickness, embedded
             # in the plate that backs it.
             boss_face = Plane(
                 origin=(0, plate_half_y - boss_embed, thickness / 2),

@@ -1,6 +1,23 @@
 import math
 
-from build123d import *
+from build123d import (
+    MM,
+    Align,
+    Axis,
+    Box,
+    BuildPart,
+    BuildSketch,
+    CounterSinkHole,
+    Cylinder,
+    Hole,
+    Locations,
+    Mode,
+    Plane,
+    RegularPolygon,
+    SlotOverall,
+    extrude,
+    fillet,
+)
 
 from hardware.parts._fits import (
     CSK_ANGLE,

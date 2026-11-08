@@ -1,6 +1,21 @@
 import math
 
-from build123d import *
+from build123d import (
+    MM,
+    Axis,
+    BuildLine,
+    BuildPart,
+    BuildSketch,
+    Circle,
+    Mode,
+    Plane,
+    Polyline,
+    RegularPolygon,
+    extrude,
+    fillet,
+    make_face,
+    revolve,
+)
 
 from hardware.parts.base import BaseStandardPart
 

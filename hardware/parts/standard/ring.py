@@ -1,4 +1,10 @@
-from build123d import *
+from build123d import (
+    MM,
+    Align,
+    BuildPart,
+    Cylinder,
+    Mode,
+)
 
 from hardware.parts.base import BaseStandardPart
 
@@ -51,7 +57,7 @@ class Ring(BaseStandardPart):
                 height=self.height,
                 align=(Align.CENTER, Align.CENTER, Align.MIN),
             )
-            # Bore overshoots top and bottom by 0.5 mm for a clean through-cut.
+            # Bore starts at the bottom face and overshoots the top by 1 mm.
             Cylinder(
                 radius=self.inner_d / 2,
                 height=self.height + 1 * MM,

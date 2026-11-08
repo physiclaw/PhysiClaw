@@ -27,7 +27,34 @@ Run from the repo root:
     uv run --group cad python -m hardware.parts.standard.board
 """
 
-from build123d import *
+from build123d import (
+    MM,
+    Align,
+    Axis,
+    Box,
+    BuildLine,
+    BuildPart,
+    BuildSketch,
+    Color,
+    Compound,
+    Cylinder,
+    FontStyle,
+    GridLocations,
+    Hole,
+    Location,
+    Locations,
+    Mode,
+    Part,
+    Plane,
+    Polyline,
+    RigidJoint,
+    Text,
+    available_fonts,
+    chamfer,
+    extrude,
+    fillet,
+    make_face,
+)
 
 from hardware.parts._fits import DRIVER_ROW_PITCH, HDR_PITCH, M3_NORMAL
 from hardware.parts.base import BaseStandardPart
@@ -156,10 +183,12 @@ def _dc_jack() -> Part:
     Body 14 (insertion, Y) × 9 (X) × 11 (Z). The round socket opens on
     the -Y face: an 8 mm front recess with the 2.1 mm center pin inside.
     """
-    w, l, h = 9.0 * MM, 14.0 * MM, 11.0 * MM
+    width, length, height = 9.0 * MM, 14.0 * MM, 11.0 * MM
     with BuildPart() as p:
-        Box(w, l, h, align=(Align.CENTER, Align.CENTER, Align.MIN))
-        front = Plane(origin=(0, -l / 2, h / 2), x_dir=(1, 0, 0), z_dir=(0, 1, 0))
+        Box(width, length, height, align=(Align.CENTER, Align.CENTER, Align.MIN))
+        front = Plane(
+            origin=(0, -length / 2, height / 2), x_dir=(1, 0, 0), z_dir=(0, 1, 0)
+        )
         with Locations(front):
             Cylinder(
                 8.0 / 2 * MM,
@@ -182,16 +211,16 @@ def _usb_b() -> Part:
     two TOP corners beveled (~45°) — the keying that lets the plug enter
     only one way. A contact tongue hangs in the upper part of the cavity.
     """
-    w, l, h = 12.0 * MM, 16.4 * MM, 11.0 * MM
+    width, length, height = 12.0 * MM, 16.4 * MM, 11.0 * MM
     op_w, op_h = 8.0 * MM, 8.0 * MM  # opening width / height
     bevel = 2.2 * MM  # top-corner chamfer
     depth = 9.0 * MM  # opening cut depth into the shell
-    cz = h / 2  # opening vertical center
+    cz = height / 2  # opening vertical center
     with BuildPart() as p:
-        Box(w, l, h, align=(Align.CENTER, Align.CENTER, Align.MIN))
+        Box(width, length, height, align=(Align.CENTER, Align.CENTER, Align.MIN))
         # Front-face plane: local +y → world +Z so the beveled corners land
         # on top; normal +Y so the profile cuts into the shell.
-        front = Plane(origin=(0, -l / 2, cz), x_dir=(-1, 0, 0), z_dir=(0, 1, 0))
+        front = Plane(origin=(0, -length / 2, cz), x_dir=(-1, 0, 0), z_dir=(0, 1, 0))
         with BuildSketch(front):
             with BuildLine():
                 Polyline(
@@ -207,7 +236,7 @@ def _usb_b() -> Part:
         extrude(amount=depth, mode=Mode.SUBTRACT)
         # Contact tongue in the upper part of the opening.
         tongue = Plane(
-            origin=(0, -l / 2, cz + op_h / 2 - 2.0 * MM),
+            origin=(0, -length / 2, cz + op_h / 2 - 2.0 * MM),
             x_dir=(1, 0, 0),
             z_dir=(0, 1, 0),
         )
@@ -228,13 +257,15 @@ def _screw_terminal(poles: int = 2, pitch: float = 5.08 * MM) -> Part:
     heads sit on top.
     """
     span = (poles - 1) * pitch
-    w, l, h = 7.5 * MM, span + 5.0 * MM, 9.0 * MM
+    width, length, height = 7.5 * MM, span + 5.0 * MM, 9.0 * MM
     screw_r, screw_h = 2.0 * MM, 2.0 * MM  # raised clamp-screw heads
     slot_w, slot_depth = 0.7 * MM, 1.0 * MM  # flat-head screwdriver slot
     with BuildPart() as p:
-        Box(w, l, h, align=(Align.CENTER, Align.CENTER, Align.MIN))
+        Box(width, length, height, align=(Align.CENTER, Align.CENTER, Align.MIN))
         # Wire-entry bores facing -X (one per pole).
-        side = Plane(origin=(-w / 2, 0, h * 0.4), x_dir=(0, 1, 0), z_dir=(1, 0, 0))
+        side = Plane(
+            origin=(-width / 2, 0, height * 0.4), x_dir=(0, 1, 0), z_dir=(1, 0, 0)
+        )
         with Locations(side):
             with GridLocations(pitch, 0, poles, 1):
                 Cylinder(
@@ -244,13 +275,13 @@ def _screw_terminal(poles: int = 2, pitch: float = 5.08 * MM) -> Part:
                     mode=Mode.SUBTRACT,
                 )
         # Raised cylindrical screw heads on the top face, one per pole.
-        with Locations((0, 0, h)):
+        with Locations((0, 0, height)):
             with GridLocations(0, pitch, 1, poles):
                 Cylinder(
                     screw_r, screw_h, align=(Align.CENTER, Align.CENTER, Align.MIN)
                 )
         # Straight screwdriver slot across the top of each screw head.
-        with Locations((0, 0, h + screw_h)):
+        with Locations((0, 0, height + screw_h)):
             with GridLocations(0, pitch, 1, poles):
                 Box(
                     2 * screw_r,
@@ -282,7 +313,7 @@ def _esp32(side: float, notch: float) -> Part:
 
 
 def _dip3() -> Part:
-    """3-position microstep DIP switch: red body with three white sliders."""
+    """Body of the 3-position microstep DIP switch."""
     body_l, body_w, body_h = 10.0 * MM, 4.0 * MM, 3.0 * MM
     with BuildPart() as p:
         Box(body_l, body_w, body_h, align=(Align.CENTER, Align.CENTER, Align.MIN))

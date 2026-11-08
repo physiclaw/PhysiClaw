@@ -1,4 +1,27 @@
-from build123d import *
+from build123d import (
+    MM,
+    Axis,
+    Box,
+    BuildLine,
+    BuildPart,
+    BuildSketch,
+    Compound,
+    CounterBoreHole,
+    Cylinder,
+    GeomType,
+    GridLocations,
+    Hole,
+    Locations,
+    Mode,
+    Plane,
+    Polyline,
+    Rectangle,
+    chamfer,
+    extrude,
+    make_face,
+    mirror,
+    offset,
+)
 
 from hardware.parts.base import BaseStandardPart
 
@@ -267,7 +290,7 @@ class MGN9H(BaseStandardPart):
                     rotation=(0, 90, 0),
                     mode=Mode.SUBTRACT,
                 )
-            # Two Ø3 × 1 mm bosses on each cap outer face (±6 mm in Y around
+            # Two bosses on each cap outer face (±boss_distance/2 in Y around
             # the port), each cross-slotted to look like a Phillips screw.
             half_boss_dist = boss_distance / 2
             for face_x, drill_dir in ((tailer_outer_x, -1), (header_outer_x, +1)):

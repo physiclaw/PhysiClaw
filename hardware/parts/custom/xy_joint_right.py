@@ -1,4 +1,4 @@
-from build123d import *
+from build123d import Plane
 
 from hardware.parts.base import BaseCustomPart
 from hardware.parts.custom.xy_joint_left import _build_shape

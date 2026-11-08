@@ -87,7 +87,7 @@ mutate:
 	$(PY) mutmut run --paths-to-mutate "$(MOD)"
 
 lint:
-	$(PY) ruff check src/ tests/ scripts/ firmware/ hardware/port/ hardware/release.py hardware/build_lock.py hardware/assembly/cache.py hardware/assembly/build_procedures.py
+	$(PY) ruff check src/ tests/ scripts/ firmware/ hardware/
 	$(PY) ruff format --check src/ tests/ hardware/ firmware/ scripts/
 
 fmt:

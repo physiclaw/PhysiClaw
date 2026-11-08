@@ -33,7 +33,7 @@ _FINAL_EVENTS = {"build_finished", "command_finished"}
 _CONTEXT_WIDTH = 26
 
 
-def _color_enabled():
+def _color_enabled() -> bool:
     try:
         return bool(
             sys.stdout is not None

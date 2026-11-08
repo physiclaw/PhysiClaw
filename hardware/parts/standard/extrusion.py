@@ -1,4 +1,24 @@
-from build123d import *
+from build123d import (
+    MM,
+    Axis,
+    BuildLine,
+    BuildPart,
+    BuildSketch,
+    Circle,
+    Cylinder,
+    LinearJoint,
+    Location,
+    Locations,
+    Mode,
+    Plane,
+    Polyline,
+    Rectangle,
+    add,
+    extrude,
+    fillet,
+    make_face,
+    mirror,
+)
 
 from hardware.parts.base import BaseStandardPart
 
@@ -89,6 +109,10 @@ class Extrusion2020(BaseStandardPart):
     def bom_key(self):
         return ("Extrusion2020", int(self.length))
 
+    def geom_key(self) -> tuple[str, float]:
+        # BOM labels use whole millimeters; geometry retains the full dimension.
+        return ("Extrusion2020", self.length)
+
     def _build(self):
         face = _cell_face()
         with BuildPart() as p:
@@ -126,6 +150,9 @@ class Extrusion2040(BaseStandardPart):
 
     def bom_key(self):
         return ("Extrusion2040", int(self.length), "cb" if self.cb else "plain")
+
+    def geom_key(self) -> tuple[str, float, bool]:
+        return ("Extrusion2040", self.length, self.cb)
 
     def _build(self):
         face = _cell_face()
@@ -231,6 +258,9 @@ class Extrusion1020(BaseStandardPart):
 
     def bom_key(self):
         return ("Extrusion1020", int(self.length), "hole" if self.hole else "plain")
+
+    def geom_key(self) -> tuple[str, float, bool]:
+        return ("Extrusion1020", self.length, self.hole)
 
     def _build(self):
         with BuildPart() as p:

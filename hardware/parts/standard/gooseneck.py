@@ -21,7 +21,27 @@ Run from the repo root:
     uv run --group cad python -m hardware.parts.standard.gooseneck
 """
 
-from build123d import *
+from build123d import (
+    MM,
+    Align,
+    Axis,
+    BuildPart,
+    BuildSketch,
+    Circle,
+    Color,
+    Compound,
+    Cylinder,
+    GeomType,
+    Location,
+    Locations,
+    Mode,
+    Part,
+    Plane,
+    RigidJoint,
+    Spline,
+    chamfer,
+    sweep,
+)
 
 from hardware.parts.base import BaseStandardPart
 
@@ -52,8 +72,8 @@ COL_NECK = Color(0.20, 0.20, 0.22)  # coated flexible neck
 COL_METAL = Color(0.75, 0.75, 0.78)  # threaded end fittings
 
 
-def _stud_grooves(p, z0: float, length: float, major_r: float):
-    """Carve evenly spaced annular grooves over [z0, z0+length] on an external
+def _stud_grooves(z0: float, length: float, major_r: float) -> None:
+    """Carve grooves in the active BuildPart over [z0, z0+length] on an external
     stud of radius ``major_r`` — slice off a disc, add the core back (the core
     is concentric with the stud, so it stays attached). External threads only;
     on an internal bore the re-added core would float free."""
@@ -75,7 +95,7 @@ def _male_end(od: float) -> Part:
                 stud_len,
                 align=(Align.CENTER, Align.CENTER, Align.MIN),
             )
-        _stud_grooves(p, male_collar_len, stud_len, thread_major / 2)
+        _stud_grooves(male_collar_len, stud_len, thread_major / 2)
         # Chamfer the stud tip (highest circular edge).
         tip = p.edges().filter_by(GeomType.CIRCLE).group_by(Axis.Z)[-1]
         chamfer(tip, end_chamfer)

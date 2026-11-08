@@ -1,4 +1,20 @@
-from build123d import *
+from build123d import (
+    MM,
+    Axis,
+    Box,
+    BuildPart,
+    BuildSketch,
+    Circle,
+    CounterSinkHole,
+    GridLocations,
+    Location,
+    Locations,
+    Mode,
+    Plane,
+    Rectangle,
+    extrude,
+    fillet,
+)
 
 from hardware.parts._fits import M3_NORMAL
 from hardware.parts.base import BaseCustomPart
@@ -103,9 +119,9 @@ class SolenoidMount(BaseCustomPart):
             screen_pattern_locations = [
                 (
                     screen_pattern_base_from_left + i * screen_pattern_spacing,
-                    screen_pattern_base_from_bottom + screen_pattern_y_offsets[i] * MM,
+                    screen_pattern_base_from_bottom + offset * MM,
                 )
-                for i in range(len(screen_pattern_y_offsets))
+                for i, offset in enumerate(screen_pattern_y_offsets)
             ]
             with BuildSketch(screen_plane):
                 with Locations(*screen_pattern_locations):

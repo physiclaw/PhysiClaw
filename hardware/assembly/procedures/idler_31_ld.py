@@ -18,7 +18,7 @@ Placement:
   * Base layer — ID22Ru(exploded=False) at world origin. Bundles the
     full frame plus both upper mounts and their brackets. Long
     extrusions run along world Z at x = ±half_w; long_left lives at
-    x = -half_w (= -95 mm).
+    x = -half_w.
   * LD mount — ID30Ld(exploded=False) oriented so the block's 18 mm
     thickness (native +Z, top face) points world -Y (outboard, away
     from the slot), the 20 mm native X axis runs along world X (the

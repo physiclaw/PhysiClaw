@@ -23,6 +23,21 @@ NAME = "frame_10_demo_exploded_cam0"
 NS = {"svg": "http://www.w3.org/2000/svg"}
 
 
+def test_annotation_paths_require_source_viewbox_without_explicit_crop():
+    with pytest.raises(ValueError, match="Source drawing requires a viewBox"):
+        svg.path_svg("<svg></svg>", svg.Drawing())
+
+
+def test_annotation_paths_can_use_explicit_crop_without_source_viewbox():
+    paths = svg.path_svg("<svg></svg>", svg.Drawing(), crop=(1, 2, 3, 4))
+    assert ET.fromstring(paths).attrib["viewBox"] == "1.0000 2.0000 3.0000 4.0000"
+
+
+def test_annotation_composition_rejects_paths_without_viewbox():
+    with pytest.raises(ValueError, match="Annotation paths require a viewBox"):
+        svg.compose(SVG, "<svg></svg>")
+
+
 class Demo(BaseAssembly):
     camera = Camera(0, 0)
     offset = 0

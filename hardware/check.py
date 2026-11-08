@@ -243,16 +243,20 @@ def _figure_refs(pages: object) -> set[str]:
     """Every ``src``/``render`` string ending in .svg, recursively."""
     refs: set[str] = set()
 
-    def walk(o):
-        if isinstance(o, dict):
-            for k, v in o.items():
-                if k in ("src", "render") and isinstance(v, str) and v.endswith(".svg"):
-                    refs.add(v)
+    def walk(value: object) -> None:
+        if isinstance(value, dict):
+            for key, child in value.items():
+                if (
+                    key in ("src", "render")
+                    and isinstance(child, str)
+                    and child.endswith(".svg")
+                ):
+                    refs.add(child)
                 else:
-                    walk(v)
-        elif isinstance(o, list):
-            for x in o:
-                walk(x)
+                    walk(child)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item)
 
     walk(pages)
     return refs

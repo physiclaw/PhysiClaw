@@ -15,7 +15,20 @@ Run from the repo root:
     uv run --group cad python -m hardware.parts.standard.camera
 """
 
-from build123d import *
+from build123d import (
+    MM,
+    Align,
+    Axis,
+    Box,
+    BuildPart,
+    Color,
+    Compound,
+    Cylinder,
+    Locations,
+    Mode,
+    Plane,
+    fillet,
+)
 
 from hardware.parts.base import BaseStandardPart
 

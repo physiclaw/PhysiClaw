@@ -1,4 +1,15 @@
-from build123d import *
+from build123d import (
+    MM,
+    Align,
+    Axis,
+    Box,
+    BuildPart,
+    GridLocations,
+    Hole,
+    Locations,
+    Plane,
+    fillet,
+)
 
 from hardware.parts.base import BaseStandardPart
 

@@ -8,6 +8,7 @@ pages as fit.
 from __future__ import annotations
 
 import copy
+from itertools import pairwise
 
 from hardware.documents.common import loc
 
@@ -88,7 +89,7 @@ def _balanced_split(rows: list[dict], per_page: int) -> list[list[dict]]:
         free.remove(best)
         cuts.append(best)
     points = [0, *sorted(cuts), total]
-    return [rows[a:b] for a, b in zip(points, points[1:])]
+    return [rows[a:b] for a, b in pairwise(points)]
 
 
 def _paginate_bom(rows: list[dict], per_page: int) -> list[list[dict]]:
@@ -103,7 +104,7 @@ def _paginate_bom(rows: list[dict], per_page: int) -> list[list[dict]]:
         len(rows),
     ]
     pages: list[list[dict]] = []
-    for a, b in zip(forced, forced[1:]):
+    for a, b in pairwise(forced):
         pages.extend(_balanced_split(rows[a:b], per_page))
     return pages
 

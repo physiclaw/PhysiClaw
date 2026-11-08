@@ -1,4 +1,12 @@
-from build123d import *
+from build123d import (
+    MM,
+    Axis,
+    BuildPart,
+    Cylinder,
+    Locations,
+    Mode,
+    fillet,
+)
 
 from hardware.parts.base import BaseStandardPart
 

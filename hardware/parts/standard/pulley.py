@@ -1,6 +1,24 @@
 import math
 
-from build123d import *
+from build123d import (
+    MM,
+    Align,
+    Axis,
+    Box,
+    BuildPart,
+    BuildSketch,
+    Circle,
+    Compound,
+    Cylinder,
+    GeomType,
+    Locations,
+    Mode,
+    Plane,
+    PolarLocations,
+    RegularPolygon,
+    chamfer,
+    extrude,
+)
 
 from hardware.parts.base import BaseStandardPart
 

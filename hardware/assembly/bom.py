@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
+from pathlib import Path
 
 from hardware.assembly.base import BaseAssembly
 from hardware.assembly.discovery import predecessor_module as predecessor_module
@@ -63,14 +64,14 @@ def collect(step: BaseAssembly) -> list[BomEntry]:
     step.build()
 
     sums: dict[tuple, int] = defaultdict(int)
-    cats: dict[tuple, str] = {}
+    categories: dict[tuple, BomCategory] = {}
     displays: dict[tuple, str | None] = {}
     for key, qty, category, display in BOM_REGISTRY:
         sums[key] += qty
-        cats[key] = category
+        categories[key] = category
         displays[key] = display
 
-    entries = [BomEntry(cats[k], k, q, displays[k]) for k, q in sums.items()]
+    entries = [BomEntry(categories[k], k, q, displays[k]) for k, q in sums.items()]
     entries.sort()
     return entries
 
@@ -140,7 +141,7 @@ def write_bom(
         )
 
 
-def _write_atomic(path, text: str) -> None:
+def _write_atomic(path: Path, text: str) -> None:
     tmp = path.with_suffix(".tmp")
     tmp.write_text(text, encoding="utf-8")
     tmp.replace(path)

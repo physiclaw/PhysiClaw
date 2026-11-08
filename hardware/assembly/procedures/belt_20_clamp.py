@@ -22,7 +22,7 @@ upstream assembly chain (no hardcoded numbers):
   * SLIDER_MOUNT_Z = beam_center_world_z = LEFT joint big_csk world Z,
     available from the LI11Y / LI20Joint / LI31X chain.
   * SLIDER_MOUNT_X = 0 (LI32X has slider_position = 0.5 along a
-    130 mm rail centered on world X = 0).
+    rail centered on world X = 0).
 
 Two variants:
   * exploded — clamp pulled CLAMP_EXPLODE outboard along world -Y so

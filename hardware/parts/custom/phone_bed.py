@@ -1,6 +1,25 @@
 import math
 
-from build123d import *
+from build123d import (
+    MM,
+    Align,
+    Axis,
+    Box,
+    BuildLine,
+    BuildPart,
+    BuildSketch,
+    CounterSinkHole,
+    Locations,
+    Mode,
+    Plane,
+    Polyline,
+    RegularPolygon,
+    SlotOverall,
+    extrude,
+    fillet,
+    make_face,
+    mirror,
+)
 
 from hardware.parts._fits import CSK_ANGLE, M3_CSK_HEAD, M3_NORMAL
 from hardware.parts.base import BaseCustomPart
@@ -204,7 +223,7 @@ class PhoneBed(BaseCustomPart):
                     counter_sink_angle=CSK_ANGLE,
                 )
 
-            # Round the four outer corners of each ear (the convex |x|=65 tabs).
+            # Round the outer ear corners at |x| = ear_x_outer.
             ear_corners = [
                 e
                 for e in my_part.edges().filter_by(Axis.Z)

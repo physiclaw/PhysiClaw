@@ -46,25 +46,17 @@ _SOCKET_NATIVE = TH.socket_mouth
 _SOCKET_BACK = tuple(m - a for m, a in zip(TH.socket_mouth, TH.socket_axis))
 
 
-def _gloc(node, label, acc=None):
-    """Composed world Location of the first leaf labeled ``label``."""
-    acc = (acc or Location()) * node.location
-    if getattr(node, "label", None) == label and not node.children:
-        return acc
-    for child in node.children:
-        found = _gloc(child, label, acc)
-        if found is not None:
-            return found
-    return None
+def _world_point(location: Location, point: tuple[float, float, float]) -> Vector:
+    return (location * Location(point)).position
 
 
-def _wpt(loc: Location, p) -> Vector:
-    return (loc * Location(Vector(*p))).position
-
-
-def _wdir(loc: Location, p, q) -> Vector:
-    """World direction from native point ``p`` to native point ``q``."""
-    return (_wpt(loc, q) - _wpt(loc, p)).normalized()
+def _world_direction(
+    location: Location,
+    start: tuple[float, float, float],
+    end: tuple[float, float, float],
+) -> Vector:
+    """World direction from native point ``start`` to native point ``end``."""
+    return (_world_point(location, end) - _world_point(location, start)).normalized()
 
 
 class BO40Teflon(BaseAssembly):
@@ -75,17 +67,20 @@ class BO40Teflon(BaseAssembly):
         base = BO32TubeHolder(exploded=False).build()
 
         # End A: socket mouth — tube leaves UP along the boss axis.
-        p1 = _wpt(TUBE_HOLDER_PLACEMENT, _SOCKET_NATIVE)
-        d1 = _wdir(TUBE_HOLDER_PLACEMENT, _SOCKET_BACK, _SOCKET_NATIVE)
+        p1 = _world_point(TUBE_HOLDER_PLACEMENT, _SOCKET_NATIVE)
+        d1 = _world_direction(TUBE_HOLDER_PLACEMENT, _SOCKET_BACK, _SOCKET_NATIVE)
 
         # End B: BeltClamp blind-hole mouth on the carriage (opens upward). The
         # tube arcs over and drops DOWN into it, so it arrives heading into the
         # clamp; the opposing end tangents make Teflon raise the ∩ apex between.
-        clamp = _gloc(base, "BeltClamp")
+        clamp = next((leaf for leaf in base.leaves if leaf.label == "BeltClamp"), None)
+        if clamp is None:
+            raise ValueError("Teflon route requires a BeltClamp in the base assembly")
+        clamp_location = clamp.global_location
         hole_mouth = (BC.length / 2, BC.tube_hole_y, BC.thickness / 2)
         hole_in = (BC.length / 2, BC.tube_hole_y, BC.thickness / 2 - 1)
-        p2 = _wpt(clamp, hole_mouth)
-        d2 = _wdir(clamp, hole_mouth, hole_in)  # down into the clamp
+        p2 = _world_point(clamp_location, hole_mouth)
+        d2 = _world_direction(clamp_location, hole_mouth, hole_in)  # into the clamp
 
         tube = Teflon(
             point1=tuple(p1),

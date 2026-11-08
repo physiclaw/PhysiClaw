@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
+from itertools import groupby
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from hardware.buildlog import step as _step  # noqa: F401 — shared by document builders
 
@@ -58,12 +60,8 @@ def manual_version() -> str:
 def _rowspans(rows: list[dict], key: Callable[[dict], Any]) -> list[int]:
     """For consecutive rows sharing ``key``, return the group size at each
     group's first row and 0 at the rest — i.e. the rowspan to emit (or skip)."""
-    spans = [0] * len(rows)
-    i = 0
-    while i < len(rows):
-        j = i + 1
-        while j < len(rows) and key(rows[j]) == key(rows[i]):
-            j += 1
-        spans[i] = j - i
-        i = j
+    spans = []
+    for _, group in groupby(rows, key):
+        count = sum(1 for _ in group)
+        spans.extend([count] + [0] * (count - 1))
     return spans

@@ -16,7 +16,7 @@ Placement:
   * Base layer — ID12Lu(exploded=False) at world origin. This already
     bundles the full frame, the LU mount on long_left, and the LU
     block-tying bracket. Long extrusions run along world Z at
-    x = ±half_w; long_right lives at x = +half_w (= +95 mm).
+    x = ±half_w; long_right lives at x = +half_w.
   * RU mount — ID20Ru(exploded=False) oriented so the block's 42 mm
     length axis (native +X) runs along world Z (the extrusion long
     direction), the 18 mm thickness (native +Z, top face) points
@@ -30,8 +30,8 @@ Placement:
     ru block engages that t-nut.
   * Block-tying bracket — ID21Ru(exploded=False) oriented so its BHCS
     shanks point world -X (into the ru block's front-face M5 hole at
-    world x = +105). The bracket lies flat against the world +X face
-    (in the Y-Z plane), with its 20 mm hole spacing along world Y:
+    world x = +half_w + block_width/2). The bracket lies flat against the world
+    +X face (in the Y-Z plane), with its 20 mm hole spacing along world Y:
     RIGHT hole at the ru front-face hole world y reaches the captive
     square nut in the block's top pocket via the front-face clearance
     hole; LEFT hole, 20 mm away in +Y, sits over a t-nut in the
@@ -143,7 +143,7 @@ class ID22Ru(BaseAssembly):
         # In X, the bracket bottom (native z = bracket_bottom_z) lands
         # on the front face at world x = front_face_x; exploded pulls
         # the bracket BRACKET_EXPLODE further in +X.
-        front_face_x = +half_w + block_width / 2  # = +105
+        front_face_x = +half_w + block_width / 2
         front_face_hole_y = block_center_y - front_hole_center_z
         half_hole = flat_hole_spacing / 2
 

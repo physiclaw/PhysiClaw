@@ -1,6 +1,6 @@
 """One writer per hardware output tree; native locking lives in hardware.port."""
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import ExitStack, contextmanager
 from functools import wraps
 
@@ -20,9 +20,11 @@ def build_lock() -> Iterator[None]:
         yield
 
 
-def locked_main(func):
+def locked_main[**P, R](func: Callable[P, R]) -> Callable[P, R]:
+    """Run a CLI entry point under the output lock, preserving its signature."""
+
     @wraps(func)
-    def run(*args, **kwargs):
+    def run(*args: P.args, **kwargs: P.kwargs) -> R:
         try:
             with build_lock():
                 return func(*args, **kwargs)

@@ -132,15 +132,6 @@ _clamp_origin_y = SLIDER_MOUNT_Y - clamp_thickness / 2
 _clamp_origin_z = SLIDER_MOUNT_Z - _clamp_grid_y
 
 
-# Convenience: clamp native (n_x, n_y, n_z) → tapz_20 world.
-def _clamp_to_world(n_x, n_y, n_z):
-    return (
-        _clamp_origin_x + n_x,
-        _clamp_origin_y - n_z,
-        _clamp_origin_z + n_y,
-    )
-
-
 # Clamp top face (mating with plate's -Z face).
 CLAMP_TOP_Y = (
     _clamp_origin_y - clamp_thickness / 2

@@ -39,9 +39,9 @@ from __future__ import annotations
 
 import argparse
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
 
 from hardware import buildlog
 from hardware.build_lock import locked_main

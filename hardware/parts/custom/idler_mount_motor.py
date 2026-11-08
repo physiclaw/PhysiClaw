@@ -1,4 +1,19 @@
-from build123d import *
+from build123d import (
+    MM,
+    Axis,
+    Box,
+    BuildPart,
+    BuildSketch,
+    Circle,
+    CounterBoreHole,
+    Edge,
+    Locations,
+    Mode,
+    Plane,
+    Rectangle,
+    extrude,
+    fillet,
+)
 
 from hardware.parts._fits import (
     M4_CLOSE,

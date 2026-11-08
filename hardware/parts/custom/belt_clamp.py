@@ -1,4 +1,23 @@
-from build123d import *
+from build123d import (
+    MM,
+    Axis,
+    Box,
+    BuildLine,
+    BuildPart,
+    BuildSketch,
+    Circle,
+    Edge,
+    Hole,
+    Locations,
+    Mode,
+    Plane,
+    Polyline,
+    Rectangle,
+    extrude,
+    fillet,
+    make_face,
+    mirror,
+)
 
 from hardware.parts._fits import M3_NORMAL, M3_NUT_T, M3_NUT_W
 from hardware.parts.base import BaseCustomPart

@@ -8,6 +8,7 @@ files. Part dimensions stay imported beside the recipe that uses them.
 from __future__ import annotations
 
 import math
+from itertools import pairwise
 
 from build123d import Location, Vector
 from shapely import union_all
@@ -140,7 +141,7 @@ def _belt_tension(root, projection, drawing):
     route = belt._expand_wraps(motor_path("A"))
     start, end = next(
         (a, b)
-        for a, b in zip(route, route[1:])
+        for a, b in pairwise(route)
         if abs(a[2] - b[2]) > 100 and 0.1 < abs(a[0] - b[0]) < 2
     )
     axis = (Vector(end) - Vector(start)).normalized()

@@ -1,4 +1,15 @@
-from build123d import *
+from build123d import (
+    MM,
+    Axis,
+    Box,
+    BuildPart,
+    Cylinder,
+    GridLocations,
+    Hole,
+    Locations,
+    Mode,
+    chamfer,
+)
 
 from hardware.parts.base import BaseStandardPart
 
@@ -53,6 +64,10 @@ class Nema17Motor(BaseStandardPart):
 
     def bom_key(self):
         return ("Nema17Motor", int(self.height))
+
+    def geom_key(self) -> tuple[str, float]:
+        # BOM labels use whole millimeters; geometry retains the full dimension.
+        return ("Nema17Motor", self.height)
 
     def _build(self):
         with BuildPart() as p:

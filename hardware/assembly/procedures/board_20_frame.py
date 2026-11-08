@@ -2,16 +2,16 @@
 the phone_40 frame, on the TOP short extrusion's outward side face, with the
 holder's two rib hammer-nuts dropped one into each of the two 20 mm-pitch slots.
 
-In phone_40 world the top short 2040 runs along X (X ∈ [-85, 85]) at Z ∈
-[315, 335]; its 40 mm side faces are the ±Z faces, each carrying two slots at
+In phone_40 world the top short 2040 runs along X between the long members,
+with its outward face at Z = LONG_LENGTH. Its ±Z faces each carry two slots at
 Y = ±10 (pitch 20). board_10's rib holes are also 20 mm apart, so the two
 hammer nuts land one in each slot.
 
 board_10 is rotated +90° about Z so its rib (and the two nuts, 20 mm apart along
 the rib) line up across the two slots at Y = ±10 with each nut's length along X
 (the slot run); the PCB/standoff side keeps facing +Z, out of the frame's top
-end. Then translated so the rib face seats on the +Z side face (Z = 335) and the
-nuts straddle Y = 0.
+end. Then translated so the rib face seats on the +Z side face (Z = LONG_LENGTH)
+and the nuts straddle Y = 0.
 
 Two variants:
   * exploded — the holder sub-assembly pulled out along +Z off the side face.
@@ -31,7 +31,7 @@ from hardware.assembly.procedures.phone_40_bed_frame import PH40BedFrame
 from hardware.assembly.projection import MAIN_FRAME_VIEW, Camera
 from hardware.parts.custom.pcb_holder import rib_cx, tab_thick
 
-SHORT_FACE_Z = LONG_LENGTH  # mm — top short 2040 outward (+Z) side face, = 335
+SHORT_FACE_Z = LONG_LENGTH  # mm — top short 2040 outward (+Z) side face
 HOLDER_X = 0  # mm — position along the short (centered)
 EXPLODE = 60  # mm — exploded: holder pulled out along +Z off the face
 

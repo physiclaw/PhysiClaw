@@ -14,7 +14,7 @@ Placement:
   * Base layer — ID31Ld(exploded=False) at world origin. Bundles the
     full frame plus both upper mounts and their brackets, and the
     left-down mount. Long extrusions run along world Z at
-    x = ±half_w; long_right lives at x = +half_w (= +95 mm).
+    x = ±half_w; long_right lives at x = +half_w.
   * RD mount — ID40Rd(exploded=False) oriented the same way as LD:
     native +X → world +X, native +Z (top face) → world -Y (outboard),
     derived native +Y → world +Z (back face / captive-nut side toward

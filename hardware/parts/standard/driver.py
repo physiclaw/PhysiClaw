@@ -1,6 +1,15 @@
 import math
 
-from build123d import *
+from build123d import (
+    BuildLine,
+    BuildPart,
+    BuildSketch,
+    Line,
+    Plane,
+    RadiusArc,
+    RegularPolygon,
+    sweep,
+)
 
 from hardware.parts.base import BaseStandardPart
 

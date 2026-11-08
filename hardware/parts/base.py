@@ -76,11 +76,11 @@ class BasePart:
 
         Standard / custom parts opt in to caching by inheriting from
         ``BaseStandardPart`` / ``BaseCustomPart``, which alias
-        ``geom_key`` to ``bom_key`` (correct when every BOM-distinct
-        instance also produces a unique shape — the common case).
+        ``geom_key`` to ``bom_key`` (correct when matching BOM keys
+        always produce identical geometry — the common case).
         Parts whose geometry varies beyond what ``bom_key`` captures
-        (e.g. MGN9H ``slider_position``, Belt ``path``) override
-        ``geom_key`` directly with their own tuple."""
+        (e.g. fractional dimensions, MGN9H ``slider_position``, Belt
+        ``path``) override ``geom_key`` directly with their own tuple."""
         return None
 
     def _build(self):
@@ -138,10 +138,9 @@ class BasePart:
 
 class BaseStandardPart(BasePart):
     """Off-the-shelf purchasable parts. Opts into geometry caching by
-    aliasing ``geom_key`` to ``bom_key`` — appropriate when every
-    BOM-distinct instance also produces a unique shape (the common
-    case). Parts that need a different cache key override ``geom_key``
-    in the subclass."""
+    aliasing ``geom_key`` to ``bom_key`` — appropriate when matching
+    BOM keys always produce identical geometry. Parts whose geometry
+    varies within a BOM key override ``geom_key`` in the subclass."""
 
     def geom_key(self):
         return self.bom_key()

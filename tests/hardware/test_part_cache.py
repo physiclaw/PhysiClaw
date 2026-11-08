@@ -7,6 +7,40 @@ pytest.importorskip("build123d")
 from build123d import Box, Location
 
 from hardware.parts import base
+from hardware.parts.standard.extrusion import (
+    Extrusion1020,
+    Extrusion2020,
+    Extrusion2040,
+)
+from hardware.parts.standard.motor import Nema17Motor
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize(
+    ("part_type", "options"),
+    [
+        (Nema17Motor, {}),
+        (Extrusion2020, {}),
+        (Extrusion2040, {}),
+        (Extrusion2040, {"cb": True}),
+        (Extrusion1020, {}),
+        (Extrusion1020, {"hole": True}),
+    ],
+)
+def test_fractional_dimensions_do_not_reuse_whole_millimeter_geometry(
+    monkeypatch, part_type, options
+):
+    monkeypatch.setattr(base, "_BUILD_CACHE", {})
+    monkeypatch.setattr(base, "BOM_REGISTRY", [])
+    shorter = part_type(100.1, **options)
+    longer = part_type(100.9, **options)
+
+    # Purchasing labels and export names retain their existing nominal sizes.
+    assert shorter.bom_key() == longer.bom_key()
+    assert shorter.output_path() == longer.output_path()
+    short_height = shorter.build().bounding_box().size.Z
+    long_height = longer.build().bounding_box().size.Z
+    assert long_height - short_height == pytest.approx(0.8)
 
 
 def test_cached_leaves_have_independent_placement_labels_and_bom_entries(monkeypatch):

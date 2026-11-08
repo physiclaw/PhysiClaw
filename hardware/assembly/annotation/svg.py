@@ -89,7 +89,12 @@ class Drawing:
 
 def path_svg(original: str, drawing: Drawing, crop=None) -> str:
     """Standalone path-only intermediate, in the source drawing's coordinates."""
-    frame = crop or tuple(map(float, get_root_viewbox(original).split()))
+    frame = crop
+    if not frame:
+        viewbox = get_root_viewbox(original)
+        if viewbox is None:
+            raise ValueError("Source drawing requires a viewBox when no crop is given")
+        frame = tuple(map(float, viewbox.split()))
     x, y, w, h = frame
     bounds = [(x, y, x + w, y + h), *drawing.bounds]
     x0, y0 = min(b[0] for b in bounds), min(b[1] for b in bounds)
@@ -106,7 +111,10 @@ def compose(original: str, paths: str) -> str:
     """Combine generated annotation paths with the procedure's line art."""
     ET.fromstring(original)
     ET.fromstring(paths)
-    original = set_root_viewbox(original, get_root_viewbox(paths))
+    viewbox = get_root_viewbox(paths)
+    if viewbox is None:
+        raise ValueError("Annotation paths require a viewBox")
+    original = set_root_viewbox(original, viewbox)
     index = original.rfind("</svg>")
     if index < 0:
         raise ValueError("Source drawing has no closing SVG element")

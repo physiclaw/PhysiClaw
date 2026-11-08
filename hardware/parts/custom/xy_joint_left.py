@@ -1,6 +1,26 @@
 import functools
 
-from build123d import *
+from build123d import (
+    MM,
+    Axis,
+    Box,
+    BuildLine,
+    BuildPart,
+    BuildSketch,
+    CounterSinkHole,
+    Edge,
+    GridLocations,
+    Hole,
+    Locations,
+    Mode,
+    Plane,
+    Polyline,
+    Rectangle,
+    Vector,
+    extrude,
+    fillet,
+    make_face,
+)
 
 from hardware.parts._fits import M3_NORMAL, M4_CLOSE, M4_NUT_T, M4_NUT_W, M5_NORMAL
 from hardware.parts.base import BaseCustomPart

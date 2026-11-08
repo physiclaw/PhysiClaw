@@ -843,13 +843,13 @@ def render_sheet(items: list[CutItem], lang: str, *, include_defs: bool = True) 
         parts.append(section)
 
     # A row: its number and label at ry, its views hung below. The views
-    # report where their ink ends; a row is drawn once at ry = 0 to measure
-    # it, then in place.
+    # report where their ink ends; measure the views at ry = 0 before placing
+    # the complete row.
     PLATE = 8  # a face view's plate top below ry
     rise = 0.5 + LABEL_FS  # the row label's top above ry
 
-    def row(ry: float, kind: str, label: str, views: list[Ink]) -> Ink:
-        svg = (
+    def row(ry: float, kind: str, label: str, views: list[Ink]) -> str:
+        return (
             text(face_x - 2, ry + 3.2, str(number[kind]), "no", "end")
             + text(
                 face_x,
@@ -860,7 +860,6 @@ def render_sheet(items: list[CutItem], lang: str, *, include_defs: bool = True) 
             )
             + "".join(svg for svg, _ in views)
         )
-        return svg, max(end for _, end in views)
 
     rows = [
         (
@@ -913,7 +912,7 @@ def render_sheet(items: list[CutItem], lang: str, *, include_defs: bool = True) 
             ],
         ),
     ]
-    heights = [rise + row(0, kind, label, make(0))[1] for kind, label, make in rows]
+    heights = [rise + max(end for _, end in make(0)) for _, _, make in rows]
 
     # The footer is one line in the bottom-right corner.
     pad = 1.5
@@ -939,7 +938,7 @@ def render_sheet(items: list[CutItem], lang: str, *, include_defs: bool = True) 
             parts.append(line(x0, rule, x0 + w, rule, "rule"))
             group(ry - 0.5, "1020", section_1020(x0 + 30, ry + 15.5))
             notes_y = ry + 34.5  # under the 1020 section, in the left column
-        parts.append(row(ry, kind, label, make(ry))[0])
+        parts.append(row(ry, kind, label, make(ry)))
         ry += height + gap
 
     # Technical notes.

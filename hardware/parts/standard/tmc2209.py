@@ -21,7 +21,21 @@ Run from the repo root:
     uv run --group cad python -m hardware.parts.standard.tmc2209
 """
 
-from build123d import *
+from build123d import (
+    MM,
+    Align,
+    Box,
+    BuildPart,
+    Color,
+    Compound,
+    Cone,
+    GridLocations,
+    Location,
+    Locations,
+    Part,
+    Plane,
+    RigidJoint,
+)
 
 from hardware.parts._fits import DRIVER_ROW_PITCH, HDR_PITCH
 from hardware.parts.base import BaseStandardPart

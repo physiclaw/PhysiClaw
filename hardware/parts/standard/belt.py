@@ -1,6 +1,7 @@
 """Reusable GT2 belt geometry; callers supply fully positioned waypoints."""
 
 import math
+from itertools import pairwise
 
 from build123d import MM, Solid, Vector, Wire
 
@@ -123,7 +124,7 @@ class Belt(BaseStandardPart):
                 points.append(point)
         if len(points) < 2:
             raise ValueError("Belt path must contain a nonzero-length segment")
-        directions = [(b - a).normalized() for a, b in zip(points, points[1:])]
+        directions = [(b - a).normalized() for a, b in pairwise(points)]
         sections = []
         for i, point in enumerate(points):
             incoming = directions[max(0, i - 1)]
@@ -142,9 +143,7 @@ class Belt(BaseStandardPart):
                 offset -= incoming * (normal.dot(offset) / normal.dot(incoming))
                 corners.append(point + offset)
             sections.append(Wire.make_polygon(corners, close=True))
-        segments = [
-            Solid.make_loft([a, b], ruled=True) for a, b in zip(sections, sections[1:])
-        ]
+        segments = [Solid.make_loft([a, b], ruled=True) for a, b in pairwise(sections)]
         # One n-ary union also merges the intermeshed belt envelopes in the
         # installed clamp, where the route intentionally overlaps itself.
         return segments[0].fuse(*segments[1:]) if len(segments) > 1 else segments[0]

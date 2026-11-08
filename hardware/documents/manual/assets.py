@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import shutil
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from functools import cache
 from pathlib import Path
@@ -38,7 +39,7 @@ def _render_stem(basename: str) -> str:
     return m["stem"] if m else basename
 
 
-def _require_renders(names) -> None:
+def _require_renders(names: Iterable[str]) -> None:
     """Raise a clear ``BuildError`` if any referenced SVG render is absent from
     the selected render pool. Those files come from the assembly pipeline (not this
     package), so the message names exactly what's missing and the command that

@@ -325,6 +325,7 @@ def test_make_lint_checks_scripts_and_formats_the_full_source_scope(make_project
     assert len(records) == 2
     assert records[0]["argv"][:2] == ["ruff", "check"]
     assert "scripts/" in records[0]["argv"]
+    assert "hardware/" in records[0]["argv"]
     assert records[1]["argv"] == [
         "ruff",
         "format",

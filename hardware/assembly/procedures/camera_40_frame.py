@@ -42,7 +42,7 @@ from hardware.parts.standard.t_nut import HAMMER_TOTAL_HEIGHT
 LONG_CENTER_X = X_EXTRUSION_LENGTH / 2 + leg  # = 105 (inner face at 95, +leg)
 FACE_X = LONG_CENTER_X + leg  # = 115, outward +X side face
 SLOT_Y = 10  # the second (lower, +Y / bed-side) slot
-MOUNT_Z = 147.5  # along the long, at the bed's mid-length
+MOUNT_Z = 147.5  # mm — fixed camera mounting position along the long extrusion
 DECK_HOLE_X = 15  # bracket-local X of the deck hole
 EXPLODE = 70  # mm — exploded: arm pulled out +X off the face
 

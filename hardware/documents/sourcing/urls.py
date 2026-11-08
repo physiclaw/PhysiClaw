@@ -17,6 +17,7 @@ import shutil
 import sys
 import tempfile
 import webbrowser
+from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
@@ -130,17 +131,17 @@ def platform_for(url: str) -> str | None:
 
 
 class _Links(HTMLParser):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self.urls: list[str] = []
         self.text: list[str] = []
 
-    def handle_starttag(self, tag, attrs):
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         self.urls.extend(
             value for key, value in attrs if key in {"href", "src"} and value
         )
 
-    def handle_data(self, data):
+    def handle_data(self, data: str) -> None:
         self.text.append(data)
 
 
@@ -355,7 +356,7 @@ def save_state(path: Path, state: dict) -> None:
 
 
 @contextmanager
-def history_lock(path: Path):
+def history_lock(path: Path) -> Iterator[Path]:
     path = path.resolve()
     path.parent.mkdir(parents=True, exist_ok=True)
     # Keep the sidecar: replacing the JSON must not replace the locked inode.
