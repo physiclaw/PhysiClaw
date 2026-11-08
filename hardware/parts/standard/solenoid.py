@@ -161,13 +161,13 @@ class Solenoid(BaseStandardPart):
         # solid in a Compound — fusing it into the main BuildPart breaks the
         # boolean union where the wire is tangent to the shell/ring faces.
         wire_r = spring_wire_dia / 2
+        spring_path = Helix(
+            pitch=spring_pitch,
+            height=(ring_z - ring_thick / 2) - top_z - 2 * wire_r,
+            radius=(spring_id + spring_wire_dia) / 2,
+            center=(0, -depth / 2, top_z + wire_r),
+        )
         with BuildPart() as spring:
-            spring_path = Helix(
-                pitch=spring_pitch,
-                height=(ring_z - ring_thick / 2) - top_z - 2 * wire_r,
-                radius=(spring_id + spring_wire_dia) / 2,
-                center=(0, -depth / 2, top_z + wire_r),
-            )
             with BuildSketch(Plane(origin=spring_path @ 0, z_dir=spring_path % 0)):
                 Circle(wire_r)
             sweep(path=spring_path)

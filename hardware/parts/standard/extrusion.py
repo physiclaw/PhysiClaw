@@ -13,9 +13,9 @@ from build123d import (
     Plane,
     Polyline,
     Rectangle,
-    add,
     extrude,
     fillet,
+    insert,
     make_face,
     mirror,
 )
@@ -117,7 +117,7 @@ class Extrusion2020(BaseStandardPart):
         face = _cell_face()
         with BuildPart() as p:
             with BuildSketch():
-                add(face)
+                insert(face)
                 Circle(bore_diameter / 2, mode=Mode.SUBTRACT)
             extrude(amount=self.length)
 
@@ -160,7 +160,7 @@ class Extrusion2040(BaseStandardPart):
         with BuildPart() as p:
             with BuildSketch():
                 with Locations(*cell_centers):
-                    add(face)
+                    insert(face)
                 with Locations(*cell_centers):
                     Circle(bore_diameter / 2, mode=Mode.SUBTRACT)
                 Rectangle(slot_w, slot_h, mode=Mode.SUBTRACT)
