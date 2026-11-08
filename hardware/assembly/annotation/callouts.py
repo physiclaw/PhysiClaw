@@ -38,78 +38,73 @@ def _nut_insertion(root, projection, drawing):
 def _clamp_threading(root, projection, drawing):
     from hardware.parts.custom import belt_clamp as clamp
 
-    # Entry/exit clearances differ above and below the clamp's center post.
-    # Each recipe gives the side, color and route in the clamp's native XY plane.
+    # Illustration offsets keep both lanes inside the slot, clear of the front lip.
     z = math.copysign(clamp.thickness / 2, projection.origin.Z)
-    if z < 0:
-        recipes = (
-            (
-                False,
-                RED,
-                [
-                    ((-9, -0.2), (-5.3, -0.2)),
-                    ((-4.5, -0.1), (-0.8, -0.1)),
-                    ((0.5, 0.9), (3, 3.2)),
-                    ((4.2, 3.9), (7.9, 3.9)),
-                    ((9.5, 2.7), (9.4, -0.2)),
-                    ((7.2, -1.2), (3.5, -1.2)),
-                    ((1.7, -1.3), (-2, -1.3)),
-                    ((-3.4, -1.3), (-7, -1.3)),
-                ],
-            ),
-            (
-                True,
-                BLUE,
-                [
-                    ((-9.5, 0.2), (-5.9, 0.2)),
-                    ((-4.9, 0.1), (-1.2, 0.1)),
-                    ((0.6, 0.3), (2.7, 2.6)),
-                    ((4.2, 3.8), (7.9, 3.9)),
-                    ((8.6, 2.7), (8.7, -0.3)),
-                    ((7.1, -1.1), (3.4, -1.1)),
-                    ((2.3, -1.2), (-1.3, -1.2)),
-                    ((-3.4, -1.2), (-7.1, -1.3)),
-                ],
-            ),
-        )
-    else:
-        recipes = (
-            (
-                False,
-                BLUE,
-                [
-                    ((-9, -0.5), (-6, -0.5)),
-                    ((-5, -0.5), (-2, -0.5)),
-                    ((0.8, 0.2), (2.8, 2.4)),
-                    ((4.5, 3.8), (7.7, 3.8)),
-                    ((8.8, 2.4), (8.8, -0.7)),
-                    ((6.6, -1.5), (3, -1.5)),
-                    ((0.9, -1.5), (-2.8, -1.5)),
-                    ((-4.2, -1.5), (-7.8, -1.5)),
-                ],
-            ),
-            (
-                True,
-                RED,
-                [
-                    ((-9.4, -0.3), (-5.7, -0.3)),
-                    ((-5.3, -0.2), (-1.6, -0.3)),
-                    ((0.7, 0.7), (3.4, 3.3)),
-                    ((4.5, 4), (8.2, 3.9)),
-                    ((8.9, 2.2), (9, -0.9)),
-                    ((7.3, -1), (3.2, -1.1)),
-                    ((0.9, -1.3), (-3.4, -1.4)),
-                    ((-5.4, -1.5), (-9.7, -1.6)),
-                ],
-            ),
-        )
-    for mirror, color, path in recipes:
-        for start, end in path:
-            points = [
-                projection.point((clamp.length - x if mirror else x, y, z))
-                for x, y in (start, end)
-            ]
-            drawing.arrow(*points, color=color, opacity=0.65)
+    # Keep blue on the left when viewing either face.
+    colors = (RED, BLUE) if z < 0 else (BLUE, RED)
+    entry_y, return_y = 0.05, -0.85
+    turn_x, turn_y = 8.8, 3.9
+    knots = [
+        (-9.2, entry_y),
+        (entry_y, entry_y),
+        (turn_y, turn_y),
+        (turn_x, turn_y),
+        (turn_x, return_y),
+        (-8.3, return_y),
+    ]
+    # Quadratic bends keep the route continuous around the post. Sampling in
+    # part coordinates lets both camera views share the same smooth path.
+    route = [knots[0]]
+    for before, corner, after in zip(knots, knots[1:], knots[2:]):
+        incoming = math.dist(before, corner)
+        outgoing = math.dist(corner, after)
+        trim = min(0.6, incoming / 2, outgoing / 2)
+        start = tuple(c + (b - c) * trim / incoming for b, c in zip(before, corner))
+        end = tuple(c + (a - c) * trim / outgoing for a, c in zip(after, corner))
+        for step in range(9):
+            t = step / 8
+            route.append(
+                tuple(
+                    (1 - t) ** 2 * s + 2 * (1 - t) * t * c + t**2 * e
+                    for s, c, e in zip(start, corner, end)
+                )
+            )
+    # End the stroke inside the final arrowhead so its tip stays sharp.
+    route.append((knots[-1][0] + 0.5, return_y))
+
+    for mirror, color in enumerate(colors):
+
+        def project(point):
+            x, y = point
+            return projection.point((clamp.length - x if mirror else x, y, z))
+
+        points = [project(point) for point in route]
+        marks = [LineString(points).buffer(0.12), Point(points[0]).buffer(0.24)]
+        # Only three direction cues: feed in, turn around the post, fold back.
+        for tip, direction in (
+            ((-3.8, entry_y), (1, 0)),
+            ((turn_x, 1.0), (0, -1)),
+            (knots[-1], (-1, 0)),
+        ):
+            tip_xy = project(tip)
+            back_xy = project((tip[0] - direction[0], tip[1] - direction[1]))
+            length = math.dist(back_xy, tip_xy)
+            dx = (tip_xy[0] - back_xy[0]) / length
+            dy = (tip_xy[1] - back_xy[1]) / length
+            base_x, base_y = tip_xy[0] - 0.95 * dx, tip_xy[1] - 0.95 * dy
+            marks.append(
+                Polygon(
+                    [
+                        tip_xy,
+                        (base_x + 0.32 * dy, base_y - 0.32 * dx),
+                        (base_x - 0.32 * dy, base_y + 0.32 * dx),
+                    ]
+                )
+            )
+        ink = union_all(marks)
+        # A white halo separates the route from crossing CAD edges.
+        drawing.region(ink.buffer(0.10), "#ffffff", 1)
+        drawing.region(ink, color, 1)
 
 
 def _solenoid_wiring(root, projection, drawing):
