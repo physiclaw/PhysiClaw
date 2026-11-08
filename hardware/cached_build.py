@@ -240,11 +240,14 @@ def main(argv=None):
         return rc
 
     steps, annotation_key, plan = hit
-    with buildlog.command(
-        f"Hardware build / {len(steps)} assemblies",
-        args,
-        name="build",
-        output_dir=OUTPUT_DIR,
+    with (
+        buildlog.command(
+            f"Hardware build / {len(steps)} assemblies",
+            args,
+            name="build",
+            output_dir=OUTPUT_DIR,
+        ),
+        buildlog.step("Reuse cached assemblies"),
     ):
         cache.prune(steps)
         _restore(plan)
