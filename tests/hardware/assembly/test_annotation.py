@@ -719,7 +719,7 @@ def test_frame_head_recesses_follow_the_slot_lip_cuts():
         assert not marker.covers(Point(projection.point(tip)))
 
 
-def test_belt_clamp_markers_fill_both_slider_chamfer_openings():
+def test_belt_clamp_marks_all_four_slider_openings_behind_belt():
     from hardware.assembly.procedures.belt_20_clamp import BE20Clamp
     from hardware.assembly.projection import camera_view
 
@@ -729,10 +729,19 @@ def test_belt_clamp_markers_fill_both_slider_chamfer_openings():
     projection = geometry.Projection(camera_view(visible, assembly.cameras[1]))
     sliders = geometry.select_parts(assembled, "**/MGN9H")
     figure = next(f for f in specs.FIGURES.values() if f.name == "clamp_fasteners")
-    highlights = [h for h in figure.highlights if h.assembled]
-    assert len(highlights) == 2
-    for highlight in highlights:
-        [screw] = geometry.select_parts(assembled, highlight.part)
+    [highlight] = [h for h in figure.highlights if h.assembled]
+    screws = geometry.select_parts(assembled, highlight.part)
+    assert len(screws) == 4
+    [(_, visible_markers)] = features.highlight_regions(
+        (highlight,),
+        visible_root=visible,
+        assembled_root=assembled,
+        projection=projection,
+    )
+    belt = features.occlusion_region(visible, projection, "belt_10_motor_a/Belt")
+    assert visible_markers.intersection(belt).area < 1e-8
+    occluded_count = 0
+    for screw in screws:
         circles = [
             circle for slider in sliders for circle in _coaxial_circles(slider, screw)
         ]
@@ -743,6 +752,12 @@ def test_belt_clamp_markers_fill_both_slider_chamfer_openings():
             marker.symmetric_difference(_project_circle(opening, projection)).area
             < 0.03
         )
+        exposed = marker.difference(belt)
+        assert exposed.area > 0
+        assert exposed.difference(visible_markers).area < 1e-8
+        if marker.intersection(belt).area > 0.01:
+            occluded_count += 1
+    assert occluded_count == 2
 
 
 def test_x_beam_screw_receivers_follow_both_joint_countersinks():

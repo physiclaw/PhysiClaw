@@ -29,7 +29,11 @@ def _reference_probe() -> dict:
         errors="replace",
         timeout=120,
     )
-    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.returncode == 0, (
+        f"Reference renderer exited {result.returncode}\n"
+        + result.stdout
+        + result.stderr
+    )
     return json.loads(result.stdout.splitlines()[-1])
 
 
@@ -39,20 +43,28 @@ def _illustration_probe() -> None:
 
     from hardware.assembly import cache
     from hardware.assembly import travel_ranges as t
-    from hardware.assembly.build_procedures import _run_one
-    from hardware.assembly.procedures.frame_10_extrusion_tnut import FR10ExtrusionTnut
+    from hardware.assembly.build_procedures import main as build
     from hardware.documents.manual import assets
-    from hardware.scheme import OUTPUT_DIR, STEP_DIR, SVG_DIR
+    from hardware.scheme import OUTPUT_DIR, SVG_DIR
 
     assert REPO_ROOT != Path(__file__).resolve().parents[2]
     assert (t.X_TRAVEL, t.Y_TRAVEL) == t.ILLUSTRATION_TRAVEL
     assert (t.X_EXTRUSION_LENGTH, t.Y_EXTRUSION_LENGTH) == (190, 345)
     assert OUTPUT_DIR == REPO_ROOT / "artifacts/manual-illustrations"
     assert assets.SVG_DIR == SVG_DIR
-    STEP_DIR.mkdir(parents=True, exist_ok=True)
-    SVG_DIR.mkdir(parents=True, exist_ok=True)
-    for exploded in (False, True):
-        _run_one(FR10ExtrusionTnut, exploded)
+    # Exercise the production worker/checkpoint recovery path: exact HLR can
+    # segfault, and an unguarded in-process render makes this test flaky.
+    result = build(
+        [
+            "--stems",
+            "frame_10_extrusion_tnut",
+            "--jobs",
+            "1",
+            "--log-format",
+            "json",
+        ]
+    )
+    assert result == 0
     print(
         json.dumps(
             {

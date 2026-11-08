@@ -22,9 +22,10 @@ from collections import defaultdict
 from dataclasses import dataclass
 
 from hardware.assembly.base import BaseAssembly
+from hardware.assembly.discovery import predecessor_module as predecessor_module
 from hardware.assembly.dispatch import load_step
 from hardware.parts.base import BOM_REGISTRY, BomCategory
-from hardware.scheme import BOM_DIR, PROCEDURES_DIR, STEM_RE
+from hardware.scheme import BOM_DIR
 
 
 @dataclass(frozen=True, order=True)
@@ -89,36 +90,6 @@ def delta(current: list[BomEntry], previous: list[BomEntry]) -> list[BomEntry]:
             out.append(BomEntry(e.category, e.key, diff, e.custom_display))
     out.sort()
     return out
-
-
-# ── Predecessor discovery ────────────────────────────────────────────────────
-
-
-def predecessor_module(module_name: str) -> str | None:
-    """Return the predecessor procedure's module name (e.g.
-    'hardware.assembly.procedures.belt_10_motor_a') or None if this is
-    the first step in its family.
-
-    Convention: predecessor = same family prefix, largest NN strictly
-    less than this file's NN. Cross-family chains aren't auto-resolved."""
-    stem = module_name.rsplit(".", 1)[-1]
-    m = STEM_RE.match(stem)
-    if not m:
-        return None
-    family, nn = m["family"], int(m["nn"])
-    candidates: list[tuple[int, str]] = []
-    for path in PROCEDURES_DIR.glob(f"{family}_*.py"):
-        cm = STEM_RE.match(path.stem)
-        if not cm:
-            continue
-        cnn = int(cm["nn"])
-        if cnn < nn:
-            candidates.append((cnn, path.stem))
-    if not candidates:
-        return None
-    candidates.sort()
-    prior_stem = candidates[-1][1]
-    return f"hardware.assembly.procedures.{prior_stem}"
 
 
 # ── Markdown writer ───────────────────────────────────────────────────────────

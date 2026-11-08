@@ -135,7 +135,9 @@ def _text_lines(record: dict, *, show_level: bool = True) -> str:
     if not context and record.get("worker_pid"):
         context = f"worker {record['worker_pid']}"
     message = _single_line(record["message"])
-    if record.get("event") in ("step_finished", "task_finished"):
+    if record.get("event") == "annotations_generated":
+        message = ""
+    elif record.get("event") in ("step_finished", "task_finished"):
         message = "" if record.get("status") == "success" else "Failed"
     if record.get("variant"):
         message = f"{_single_line(record['variant'])}: {message}"

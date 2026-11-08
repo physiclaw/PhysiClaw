@@ -101,6 +101,7 @@ bp._batches = lambda size: [[f'frame_{{i}}'] for i in range(12)]
 bp._incomplete = lambda stem, flags: ['assembled']
 bp.stepcache.source_key = lambda stem: stem
 bp.stepcache.annotation_key = lambda stem: stem
+bp._view_indices = lambda stem, exploded: (0,)
 raise SystemExit(bp.main({args!r}))
 """
     wrapper = f"""

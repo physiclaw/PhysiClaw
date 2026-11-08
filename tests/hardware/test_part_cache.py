@@ -35,3 +35,30 @@ def test_cached_leaves_have_independent_placement_labels_and_bom_entries(monkeyp
         (("Part",), 2, "custom", None),
         (("Part",), 3, "custom", None),
     ]
+
+
+@pytest.mark.parametrize("raises", [False, True])
+def test_failed_step_export_preserves_previous_output_and_removes_partial_file(
+    tmp_path, monkeypatch, raises
+):
+    tmp_path = tmp_path / "exports"
+    tmp_path.mkdir()
+    target = tmp_path / "part.step"
+    target.write_bytes(b"previous complete STEP")
+    part = base.BasePart()
+    monkeypatch.setattr(part, "build", lambda: object())
+    monkeypatch.setattr(part, "output_path", lambda: target)
+
+    def fail(shape, path):
+        from pathlib import Path
+
+        Path(path).write_bytes(b"partial export")
+        if raises:
+            raise RuntimeError("export failed")
+        return False
+
+    monkeypatch.setattr(base, "export_step", fail)
+    with pytest.raises(RuntimeError):
+        part.export()
+    assert target.read_bytes() == b"previous complete STEP"
+    assert list(tmp_path.iterdir()) == [target]

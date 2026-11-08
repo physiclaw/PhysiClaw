@@ -7,8 +7,8 @@ Two invalidation layers:
     import closure plus
     the CAD dependency group's locked transitive toolchain and platform.
     Unrelated application metadata and agent/dev dependencies are excluded.
-    Source tracking is conservative at file granularity. The cumulative /
-    delta BOM ``.md`` is a pure function of the same parts. Change a part →
+    Source tracking is conservative at file granularity and includes the
+    dynamically selected predecessor's closure for delta BOMs. Change a part →
     source key changes → rebuild geometry, re-render, re-aggregate BOM.
   * Generated annotation path SVGs and the manual's composited figures
     carry an extra annotation key: the drawing declarations, generator and
@@ -51,6 +51,7 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 from hardware.assembly.annotation.specs import figure_names
+from hardware.assembly.discovery import predecessor_module
 from hardware.scheme import (
     ANNOTATION_DIR,
     BOM_DIR,
@@ -246,6 +247,12 @@ def _source_files(stem: str) -> frozenset[Path]:
         for caller in ("build_procedures.py", "cache.py")
         for module in ("annotation/generator.py", "annotation/specs.py")
     )
+    # Delta BOMs compare against a dynamically selected sibling, which need
+    # not be imported by this procedure. Track its entire closure as well as
+    # its identity: adding/removing a sibling can change the predecessor.
+    previous = predecessor_module(stem, directory=PROCEDURES_DIR)
+    if previous is not None:
+        inputs.add(PROCEDURES_DIR / f"{previous.rsplit('.', 1)[-1]}.py")
     return _closure(
         PROCEDURES_DIR / f"{stem}.py", *inputs, skip_imports=annotation_imports
     )
@@ -546,12 +553,15 @@ def _entry_intact(
     entry = _entry(stem)
     for name, sha in files.items():
         p = entry / name
-        if p.is_symlink():
-            return _miss(reasons, f"cached artifact is a symlink: {_shown(p)}")
-        if not p.is_file():
-            return _miss(reasons, f"cached artifact missing: {_shown(p)}")
-        if p.stat().st_size == 0 or _sha256_file(p) != sha:
-            return _miss(reasons, f"cached artifact damaged: {_shown(p)}")
+        try:
+            if p.is_symlink():
+                return _miss(reasons, f"cached artifact is a symlink: {_shown(p)}")
+            if not p.is_file():
+                return _miss(reasons, f"cached artifact missing: {_shown(p)}")
+            if p.stat().st_size == 0 or _sha256_file(p) != sha:
+                return _miss(reasons, f"cached artifact damaged: {_shown(p)}")
+        except OSError:
+            return _miss(reasons, f"cached artifact unreadable: {_shown(p)}")
     return True
 
 

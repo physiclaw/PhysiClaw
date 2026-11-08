@@ -193,7 +193,7 @@ def test_worker_timeout_returns_failure(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize("returncode", [130, -2, 0xC000013A])
 def test_regression_interrupted_worker_finishes_as_cancelled(
-    tmp_path, mocker, capsys, returncode
+    cache_pipeline, tmp_path, mocker, capsys, returncode
 ):
     from contextlib import nullcontext
     from io import StringIO
@@ -882,3 +882,90 @@ def test_annotation_branch_clears_stale_outputs_before_regenerating(
         "annotate",
         "store_annotations",  # … and only then is the fresh layer stored.
     ]
+
+
+@pytest.mark.parametrize("force", [False, True])
+def test_selected_build_reuses_cache_and_preserves_other_stems(
+    cache_pipeline, outputs, tmp_path, monkeypatch, force
+):
+    other = "frame_20_other"
+    cache_pipeline.stems.append(other)
+    builds = []
+
+    def run(batch, flags):
+        builds.append(list(batch))
+        for stem in batch:
+            cache_pipeline.write(stem, flags)
+        return 0
+
+    monkeypatch.setattr(bp, "_run_subprocess", run)
+    with bp.buildlog.session(tmp_path):
+        assert bp._dispatch(5) == 0
+    other_key = bp.stepcache.CACHE_DIR / other / "source.key"
+    saved = other_key.read_bytes()
+    target = outputs.step / f"{STEM}_assembled.step"
+    target.unlink()
+    with bp.buildlog.session(tmp_path):
+        assert bp._dispatch(5, selected_stems=[STEM, STEM], use_cache=not force) == 0
+    assert builds == ([[STEM, other], [STEM]] if force else [[STEM, other]])
+    assert target.is_file()
+    assert (outputs.step / f"{other}_assembled.step").is_file()
+    assert other_key.read_bytes() == saved
+
+
+def test_selected_rebuild_removes_obsolete_views_boms_and_checkpoints(
+    cache_pipeline, outputs, tmp_path, monkeypatch
+):
+    obsolete = outputs.svg / f"{STEM}_assembled_cam99.svg"
+    old_bom = outputs.bom / f"{STEM}.md"
+    checkpoint = bp.RENDER_WORK_DIR / f"{STEM}_assembled"
+    obsolete.write_text("old view", encoding="utf-8")
+    old_bom.write_text("old parts", encoding="utf-8")
+    checkpoint.mkdir(parents=True)
+
+    def run(batch, flags):
+        assert not obsolete.exists()
+        assert not old_bom.exists()
+        assert not checkpoint.exists()
+        cache_pipeline.write(STEM, flags)
+        return 0
+
+    monkeypatch.setattr(bp, "_run_subprocess", run)
+    with bp.buildlog.session(tmp_path):
+        assert bp._dispatch(5, selected_stems=[STEM]) == 0
+    assert not obsolete.exists()
+    assert bp.stepcache.source_cached(STEM, want_bom=False)
+
+
+def test_unknown_selected_stem_fails_before_removing_outputs(
+    cache_pipeline, outputs, tmp_path
+):
+    cache_pipeline.write(STEM)
+    target = outputs.step / f"{STEM}_assembled.step"
+    with (
+        bp.buildlog.session(tmp_path),
+        pytest.raises(ValueError, match="Unknown procedure"),
+    ):
+        bp._dispatch(5, selected_stems=["typo"], use_cache=False)
+    assert target.is_file()
+
+
+def test_single_step_cli_uses_cache_and_force_refreshes_it(
+    cache_pipeline, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(bp, "OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr("hardware.build_lock.OUTPUT_DIR", tmp_path)
+    builds = []
+
+    def run(batch, flags):
+        builds.append(list(batch))
+        for stem in batch:
+            cache_pipeline.write(stem, flags)
+        return 0
+
+    monkeypatch.setattr(bp, "_run_subprocess", run)
+    assert bp.main(["--stems", STEM]) == 0
+    assert bp.main(["--stems", STEM]) == 0
+    assert builds == [[STEM]]
+    assert bp.main(["--stems", STEM, "--no-cache"]) == 0
+    assert builds == [[STEM], [STEM]]

@@ -127,8 +127,12 @@ class BasePart:
         # only ever holds a complete STEP — the build pipeline's crash
         # retries trust an existing file as done.
         tmp = path.with_suffix(".tmp")
-        export_step(shape, str(tmp))
-        tmp.replace(path)
+        try:
+            if not export_step(shape, str(tmp)):
+                raise RuntimeError(f"Could not export STEP: {path}")
+            tmp.replace(path)
+        finally:
+            tmp.unlink(missing_ok=True)
         return shape
 
 

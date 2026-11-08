@@ -113,6 +113,47 @@ def test_source_key_is_stable_across_calls(repo):
     assert cache.source_key(STEM) == cache.source_key(STEM)
 
 
+def test_delta_bom_tracks_unimported_predecessor_and_its_dependencies(repo):
+    previous = repo.PROCEDURES_DIR / "frame_05_previous.py"
+    helper = repo.helper.with_name("previous_part.py")
+    helper.write_text("SIZE = 1\n", encoding="utf-8")
+    previous.write_text("import hardware.parts.previous_part\n", encoding="utf-8")
+    before = cache.source_key(STEM)
+    helper.write_text("SIZE = 2\n", encoding="utf-8")
+    assert cache.source_key(STEM) != before
+
+
+def test_delta_bom_tracks_added_removed_and_reselected_predecessor(repo):
+    first = cache.source_key(STEM)
+    previous = repo.PROCEDURES_DIR / "frame_05_previous.py"
+    previous.write_text("PARTS = 1\n", encoding="utf-8")
+    second = cache.source_key(STEM)
+    assert second != first
+    nearer = previous.with_name("frame_09_nearer.py")
+    nearer.write_bytes(previous.read_bytes())
+    assert cache.source_key(STEM) not in {first, second}
+    nearer.unlink()
+    assert cache.source_key(STEM) == second
+    previous.unlink()
+    assert cache.source_key(STEM) == first
+
+
+def test_unreadable_cached_artifact_is_a_miss(repo, monkeypatch):
+    write_outputs(repo)
+    cache.store_source(STEM)
+    original = cache._sha256_file
+
+    def unreadable(path):
+        if path.is_relative_to(repo.CACHE_DIR):
+            raise PermissionError("unreadable cache file")
+        return original(path)
+
+    monkeypatch.setattr(cache, "_sha256_file", unreadable)
+    reasons = []
+    assert not cache.source_cached(STEM, want_bom=False, reasons=reasons)
+    assert any("cached artifact unreadable" in reason for reason in reasons)
+
+
 def test_reference_illustrations_cannot_restore_manufacturing_cache(repo, monkeypatch):
     actual = cache.source_key(STEM)
     monkeypatch.setattr(cache, "MANUAL_ILLUSTRATIONS", True)

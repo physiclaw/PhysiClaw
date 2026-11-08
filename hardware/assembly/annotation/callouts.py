@@ -133,10 +133,11 @@ def _solenoid_wiring(root, projection, drawing):
 
 
 def _belt_tension(root, projection, drawing):
+    from hardware.assembly.belt_routing import motor_path
     from hardware.parts.standard import belt
 
     # The inner vertical runs are the two spans whose tension is adjusted.
-    route = belt._expand_wraps(belt.motor_a_path)
+    route = belt._expand_wraps(motor_path("A"))
     start, end = next(
         (a, b)
         for a, b in zip(route, route[1:])

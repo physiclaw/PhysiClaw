@@ -33,8 +33,9 @@ Two variants:
   * assembled — clamp bottom flush on slider top, BHCS heads bottomed
                 in the stadium-slot floors.
 
-The base (belt_10_motor_a) is always shown assembled — the X-rail's
-slider and the belt are already in place from that step.
+The base frame and slider stay assembled. In the exploded illustration,
+the belt ends float clear of the carriage and the downward folds are
+opened so the incoming run and short return tail are easy to distinguish.
 
 Run from the repo root:
 
@@ -45,7 +46,13 @@ from build123d import Compound, Location, Plane
 
 from hardware.assembly.base import ASSEMBLED_CAM0, EXPLODED_CAM1, BaseAssembly
 from hardware.assembly.procedures.belt_10_motor_a import BE10MotorA
-from hardware.assembly.procedures.frame_10_extrusion_tnut import EXT_THICKNESS
+from hardware.assembly.procedures.frame_10_extrusion_tnut import (
+    EXT_THICKNESS,
+    LONG_BOT_GAP,
+    LONG_LENGTH,
+    LONG_TOP_GAP,
+)
+from hardware.assembly.procedures.linear_10_y import RAIL_LENGTH
 from hardware.assembly.projection import MAIN_FRAME_VIEW, Camera
 from hardware.parts.custom.belt_clamp import (
     BeltClamp,
@@ -59,12 +66,32 @@ from hardware.parts.custom.belt_clamp import (
 from hardware.parts.custom.belt_clamp import (
     thickness as clamp_thickness,
 )
+from hardware.parts.custom.idler_mount_front import (
+    slot_center_y as ld_slot_center_y,
+)
+from hardware.parts.custom.idler_mount_front import (
+    width as ld_block_width,
+)
+from hardware.parts.custom.idler_mount_motor import length as lu_block_length
+from hardware.parts.custom.xy_joint_left import (
+    big_csk_y as joint_big_csk_y_n,
+)
+from hardware.parts.custom.xy_joint_left import (
+    csk_hole_from_bottom as joint_csk_hole_from_bottom,
+)
+from hardware.parts.custom.xy_joint_left import (
+    csk_y_spacing as joint_csk_y_spacing,
+)
+from hardware.parts.custom.xy_joint_left import (
+    width as joint_width,
+)
 from hardware.parts.standard.mgn9h import (
     block_top_z as slider_top_z,
 )
 from hardware.parts.standard.mgn9h import (
     mount_pitch_x,
     mount_pitch_y,
+    slider_position,
 )
 from hardware.parts.standard.screw import Screw
 
@@ -89,32 +116,6 @@ SLIDER_MOUNT_Y = -EXT_THICKNESS - 2 * slider_top_z
 # the chain (Y-rail center Z → Y-carriage slider Z → LEFT joint origin Z
 # → big_csk world Z) so this file stays in sync with the upstream
 # placement math without hardcoded numbers.
-from hardware.assembly.procedures.frame_10_extrusion_tnut import (
-    LONG_BOT_GAP,
-    LONG_LENGTH,
-    LONG_TOP_GAP,
-)
-from hardware.assembly.procedures.linear_10_y import RAIL_LENGTH
-from hardware.parts.custom.idler_mount_front import (
-    slot_center_y as ld_slot_center_y,
-)
-from hardware.parts.custom.idler_mount_front import (
-    width as ld_block_width,
-)
-from hardware.parts.custom.idler_mount_motor import length as lu_block_length
-from hardware.parts.custom.xy_joint_left import (
-    big_csk_y as joint_big_csk_y_n,
-)
-from hardware.parts.custom.xy_joint_left import (
-    csk_hole_from_bottom as joint_csk_hole_from_bottom,
-)
-from hardware.parts.custom.xy_joint_left import (
-    csk_y_spacing as joint_csk_y_spacing,
-)
-from hardware.parts.custom.xy_joint_left import (
-    width as joint_width,
-)
-from hardware.parts.standard.mgn9h import slider_position
 
 _y_rail_center_z = (
     (LONG_LENGTH - LONG_TOP_GAP)
@@ -133,7 +134,9 @@ class BE20Clamp(BaseAssembly):
     views = [EXPLODED_CAM1, ASSEMBLED_CAM0]
 
     def _build(self) -> Compound:
-        base_compound = BE10MotorA(exploded=False).build()
+        base_compound = BE10MotorA(
+            exploded=False, illustrate_clamp=self.exploded
+        ).build()
 
         # Belt clamp's M3-hole grid center in its native frame:
         # X = clamp_length / 2 (mirror axis); Y = midpoint of slot1 / slot2.

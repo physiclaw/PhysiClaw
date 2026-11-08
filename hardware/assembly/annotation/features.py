@@ -13,7 +13,7 @@ from functools import partial
 
 from build123d import Compound, GeomType, Keep, Location, Plane, Vector
 from shapely import union_all
-from shapely.geometry import LineString, Polygon
+from shapely.geometry import Polygon
 
 from .geometry import (
     descendants,
@@ -46,32 +46,6 @@ def _board_front(part, projection):
         ]
     )
     return silhouette(part, projection).difference(board_plane)
-
-
-def _belt_run(part, projection, *, feature):
-    """Working belt route, excluding return tails inside the clamp."""
-    from hardware.parts.standard import belt
-
-    location = part.global_location
-
-    route = belt.motor_a_path
-    if feature == "belt-b":
-        shift = belt._upper_belt_y - belt._lower_belt_y
-        route = [((-p[0], p[1] + shift, p[2]), r) for p, r in route]
-    points = belt._expand_wraps(route)
-    # The manual colors the working belt run. Its return tails inside
-    # the clamp remain uncolored, including the two wrap-around pins.
-    first = len(belt._expand_wraps(route[:3])) - 2
-    last = len(points) - len(belt._expand_wraps(route[-3:])) + 1
-    path = LineString(
-        [
-            projection.point((location * Location(p)).position)
-            for p in points[first : last + 1]
-        ]
-    )
-    return silhouette(part, projection).intersection(
-        path.buffer(belt.belt_thickness / 2)
-    )
 
 
 def _joint_pocket(part, projection, *, feature):
@@ -422,8 +396,6 @@ FEATURES = {
     "silhouette": silhouette,
     "surface": partial(silhouette, fill_holes=False),
     "board-front": _board_front,
-    "belt-a": partial(_belt_run, feature="belt-a"),
-    "belt-b": partial(_belt_run, feature="belt-b"),
     "front-pocket": partial(_joint_pocket, feature="front-pocket"),
     "front-pocket-right": partial(_joint_pocket, feature="front-pocket-right"),
     "slant-pocket": partial(_joint_pocket, feature="slant-pocket"),

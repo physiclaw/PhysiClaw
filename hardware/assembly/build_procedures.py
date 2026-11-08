@@ -31,8 +31,9 @@ Run from the repo root:
     uv run --group cad python -m hardware.assembly.build_procedures --bom
     uv run --group cad python -m hardware.assembly.build_procedures --bom --bom-delta
 
-Worker mode (invoked internally by the dispatcher; crash retries add
-``--only-missing`` to skip outputs already on disk):
+Selected builds use the same cache validation and worker recovery as a full
+build. Internal workers add ``--worker-events``; crash retries also add
+``--only-missing`` to skip outputs from the current attempt:
 
     uv run --group cad python -m hardware.assembly.build_procedures --stems frame_10_extrusion_tnut frame_20_SHCS ...
 """
@@ -60,8 +61,7 @@ from hardware.assembly.annotation.specs import figure_names, figures_for
 from hardware.assembly.base import BaseAssembly
 from hardware.assembly.bom import write_bom  # only for the optional --bom feature
 
-# Procedure ordering & batching live in dispatch.py so the BOM and render
-# pipelines share one source of truth.
+# Dispatch re-exports the shared ordering and batching rules from discovery.
 from hardware.assembly.dispatch import (
     DEFAULT_BATCH_SIZE,
     MAX_STEM_RETRIES,
@@ -457,6 +457,8 @@ def _restore_cached_batches(
     inputs: dict[str, tuple[str, str]],
     bom_flags: tuple[str, ...],
     use_cache: bool,
+    *,
+    prune: bool = True,
 ) -> tuple[list[list[str]], int, int]:
     """Restore validated geometry, refresh annotations, and return cache misses.
 
@@ -482,7 +484,7 @@ def _restore_cached_batches(
         )
 
     if use_cache:
-        pruned = stepcache.prune(inputs)
+        pruned = stepcache.prune(inputs) if prune else 0
         for s in inputs:
             _check_cancelled()
             reasons: list[str] = []
@@ -549,11 +551,10 @@ def _restore_cached_batches(
 
         if not misses:
             continue
-        if use_cache:
-            # Clear each miss stem's own outputs so a rebuild that now renders
-            # fewer cameras/variants leaves no stale file behind.
-            for s in misses:
-                stepcache.clear_outputs(s)
+        # Partial and forced builds need the same clean attempt boundary as
+        # full builds. Only crash retries may trust existing output files.
+        for s in misses:
+            stepcache.clear_outputs(s)
         pending.append(misses)
     return pending, n_fresh, n_reannotated
 
@@ -746,6 +747,7 @@ def _dispatch(
     use_cache: bool = True,
     *,
     jobs: int = 1,
+    selected_stems: list[str] | None = None,
 ) -> int:
     """Plan inputs, restore cache hits, build missing steps, and verify the run."""
     want_any_bom = "--bom" in bom_flags or "--bom-delta" in bom_flags
@@ -753,16 +755,25 @@ def _dispatch(
     # restored again) — the cache owns each stem's freshness, and only the
     # miss stems are cleared, right before they rebuild. A --no-cache run
     # still wipes all stale outputs so deleted/renamed steps don't survive.
+    batches = _batches(batch_size)
+    if selected_stems is not None:
+        selected = set(selected_stems)
+        known = {s for batch in batches for s in batch}
+        if unknown := selected - known:
+            raise ValueError(f"Unknown procedure stems: {', '.join(sorted(unknown))}")
+        batches = [[s for s in batch if s in selected] for batch in batches]
+        batches = [batch for batch in batches if batch]
     if not use_cache:
-        _clear_outputs(clear_bom=want_any_bom)
+        if selected_stems is None:
+            _clear_outputs(clear_bom=want_any_bom)
         buildlog.event(
             "cache_bypassed",
-            "Cache bypassed: --no-cache requested; rebuilding all assemblies",
+            "Cache bypassed: --no-cache requested; rebuilding "
+            + ("all assemblies" if selected_stems is None else "selected assemblies"),
         )
 
     t_wall0 = time.monotonic()
     _check_cancelled()
-    batches = _batches(batch_size)
     stems = dict.fromkeys(s for batch in batches for s in batch)
     total = len(stems)
     buildlog.event(
@@ -780,7 +791,7 @@ def _dispatch(
         inputs[stem] = (stepcache.source_key(stem), stepcache.annotation_key(stem))
 
     pending, n_fresh, n_reannotated = _restore_cached_batches(
-        batches, inputs, bom_flags, use_cache
+        batches, inputs, bom_flags, use_cache, prune=selected_stems is None
     )
     failed_batches, retries = _build_batches(pending, inputs, bom_flags, jobs=jobs)
     return _verify_build(
@@ -800,7 +811,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--stems",
         nargs="+",
-        help="procedure stems to build (worker mode); omit to dispatch all batches as subprocesses",
+        help="build only these procedures, with cache validation and crash recovery; omit for all procedures",
     )
     parser.add_argument(
         "--batch-size",
@@ -966,11 +977,11 @@ def _execute(args: argparse.Namespace) -> int:
     bom_flags = tuple(
         f for f, on in (("--bom", args.bom), ("--bom-delta", args.bom_delta)) if on
     )
-    if args.stems and not args.worker_events:
-        # Use the same collector for single-step builds: native output must
-        # not leak into a JSON stdout stream either.
-        return _run_subprocess(args.stems, bom_flags, only_missing=args.only_missing)
-    if args.stems:
+    if args.stems and not args.worker_events and args.only_missing:
+        # Explicit recovery mode trusts this build attempt's existing files.
+        # Normal single-step builds go through the same dispatcher as full builds.
+        return _run_subprocess(args.stems, bom_flags, only_missing=True)
+    if args.worker_events:
         # Route crash forensics to this run's log instead of stderr; the header
         # line ties each dumped stack to the worker's stems.
         crash_path = _crash_log()
@@ -992,7 +1003,11 @@ def _execute(args: argparse.Namespace) -> int:
                 faulthandler.disable()
 
     return _dispatch(
-        args.batch_size, bom_flags, use_cache=not args.no_cache, jobs=args.jobs
+        args.batch_size,
+        bom_flags,
+        use_cache=not args.no_cache,
+        jobs=args.jobs,
+        selected_stems=args.stems,
     )
 
 

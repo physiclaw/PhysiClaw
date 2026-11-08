@@ -101,7 +101,8 @@ def build() -> Path:
                     # Exports are included in this task's elapsed duration.
                     fname = f"physiclaw_{part.output_path().name}"
                     step = Path(tmp) / fname
-                    export_step(shape, str(step))
+                    if not export_step(shape, str(step)):
+                        raise RuntimeError(f"Could not export STEP: {step}")
                 zf.write(step, arcname=fname)
                 rows.append((fname, qty, en, zh))
                 buildlog.event(

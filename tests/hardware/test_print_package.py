@@ -19,7 +19,10 @@ def test_print_kit_matches_export_registry_and_manual_quantity():
     assert sum(actual.values()) == int(row["qty"])
 
 
-def test_failed_part_export_preserves_previous_print_package(tmp_path, monkeypatch):
+@pytest.mark.parametrize("raises", [False, True])
+def test_failed_part_export_preserves_previous_print_package(
+    tmp_path, monkeypatch, raises
+):
     tmp_path = tmp_path / "print-output"
     tmp_path.mkdir()
     target = tmp_path / "parts.zip"
@@ -29,10 +32,12 @@ def test_failed_part_export_preserves_previous_print_package(tmp_path, monkeypat
 
     def fail(shape, path):
         Path(path).write_bytes(b"partial STEP export")
-        raise RuntimeError("CAD export failed")
+        if raises:
+            raise RuntimeError("Could not export STEP")
+        return False
 
     monkeypatch.setattr(printing, "export_step", fail)
-    with pytest.raises(RuntimeError, match="CAD export failed"):
+    with pytest.raises(RuntimeError, match="Could not export STEP"):
         printing.build()
     assert target.read_bytes() == b"previous complete package"
     assert list(tmp_path.iterdir()) == [target]

@@ -95,7 +95,7 @@ FIGURES: dict[str, Figure] = _index_figures(
     Figure(
         view="belt_10_motor_a_exploded_cam0",
         name="motor_a_belt_route",
-        highlights=(Highlight("Belt", 0.65, feature="belt-a"),),
+        highlights=(Highlight("Belt", 0.65, feature="surface"),),
     ),
     Figure(
         view="belt_11_clamp_show_assembled_cam0",
@@ -117,8 +117,13 @@ FIGURES: dict[str, Figure] = _index_figures(
         name="clamp_fasteners",
         highlights=(
             Highlight("BeltClamp|Screw*"),
-            Highlight("Screw*[0]", 0.65, assembled=True, feature="slider-seat"),
-            Highlight("Screw*[2]", 0.65, assembled=True, feature="slider-seat"),
+            Highlight(
+                "Screw*",
+                0.65,
+                assembled=True,
+                feature="slider-seat",
+                occluded_by="belt_10_motor_a/Belt",
+            ),
         ),
         crop=(-54.3398, -110.3465, 98.7473, 128.6283),
     ),
@@ -131,7 +136,7 @@ FIGURES: dict[str, Figure] = _index_figures(
     Figure(
         view="belt_30_motor_b_exploded_cam0",
         name="motor_b_belt_route",
-        highlights=(Highlight("Belt", 0.65, feature="belt-b"),),
+        highlights=(Highlight("Belt", 0.65, feature="surface"),),
     ),
     Figure(
         view="board_10_holder_tnut_exploded_cam1",
