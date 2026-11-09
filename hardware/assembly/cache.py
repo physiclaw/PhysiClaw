@@ -168,7 +168,7 @@ def _kernel_version() -> str:
         return "unknown"
 
 
-def _hash_files(h: "hashlib._Hash", files) -> None:
+def _hash_files(h: hashlib._Hash, files) -> None:
     for f in sorted(files, key=lambda p: str(p)):
         h.update(str(f.relative_to(REPO_ROOT)).encode())
         h.update(b"\0")

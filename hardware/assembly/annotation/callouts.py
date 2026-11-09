@@ -10,12 +10,17 @@ from __future__ import annotations
 import math
 from itertools import pairwise
 
-from build123d import Location, Vector
+from build123d import Edge, Location, Vector, Wire
 from shapely import union_all
 from shapely.geometry import LineString, Point, Polygon
 
-from .geometry import select_parts, silhouette, world_shape
-from .specs import BLUE, RED
+from hardware.assembly.annotation.geometry import (
+    select_parts,
+    silhouette,
+    visible_routes,
+    world_shape,
+)
+from hardware.assembly.annotation.specs import BLUE, GREEN, RED
 
 
 def _nut_insertion(root, projection, drawing):
@@ -55,18 +60,22 @@ def _clamp_threading(root, projection, drawing):
     # Quadratic bends keep the route continuous around the post. Sampling in
     # part coordinates lets both camera views share the same smooth path.
     route = [knots[0]]
-    for before, corner, after in zip(knots, knots[1:], knots[2:]):
+    for before, corner, after in zip(knots, knots[1:], knots[2:], strict=False):
         incoming = math.dist(before, corner)
         outgoing = math.dist(corner, after)
         trim = min(0.6, incoming / 2, outgoing / 2)
-        start = tuple(c + (b - c) * trim / incoming for b, c in zip(before, corner))
-        end = tuple(c + (a - c) * trim / outgoing for a, c in zip(after, corner))
+        start = tuple(
+            c + (b - c) * trim / incoming for b, c in zip(before, corner, strict=True)
+        )
+        end = tuple(
+            c + (a - c) * trim / outgoing for a, c in zip(after, corner, strict=True)
+        )
         for step in range(9):
             t = step / 8
             route.append(
                 tuple(
                     (1 - t) ** 2 * s + 2 * (1 - t) * t * c + t**2 * e
-                    for s, c, e in zip(start, corner, end)
+                    for s, c, e in zip(start, corner, end, strict=True)
                 )
             )
     # End the stroke inside the final arrowhead so its tip stays sharp.
@@ -74,7 +83,7 @@ def _clamp_threading(root, projection, drawing):
 
     for mirror, color in enumerate(colors):
 
-        def project(point):
+        def project(point, mirror=mirror):
             x, y = point
             return projection.point((clamp.length - x if mirror else x, y, z))
 
@@ -108,15 +117,13 @@ def _clamp_threading(root, projection, drawing):
 
 
 def _solenoid_wiring(root, projection, drawing):
-    from hardware.parts.standard import solenoid as coil
-
     solenoid = select_parts(root, "Solenoid")[0]
-    for region, color in zip(_lead_regions(solenoid, projection), (BLUE, RED)):
+    for region, color in zip(
+        _lead_regions(solenoid, projection), (BLUE, RED), strict=True
+    ):
         drawing.region(region, color, 0.65)
     # Chassis-ground leader and the standard three diminishing bars.
-    anchor = projection.point(
-        (-coil.outer_w / 2, -coil.depth * 0.4, coil.mount_hole_z_spacing * 0.18)
-    )
+    anchor = projection.point(_ground_anchor(solenoid))
     end = (anchor[0] - 10, anchor[1])
     drawing.line(anchor, end, opacity=0.65)
     drawing.line(end, (end[0], end[1] + 2), opacity=0.65)
@@ -181,72 +188,148 @@ def _belt_tension(root, projection, drawing):
         )
 
 
-def _mount_motion(root, projection, drawing):
-    from hardware.parts.custom import solenoid_mount as mount_spec
+def _ground_anchor(solenoid):
+    from hardware.parts.standard import solenoid as coil
 
-    mount = select_parts(root, "SolenoidMount")[0]
-    location = mount.global_location
-    x0, y0, x1, y1 = silhouette(mount, projection).bounds
-    join_y = mount_spec.width / 2 - mount_spec.wall_thickness
-    center = projection.point(
-        (
-            location
+    return (
+        solenoid.global_location
+        * Location(
+            (-coil.outer_w / 2, -coil.depth * 0.4, coil.mount_hole_z_spacing * 0.18)
+        )
+    ).position
+
+
+def _mount_wiring(root, projection, drawing):
+    from hardware.parts.custom import solenoid_mount as mount
+    from hardware.parts.standard import solenoid as coil
+
+    [bracket] = select_parts(root, "SolenoidMount")
+    [solenoid] = select_parts(root, "tapz_10_solenoid_tip/Solenoid")
+    for region, color in zip(
+        _lead_regions(solenoid, projection), (BLUE, RED), strict=True
+    ):
+        drawing.region(region, color, 0.65)
+    location = bracket.global_location
+
+    def place(x, y, z):
+        return (location * Location((x, y, z))).position
+
+    front = mount.width / 2 - mount.wall_thickness - 0.4
+    back = mount.width / 2 + 1.8
+    slot_x = mount.length / 2 - mount.screen_top_slot_from_side
+    slot_z = mount.thickness / 2 + mount.wall_height - mount.screen_top_slot_from_top
+    outlet_y = mount.width / 2 - mount.wall_thickness - mount.keyboard_slot_h / 2
+
+    def upward(entry_x, lane=0, *, ground=False):
+        # Keep the ground separate from the loose power pair; the routes
+        # can pass over the hole pattern without following its edges.
+        side = 1 if ground else -1
+        outlet_x = 2.0 if ground else lane
+        entry_drop = 1.6 if ground else 0
+        entry_z = slot_z - lane + entry_drop
+        entry = place(entry_x, front, entry_z)
+        shoulder = place(side * 14 + lane, front, slot_z - 4)
+        top = place(outlet_x, outlet_y, 3)
+        control = place(8 if ground else -2 + lane, front, 10 if ground else 14)
+        return [
+            Edge.make_bezier(
+                entry,
+                place(
+                    entry_x,
+                    front - 1.6,
+                    entry_z + entry_drop * 1.6 / (back - front),
+                ),
+                place(
+                    16 if ground else -14.5 + lane,
+                    front,
+                    slot_z - 2 if ground else slot_z - 1,
+                ),
+                shoulder,
+            ),
+            Edge.make_bezier(
+                shoulder,
+                place(8 if ground else -13 + lane, front, slot_z - 10),
+                control,
+                top,
+            ),
+            Edge.make_bezier(
+                top,
+                top + (top - control) * 0.15,
+                place(outlet_x * 1.3, outlet_y, -6),
+                place(outlet_x * 1.5, outlet_y, -8 if ground else -10 + lane * 2),
+            ),
+        ]
+
+    routes = {}
+    for x, lane, color in (
+        (-coil.wire_x_offset, 0.45, BLUE),
+        (coil.wire_x_offset, -0.45, RED),
+    ):
+        start = (
+            solenoid.global_location
             * Location(
-                (
-                    0,
-                    join_y - mount_spec.keyboard_slot_h / 2,
-                    -mount_spec.thickness / 2,
-                )
+                (x, -coil.depth - coil.wire_length, coil.wire_z - coil.wire_drop)
             )
         ).position
-    )[0]
-    drawing.arrow((center + 0.2, y0 + 0.15), (center + 0.2, y0 - 10.1))
-    drawing.arrow((x1 + 11.8, y1 - 6.1), (x1 + 0.4, y1 - 4.05))
-    # The wiring notes refer to these two openings: the keyboard-plate slot
-    # and the visible lower corner slot in the hanging screen wall.
-    keyboard = [
-        (-mount_spec.keyboard_slot_w / 2, join_y - mount_spec.keyboard_slot_h),
-        (mount_spec.keyboard_slot_w / 2, join_y - mount_spec.keyboard_slot_h),
-        (mount_spec.keyboard_slot_w / 2, join_y),
-        (-mount_spec.keyboard_slot_w / 2, join_y),
-    ]
-    drawing.region(
-        Polygon(
+        entry_x = -slot_x + lane
+        rise = upward(entry_x, lane)
+        rear = place(entry_x, back, slot_z - lane)
+        routes[color] = Wire(
             [
-                projection.point(
-                    (location * Location((x, y, -mount_spec.thickness / 2))).position
-                )
-                for x, y in keyboard
+                Edge.make_bezier(
+                    start,
+                    start + Vector(0, 0, -5.5 + lane * 2),
+                    rear + Vector(8, 0, 0),
+                    rear,
+                ),
+                Edge.make_line(rear, rise[0].start_point()),
+                *rise,
             ]
-        ),
-        opacity=0.65,
-    )
-    slots = []
-    for side in (-1, 1):
-        x = side * (mount_spec.length / 2 - mount_spec.screen_top_slot_from_side)
-        z = (
-            mount_spec.thickness / 2
-            + mount_spec.wall_height
-            - mount_spec.screen_top_slot_from_top
         )
-        points = [
-            (x + dx, join_y, z + dz)
-            for dx, dz in (
-                (-mount_spec.screen_top_slot_w / 2, -mount_spec.screen_top_slot_h / 2),
-                (mount_spec.screen_top_slot_w / 2, -mount_spec.screen_top_slot_h / 2),
-                (mount_spec.screen_top_slot_w / 2, mount_spec.screen_top_slot_h / 2),
-                (-mount_spec.screen_top_slot_w / 2, mount_spec.screen_top_slot_h / 2),
-            )
+
+    # Use the TAPZ_10 housing contact. In the exploded view the wire first
+    # leaves the shell horizontally, then rolls into the downward bend.
+    anchor = _ground_anchor(solenoid)
+    rear = place(slot_x, back, slot_z)
+    rise = upward(slot_x, ground=True)
+    routes[GREEN] = Wire(
+        [
+            Edge.make_bezier(
+                anchor,
+                anchor + Vector(-14.4, 0, 0),
+                rear + Vector(12, -10, -10),
+                rear,
+            ),
+            Edge.make_line(rear, rise[0].start_point()),
+            *rise,
         ]
-        slots.append(
-            Polygon(
-                [projection.point((location * Location(p)).position) for p in points]
-            )
+    )
+
+    # Hiding only masks portions of each continuous 3D wire. Never redraw or
+    # smooth the surviving fragments separately: their identity must carry
+    # through every occlusion, with the same curve and stroke on both sides.
+    visible = visible_routes(root, projection, routes)
+    contact = Point(projection.point(anchor))
+    show_contact = any(line.distance(contact) < 0.02 for line in visible[GREEN])
+    if show_contact:
+        drawing.region(contact.buffer(0.52), "#ffffff", 1)
+
+    for color, lines in visible.items():
+        if not lines:
+            continue
+        drawing.region(
+            union_all([line.buffer(0.27, cap_style="flat") for line in lines]),
+            "#ffffff",
+            1,
         )
-    drawing.region(max(slots, key=lambda p: p.centroid.x), opacity=0.65)
-    solenoid = select_parts(root, "tapz_10_solenoid_tip/Solenoid")[0]
-    for region in _lead_regions(solenoid, projection):
-        drawing.region(region)
+        drawing.region(
+            union_all([line.buffer(0.16, cap_style="flat") for line in lines]),
+            color,
+            1,
+        )
+
+    if show_contact:
+        drawing.region(contact.buffer(0.35), GREEN, 1)
 
 
 def _lead_regions(solenoid, projection):
@@ -386,7 +469,7 @@ CALLOUTS = {
     "clamp-threading": _clamp_threading,
     "solenoid-wiring": _solenoid_wiring,
     "belt-tension": _belt_tension,
-    "mount-motion": _mount_motion,
+    "mount-wiring": _mount_wiring,
     "frame-bores": _frame_bores,
     "clamp-pockets": _clamp_pockets,
 }

@@ -127,7 +127,9 @@ class ID11Lu(BaseAssembly):
             screw_zs = [screw_z, screw_z]
 
         bracket.move(Location((0, 0, bracket_z)))
-        for screw, side, screw_z in zip(screws, (-half_hole, half_hole), screw_zs):
+        for screw, side, screw_z in zip(
+            screws, (-half_hole, half_hole), screw_zs, strict=True
+        ):
             screw.move(Location((side, 0, screw_z)))
 
         # Expose the bracket-bottom height so a host assembly can

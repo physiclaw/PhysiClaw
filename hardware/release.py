@@ -22,7 +22,7 @@ from html.parser import HTMLParser
 from importlib.metadata import version as package_version
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
-from xml.etree import ElementTree
+from xml.etree import ElementTree as ET
 
 from hardware import buildlog
 from hardware.assembly.travel_ranges import ILLUSTRATION_TRAVEL, X_TRAVEL, Y_TRAVEL
@@ -107,10 +107,10 @@ def _validate_bytes(name: str, data: bytes) -> None:
         raise ReleaseError(f"Incomplete STEP: {name}")
     if suffix == ".svg":
         try:
-            root = ElementTree.fromstring(data)
+            root = ET.fromstring(data)
             if root.tag.split("}")[-1] != "svg":
                 raise ValueError("not an SVG")
-        except (ElementTree.ParseError, ValueError) as exc:
+        except (ET.ParseError, ValueError) as exc:
             raise ReleaseError(f"Invalid SVG: {name}: {exc}") from exc
     if suffix == ".html" and b"</html>" not in data.lower():
         raise ReleaseError(f"Incomplete HTML: {name}")

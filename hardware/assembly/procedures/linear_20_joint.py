@@ -185,7 +185,7 @@ class LI20Joint(BaseAssembly):
 
             joint = joint_cls().build()
             screws = [Screw("FHCS", "M3", FHCS_LENGTH).build() for _ in range(4)]
-            for screw, (px, py) in zip(screws, csk_positions):
+            for screw, (px, py) in zip(screws, csk_positions, strict=True):
                 screw.move(Location((px, py, screw_z)))
             joint_compound = Compound(
                 label=("xy_joint_right" if mirrored else "xy_joint_left"),
@@ -225,12 +225,15 @@ class LI20Joint(BaseAssembly):
             # Direction vectors transform the same way (without the
             # origin offset). Mirrored joints have their X-coordinate
             # flipped in native.
-            def native_to_world(nx, ny, nz):
+            def native_to_world(
+                nx, ny, nz, *, origin=(origin_x, origin_y, origin_z), mirrored=mirrored
+            ):
                 if mirrored:
                     nx = -nx
-                return (origin_x - nx, origin_y - nz, origin_z - ny)
+                ox, oy, oz = origin
+                return (ox - nx, oy - nz, oz - ny)
 
-            def native_dir_to_world(dx, dy, dz):
+            def native_dir_to_world(dx, dy, dz, *, mirrored=mirrored):
                 if mirrored:
                     dx = -dx
                 return (-dx, -dz, -dy)

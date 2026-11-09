@@ -395,7 +395,9 @@ class MksBoard(BaseStandardPart):
 
         # ── Motor connectors (XH 4-pin) along the +Y edge ─────────────────────
         xh4 = _xh_header(4)
-        for x, lbl in zip(MOTOR_X, ("X-Motor", "Y1-Motor", "Y2-Motor", "Z-Motor")):
+        for x, lbl in zip(
+            MOTOR_X, ("X-Motor", "Y1-Motor", "Y2-Motor", "Z-Motor"), strict=True
+        ):
             place(xh4, x, MOTOR_Y, color=COL_BLACK, label=lbl)
 
         # ── Stepper-driver slots (2× 1×8 female headers) + DIP switches ───────

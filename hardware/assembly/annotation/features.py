@@ -15,7 +15,7 @@ from build123d import Compound, GeomType, Keep, Location, Plane, Vector
 from shapely import union_all
 from shapely.geometry import Polygon
 
-from .geometry import (
+from hardware.assembly.annotation.geometry import (
     descendants,
     disc,
     native_shape,

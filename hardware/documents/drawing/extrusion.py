@@ -748,7 +748,7 @@ def render_table(
         "th_machining",
         "th_application",
     )
-    for cx, key in zip(COLS, heads):
+    for cx, key in zip(COLS, heads, strict=True):
         parts.append(text(x + cx + 0.6, y + 3.9, ui(key, lang), "th", "start"))
     yy = y + head_h
     parts.append(line(x, yy, x + w, yy, "rule"))
@@ -930,7 +930,7 @@ def render_sheet(items: list[CutItem], lang: str, *, include_defs: bool = True) 
     if gap < 1:
         raise BuildError(f"drawing rows overflow the sheet (gap {gap:.1f} mm)")
     ry = y + gap + rise
-    for i, ((kind, label, make), height) in enumerate(zip(rows, heights)):
+    for i, ((kind, label, make), height) in enumerate(zip(rows, heights, strict=True)):
         if i == 0:
             group(ry - 0.5, "2040", section_2040(x0 + 30, ry + 19.5))
         elif i == 2:

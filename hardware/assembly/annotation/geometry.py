@@ -13,9 +13,12 @@ from fnmatch import fnmatchcase
 
 import numpy as np
 from build123d import Compound, Keep, Location, Plane, Vector
-from OCP.gp import gp_Vec
+from OCP.BRepLib import BRepLib
+from OCP.gp import gp_Ax2, gp_Vec
+from OCP.HLRAlgo import HLRAlgo_Projector
+from OCP.HLRBRep import HLRBRep_Algo, HLRBRep_HLRToShape
 from shapely import area, polygons, union_all
-from shapely.geometry import Polygon
+from shapely.geometry import LineString, Polygon
 
 
 class Projection:
@@ -39,6 +42,40 @@ class Projection:
         return (
             location.inverse() * Location(location.position + self.direction)
         ).position
+
+
+def visible_routes(root, projection, routes):
+    """Project named curves with the same CAD hidden-line removal as the art.
+
+    Query each route separately after hiding the complete scene, so foreground
+    faces mask curves at their actual depth and holes remain genuine openings.
+    """
+    algorithm = HLRBRep_Algo()
+    algorithm.Add(world_shape(root).wrapped)
+    for route in routes.values():
+        algorithm.Add(route.wrapped)
+    axes = gp_Ax2(
+        projection.origin.to_pnt(),
+        projection.direction.to_dir(),
+        projection.x.to_dir(),
+    )
+    algorithm.Projector(HLRAlgo_Projector(axes))
+    algorithm.Update()
+    algorithm.Hide()
+    result = HLRBRep_HLRToShape(algorithm)
+    visible = {}
+    for name, route in routes.items():
+        lines = []
+        projected = result.VCompound(route.wrapped)
+        if not projected.IsNull():
+            # HLR edges need their 3D curves rebuilt before build123d samples them.
+            BRepLib.BuildCurves3d_s(projected, 1e-6)
+            for edge in Compound.cast(projected).edges():
+                steps = max(2, math.ceil(edge.length / 0.15))
+                points = [edge.position_at(i / steps) for i in range(steps + 1)]
+                lines.append(LineString([(p.X, -p.Y) for p in points]))
+        visible[name] = lines
+    return visible
 
 
 def select_parts(root, selector: str):

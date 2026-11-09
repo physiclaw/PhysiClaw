@@ -17,7 +17,7 @@ import time
 import traceback
 import warnings
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
@@ -81,9 +81,7 @@ class BuildLog:
                 "event": event,
                 "message": message,
                 "level": level,
-                "timestamp": datetime.now(timezone.utc).isoformat(
-                    timespec="milliseconds"
-                ),
+                "timestamp": datetime.now(UTC).isoformat(timespec="milliseconds"),
                 "pid": os.getpid(),
             }
         )
@@ -439,7 +437,7 @@ def _save_warning(message, category, filename, lineno, file=None, line=None):
 @contextmanager
 def session(output_dir: Path, *, log_format="text", verbose=False, worker=False):
     global _current
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     path = (
         None
         if worker

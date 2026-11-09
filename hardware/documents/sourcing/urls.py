@@ -20,7 +20,7 @@ import webbrowser
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
 from dataclasses import asdict, dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -250,7 +250,9 @@ def collect_candidates(
             )
         for vendor_index, column in enumerate(supplier_columns(entries)):
             _, resolved = ditto_walk(column, "suppliers", ids)
-            for bom_index, (row, supplier) in enumerate(zip(rows, resolved)):
+            for bom_index, (row, supplier) in enumerate(
+                zip(rows, resolved, strict=True)
+            ):
                 if not isinstance(supplier, dict):
                     continue
                 add_links(
@@ -268,9 +270,9 @@ def collect_candidates(
             - {"part_id", "suppliers", "accessories"}
         ):
             _, resolved = ditto_walk([entry.get(key) for entry in entries], key, ids)
-            for index, (row, value) in enumerate(zip(rows, resolved)):
+            for index, (row, value) in enumerate(zip(rows, resolved, strict=True)):
                 add_links(value, row, index, lang, source=key)
-        for index, (row, entry) in enumerate(zip(rows, entries)):
+        for index, (row, entry) in enumerate(zip(rows, entries, strict=True)):
             for position, accessory in enumerate(entry.get("accessories", []), 1):
                 add_links(
                     accessory,
@@ -616,7 +618,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         with history_lock(args.state) as state_path:
             state = load_state(state_path)
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             selected = select_round(candidates, state, now)
             print_round(selected, state, now, state_path, verbose=args.verbose)
             sys.stdout.flush()

@@ -59,7 +59,7 @@ class ProcessTree:
                     try:
                         self.process.wait(timeout=1)
                     except subprocess.TimeoutExpired:
-                        raise exc
+                        raise exc from None
                     getattr(os, "killpg")(self.process.pid, sig)
             except ProcessLookupError:
                 pass

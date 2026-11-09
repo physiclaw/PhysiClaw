@@ -61,7 +61,7 @@ class Camera30Mount(BaseAssembly):
         )
         ax = stud_axis
         gap = CAM_MOUNT_GAP if self.exploded else 0
-        origin = tuple(b + a * gap for b, a in zip(stud_base, ax))
+        origin = tuple(b + a * gap for b, a in zip(stud_base, ax, strict=True))
         target = Plane(origin=origin, x_dir=(1, 0, 0), z_dir=tuple(-a for a in ax))
         cam.move(Location(target) * Location(socket).inverse())
 

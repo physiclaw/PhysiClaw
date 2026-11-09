@@ -3,8 +3,8 @@
 from xml.etree import ElementTree as ET
 
 import pytest
-from build123d import Box, Compound, Location, Vector
-from shapely.geometry import Point, Polygon
+from build123d import Box, Compound, Edge, Location, Vector
+from shapely.geometry import LineString, Point, Polygon
 
 from hardware.assembly.annotation import (
     callouts,
@@ -21,6 +21,102 @@ from hardware.assembly.projection import Camera
 SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="-20 -20 40 40"><path id="art" d="M 0 0 L 1 1"/></svg>'
 NAME = "frame_10_demo_exploded_cam0"
 NS = {"svg": "http://www.w3.org/2000/svg"}
+
+
+@pytest.mark.parametrize("depth,length", [(-2, 8), (2, 16)])
+def test_wire_routes_respect_depth_and_reappear_through_real_openings(depth, length):
+    bracket = Box(10, 10, 1) - Box(2, 2, 3)
+    route = Edge.make_line((-8, 0, depth), (8, 0, depth))
+    projection = geometry.Projection(((0, 0, 100), (0, 1, 0), (0, 0, 0)))
+
+    [lines] = geometry.visible_routes(bracket, projection, {"wire": route}).values()
+
+    assert sum(line.length for line in lines) == pytest.approx(length)
+    assert any(line.distance(Point(0, 0)) < 1e-6 for line in lines)
+
+
+def test_occlusion_preserves_the_same_continuous_curve_on_both_sides():
+    bracket = Box(4, 10, 1)
+    route = Edge.make_bezier((-8, -3, -2), (-3, 5, -2), (3, -5, -2), (8, 3, -2))
+    projection = geometry.Projection(((0, 0, 100), (0, 1, 0), (0, 0, 0)))
+    whole = LineString(
+        [projection.point(route.position_at(i / 1000)) for i in range(1001)]
+    )
+
+    lines = geometry.visible_routes(bracket, projection, {"wire": route})["wire"]
+
+    assert len(lines) == 2
+    assert all(whole.distance(Point(p)) < 0.005 for line in lines for p in line.coords)
+    assert all(line.distance(Point(0, 0)) > 1.9 for line in lines)
+
+
+@pytest.fixture
+def mount_routes(mocker):
+    from hardware.assembly.procedures.tapz_11_solenoid_attach import TZ11SolenoidAttach
+    from hardware.assembly.projection import camera_view
+
+    assembly = TZ11SolenoidAttach(exploded=True)
+    root = assembly.build()
+    project = mocker.patch.object(
+        callouts, "visible_routes", return_value={specs.GREEN: []}
+    )
+    projection = geometry.Projection(camera_view(root, assembly.cameras[1]))
+    callouts.draw_callouts(
+        "mount-wiring", root=root, projection=projection, drawing=svg.Drawing()
+    )
+    return root, projection, project.call_args.args[2]
+
+
+def test_mount_ground_starts_at_the_same_housing_contact_as_tapz_10(
+    mocker, mount_routes
+):
+    from hardware.assembly.procedures.tapz_10_solenoid_tip import TZ10SolenoidTip
+    from hardware.assembly.projection import camera_view
+
+    reference = TZ10SolenoidTip(exploded=False)
+    reference_root = reference.build()
+    reference_projection = geometry.Projection(
+        camera_view(reference_root, reference.cameras[1])
+    )
+    reference_drawing = svg.Drawing()
+    leader = mocker.spy(reference_drawing, "line")
+    callouts.draw_callouts(
+        "solenoid-wiring",
+        root=reference_root,
+        projection=reference_projection,
+        drawing=reference_drawing,
+    )
+    reference_contact = leader.call_args_list[0].args[0]
+    root, _, captured = mount_routes
+
+    [solenoid] = geometry.select_parts(root, "tapz_10_solenoid_tip/Solenoid")
+    native_contact = (
+        solenoid.global_location.inverse()
+        * Location(captured[specs.GREEN].start_point())
+    ).position
+
+    assert reference_projection.point(native_contact) == pytest.approx(
+        reference_contact
+    )
+    assert set(captured) == {specs.BLUE, specs.RED, specs.GREEN}
+
+
+@pytest.mark.parametrize("power", [specs.BLUE, specs.RED])
+def test_mount_ground_stays_separate_from_power_on_the_holder(mount_routes, power):
+    _, projection, routes = mount_routes
+
+    def trace(color):
+        return LineString(
+            [
+                projection.point(edge.position_at(i / 200))
+                for edge in routes[color].edges()[-3:]
+                for i in range(201)
+            ]
+        )
+
+    distance = trace(specs.GREEN).distance(trace(power))
+
+    assert distance > 0.32  # The two 0.16 mm stroke radii must not touch.
 
 
 def test_annotation_paths_require_source_viewbox_without_explicit_crop():

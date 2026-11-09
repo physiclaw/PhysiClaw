@@ -18,6 +18,7 @@ from dataclasses import dataclass
 
 BLUE = "#1e88ff"
 RED = "#e53935"
+GREEN = "#16845b"
 
 
 @dataclass(frozen=True)
@@ -548,7 +549,7 @@ FIGURES: dict[str, Figure] = _index_figures(
             Highlight("Screw*", 0.65, feature="mount-seat"),
             Highlight("tapz_10_solenoid_tip/Solenoid", 0.65, feature="mount-holes"),
         ),
-        callout="mount-motion",
+        callout="mount-wiring",
     ),
     Figure(
         view="tapz_20_solenoid_mount_assembled_cam0",

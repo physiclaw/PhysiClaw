@@ -10,14 +10,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from hardware.assembly.annotation.callouts import draw_callouts
+from hardware.assembly.annotation.features import highlight_regions
+from hardware.assembly.annotation.geometry import Projection
+from hardware.assembly.annotation.specs import figures_for
+from hardware.assembly.annotation.svg import Drawing, compose, path_svg
 from hardware.assembly.projection import camera_view
 from hardware.scheme import ANNOTATION_DIR, SVG_DIR
-
-from .callouts import draw_callouts
-from .features import highlight_regions
-from .geometry import Projection
-from .specs import figures_for
-from .svg import Drawing, compose, path_svg
 
 if TYPE_CHECKING:
     from hardware.assembly.base import BaseAssembly

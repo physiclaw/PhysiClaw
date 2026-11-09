@@ -188,6 +188,7 @@ class Extrusion2040(BaseStandardPart):
                             (-cell_offset, self.length - cb_end_offset),
                             (cell_offset, self.length - cb_end_offset),
                         ],
+                        strict=True,
                     )
                 )
                 cb_centers = list(cb_named.values())

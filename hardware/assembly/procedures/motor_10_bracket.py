@@ -144,12 +144,12 @@ class MO10Bracket(BaseAssembly):
             (half_pitch, -half_pitch),
             (half_pitch, half_pitch),
         ]
-        for screw, (sx, sy) in zip(screws_m3, m3_positions):
+        for screw, (sx, sy) in zip(screws_m3, m3_positions, strict=True):
             screw.move(Location((sx, sy, m3_under_z)))
 
         # M5 screws — 2 at (m5_world_x, ±half_m5).
         m5_positions = [(m5_world_x, -half_m5), (m5_world_x, half_m5)]
-        for screw, (sx, sy) in zip(screws_m5, m5_positions):
+        for screw, (sx, sy) in zip(screws_m5, m5_positions, strict=True):
             screw.move(Location((sx, sy, m5_under_z)))
 
         # Rings: a stack of RING_COUNT spacers per M5 hole, bores on the

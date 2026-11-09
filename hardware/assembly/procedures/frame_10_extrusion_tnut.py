@@ -98,7 +98,7 @@ LONG_POSITIONS_RIGHT = [LONG_BOT_GAP, LONG_LENGTH - LONG_TOP_GAP]
 def _seat_nuts(ext, positions: list[float]) -> list:
     """Build and seat one TNut per position into ext's slot_right slot."""
     nuts = [TNut("standard", "M5").build() for _ in positions]
-    for nut, pos in zip(nuts, positions):
+    for nut, pos in zip(nuts, positions, strict=True):
         ext.joints["slot_right"].connect_to(
             nut.joints["slot_mount"],
             position=pos,
@@ -128,7 +128,7 @@ def ext_with_nuts(
         return ext, destinations, []
     prep = _seat_nuts(ext, positions)
     half_len = TNUT_LENGTHS["standard"] / 2
-    for i, (nut, pos) in enumerate(zip(prep, positions)):
+    for i, (nut, pos) in enumerate(zip(prep, positions, strict=True)):
         target_z = length + PREP_START_GAP + i * PREP_PITCH
         seated_z = pos - half_len
         nut.move(Location((0, 0, target_z - seated_z)))

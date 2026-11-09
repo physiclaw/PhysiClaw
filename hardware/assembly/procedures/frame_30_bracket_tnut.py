@@ -85,7 +85,7 @@ class FR30BracketTnut(BaseAssembly):
                 z_dir=(1, 0, 0),  # slide axis along world +X
             ),
         )
-        for nut, plane in zip(nuts, nut_planes):
+        for nut, plane in zip(nuts, nut_planes, strict=True):
             nut.move(Location(plane))
 
         # Screw default: head at part +Z, shank at part -Z. Identity
@@ -104,7 +104,7 @@ class FR30BracketTnut(BaseAssembly):
             bracket_z = screw_z - plate_thick / 2
 
         bracket.move(Location((0, 0, bracket_z)))
-        for screw, side in zip(screws, (-half_hole, half_hole)):
+        for screw, side in zip(screws, (-half_hole, half_hole), strict=True):
             screw.move(Location((side, 0, screw_z)))
 
         # Expose the bracket-bottom height (local Z) so a host assembly

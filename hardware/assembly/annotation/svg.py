@@ -12,9 +12,8 @@ from xml.etree import ElementTree as ET
 
 from shapely.geometry import Polygon
 
+from hardware.assembly.annotation.specs import BLUE
 from hardware.assembly.svg_utils import get_root_viewbox, set_root_viewbox
-
-from .specs import BLUE
 
 
 def _path(region) -> str:

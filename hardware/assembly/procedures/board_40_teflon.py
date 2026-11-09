@@ -43,7 +43,9 @@ EXPLODE = 40  # mm — exploded: tube lifted off along +Z
 
 # Socket mouth + boss axis in the TubeHolder native frame (placed by board_32).
 _SOCKET_NATIVE = TH.socket_mouth
-_SOCKET_BACK = tuple(m - a for m, a in zip(TH.socket_mouth, TH.socket_axis))
+_SOCKET_BACK = tuple(
+    m - a for m, a in zip(TH.socket_mouth, TH.socket_axis, strict=True)
+)
 
 
 def _world_point(location: Location, point: tuple[float, float, float]) -> Vector:
