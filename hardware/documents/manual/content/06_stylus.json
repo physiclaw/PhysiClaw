@@ -218,7 +218,7 @@
           "zh": "用 6 颗螺栓把电磁铁组件固定在同步带夹具上。以后调整触控笔高度时，把组件移到另一对孔上。"
         },
         "classes": "note overlay sm",
-        "style": "left:140mm; top:120mm; width:60mm;"
+        "style": "left:152mm; top:120mm; width:60mm;"
       }
     ],
     "bom": {

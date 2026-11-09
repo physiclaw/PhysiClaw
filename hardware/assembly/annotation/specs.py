@@ -231,7 +231,6 @@ FIGURES: dict[str, Figure] = _index_figures(
             Highlight("_layer_solid/TNut_standard_M5"),
         ),
         crop=(-204.1946, -101.4535, 409.3763, 202.907),
-        callout="nut-insertion",
     ),
     Figure(
         view="frame_20_SHCS_exploded_cam0",

@@ -32,7 +32,7 @@
       },
       {
         "src": "belt_11_clamp_show_assembled_cam0_annotated_clamp_threading_cam0.svg",
-        "style": "transform: translate(-26mm, 12mm) scale(0.8);"
+        "style": "transform: translateY(6mm) scale(0.8);"
       }
     ],
     "notes": [
@@ -46,7 +46,7 @@
           "zh": "电机 A 的同步带是一整条开口带，两端夹在 X 滑座上。同步带应始终保持在同一平面内，齿面与同步轮和带齿惰轮啮合，背面与光面惰轮接触。"
         },
         "classes": "note overlay sm",
-        "style": "left:140mm; top:20mm; width:90mm;"
+        "style": "left:147mm; top:18mm; width:138mm; max-width:138mm;"
       },
       {
         "h3": {
@@ -58,7 +58,7 @@
           "zh": "1. 把同步带的每一端穿入夹具底部的槽。2. 绕过立柱。3. 折回贴在带身上，使两段同步带的齿面相互啮合，这样即可固定同步带，无需额外紧固件。"
         },
         "classes": "note overlay sm",
-        "style": "left:140mm; top:120mm; width:70mm;"
+        "style": "left:147mm; top:105mm; width:138mm; max-width:138mm;"
       },
       {
         "h3": {
@@ -70,7 +70,7 @@
           "zh": "将电机 A 的 2 颗 M5 螺栓拧至零件刚好贴合，暂不拧紧。1. 夹入同步带两端。2. 滑动电机张紧同步带。"
         },
         "classes": "note overlay sm",
-        "style": "right:10mm; top:100mm; width:70mm;"
+        "style": "left:147mm; top:134mm; width:138mm; max-width:138mm;"
       }
     ],
     "bom": {
@@ -197,7 +197,7 @@
           "zh": "把电机 B 的同步带沿上层同步带平面布置，不与电机 A 的同步带交叉。两端同样夹到 X 滑座上。"
         },
         "classes": "note overlay sm",
-        "style": "right:60mm; top:20mm; width:100mm;"
+        "style": "left:147mm; top:18mm; width:138mm; max-width:138mm;"
       },
       {
         "h3": {
@@ -209,7 +209,7 @@
           "zh": "两条同步带装好后，在整个行程范围内沿各方向手动推动 X 滑座。滑动应顺畅、阻力均匀，且阻力仅来自电机。滑动过程中不应出现卡滞、干涉、扭转或异常噪声，两条同步带应始终保持上下分层。"
         },
         "classes": "note overlay sm",
-        "style": "right:60mm; top:105mm; width:100mm;"
+        "style": "left:147mm; top:105mm; width:138mm; max-width:138mm;"
       },
       {
         "h3": {
@@ -221,7 +221,7 @@
           "zh": "同步轮已对齐，如果紧定螺钉尚未涂螺纹胶，现在涂上。"
         },
         "classes": "note overlay sm",
-        "style": "right:60mm; top:155mm; width:100mm;"
+        "style": "left:147mm; top:145mm; width:138mm; max-width:138mm;"
       }
     ]
   },

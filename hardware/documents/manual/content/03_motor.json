@@ -165,7 +165,7 @@
           "zh": "先将螺栓拧至零件刚好贴合，待同步带张紧后再拧紧。"
         },
         "classes": "note overlay sm",
-        "style": "left:150mm; top:128mm; width:80mm;"
+        "style": "left:168mm; top:130mm; width:80mm;"
       }
     ]
   },
@@ -210,7 +210,7 @@
           "zh": "右侧电机按左侧电机的镜像方向安装，接线端子朝右。"
         },
         "classes": "note overlay sm",
-        "style": "left:120mm; top:130mm; width:80mm;"
+        "style": "left:120mm; top:116mm; width:80mm;"
       }
     ],
     "bom": {
@@ -307,7 +307,7 @@
           "zh": "先将螺栓拧至零件刚好贴合，待同步带张紧后再拧紧。"
         },
         "classes": "note overlay sm",
-        "style": "left:140mm; top:150mm; width:78mm;"
+        "style": "left:168mm; top:130mm; width:78mm;"
       }
     ]
   },

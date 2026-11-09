@@ -497,25 +497,6 @@ def test_crop_expands_to_include_generated_callouts():
     assert root.attrib["viewBox"] == "0.0000 0.0000 15.0000 15.0000"
 
 
-def test_nut_insertion_arrows_fit_the_manual_frame():
-    from hardware.assembly.dispatch import load_class
-    from hardware.assembly.projection import camera_view
-
-    figure = next(f for f in specs.FIGURES.values() if f.name == "nut_insertion")
-    assembly = load_class("frame_10_extrusion_tnut")(exploded=True)
-    root = assembly.build()
-    projection = geometry.Projection(camera_view(root, assembly.cameras[0]))
-    drawing = svg.Drawing()
-    callouts.draw_callouts(
-        figure.callout, root=root, projection=projection, drawing=drawing
-    )
-    x, y, width, height = figure.crop
-    assert all(
-        x <= left <= right <= x + width and y <= top <= bottom <= y + height
-        for left, top, right, bottom in drawing.bounds
-    )
-
-
 @pytest.mark.parametrize("camera_index", [0, 1])
 def test_clamp_threading_keeps_blue_route_on_left_in_both_views(camera_index):
     from hardware.assembly.procedures.belt_11_clamp_show import BE11ClampShow

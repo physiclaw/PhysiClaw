@@ -16,28 +16,10 @@ from shapely.geometry import LineString, Point, Polygon
 
 from hardware.assembly.annotation.geometry import (
     select_parts,
-    silhouette,
     visible_routes,
     world_shape,
 )
 from hardware.assembly.annotation.specs import BLUE, GREEN, RED
-
-
-def _nut_insertion(root, projection, drawing):
-    nuts = [
-        (nut, projection.point(world_shape(nut).bounding_box().center())[1])
-        for nut in select_parts(root, "_layer_solid/TNut*")
-    ]
-    for extrusion in select_parts(root, "_layer_solid/Extrusion*")[:3]:
-        _, y0, _, y1 = silhouette(extrusion, projection).bounds
-        row = [
-            silhouette(nut, projection)
-            for nut, center_y in nuts
-            if y0 <= center_y <= y1
-        ]
-        x1 = max(region.bounds[2] for region in row)
-        mid = union_all(row).centroid.y
-        drawing.arrow((x1 + 28, mid), (x1 + 6, mid))
 
 
 def _clamp_threading(root, projection, drawing):
@@ -465,7 +447,6 @@ def _frame_bores(root, projection, drawing):
 
 
 CALLOUTS = {
-    "nut-insertion": _nut_insertion,
     "clamp-threading": _clamp_threading,
     "solenoid-wiring": _solenoid_wiring,
     "belt-tension": _belt_tension,

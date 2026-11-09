@@ -589,7 +589,7 @@
           "zh": "这个惰轮支座与框架转角处的水平一字连接板之间，也留 2 mm 间隙。"
         },
         "classes": "note overlay sm",
-        "style": "left:160mm; top:130mm; width:78mm;"
+        "style": "left:168mm; top:130mm; width:78mm;"
       }
     ]
   },
@@ -726,7 +726,7 @@
           "zh": "与左边的惰轮支座一样，留 2 mm 间隙。"
         },
         "classes": "note overlay sm",
-        "style": "left:150mm; top:140mm; width:78mm;"
+        "style": "left:168mm; top:130mm; width:78mm;"
       }
     ]
   }
