@@ -27,7 +27,7 @@
     },
     "figures": [
       {
-        "src": "phone_10_extrusion_exploded_cam1.svg"
+        "src": "phone_10_extrusion_exploded_cam1_annotated_phone_beam_fasteners.svg"
       },
       {
         "src": "phone_10_extrusion_assembled_cam1.svg"
@@ -99,7 +99,7 @@
     "variant": "hero",
     "figures": [
       {
-        "src": "phone_20_bed_tnut_exploded_cam1.svg"
+        "src": "phone_20_bed_tnut_exploded_cam1_annotated_phone_bed_fasteners.svg"
       },
       {
         "src": "phone_20_bed_tnut_assembled_cam0.svg",

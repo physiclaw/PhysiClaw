@@ -530,6 +530,19 @@ FIGURES: dict[str, Figure] = _index_figures(
         crop=(-145.962, -65.4471, 102.0888, 154.0559),
     ),
     Figure(
+        view="phone_10_extrusion_exploded_cam1",
+        name="phone_beam_fasteners",
+        highlights=(Highlight("Screw_BHCS_M5*"), Highlight("TNut_hammer_M5")),
+    ),
+    Figure(
+        view="phone_20_bed_tnut_exploded_cam1",
+        name="phone_bed_fasteners",
+        highlights=(
+            Highlight("Screw_FHCS_M3*"),
+            Highlight("TNut_hammer_M3", occluded_by="PhoneBed"),
+        ),
+    ),
+    Figure(
         view="tapz_10_solenoid_tip_assembled_cam1",
         name="solenoid_wiring",
         crop=(-20.4167, -40.0012, 35.301, 79.1986),
