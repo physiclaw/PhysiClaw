@@ -13,7 +13,7 @@ runtime.
 
 import asyncio
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Annotated
 
 import typer
 
@@ -72,8 +72,8 @@ async def _live_listing() -> str:
 
 @pages_app.command()
 def extract(
-    session: str = typer.Argument(help="session id (suffix ok if unique)"),
-    out: Path = typer.Option(..., "--out", help="corpus JSONL to write"),
+    session: Annotated[str, typer.Argument(help="session id (suffix ok if unique)")],
+    out: Annotated[Path, typer.Option("--out", help="corpus JSONL to write")],
 ) -> None:
     """Dump a session's listings to a corpus file with '?' labels to edit."""
     from physiclaw.conductor.bench import corpus
@@ -91,12 +91,16 @@ def extract(
 
 @pages_app.command()
 def match(
-    app: str = typer.Argument(help="app pack whose pages to match against"),
-    session: str | None = typer.Option(
-        None, "--session", help="replay a recorded session"
-    ),
-    listing: Path | None = typer.Option(None, "--listing", help="a listing text file"),
-    live: bool = typer.Option(False, "--live", help="one peek via `physiclaw mcp`"),
+    app: Annotated[str, typer.Argument(help="app pack whose pages to match against")],
+    session: Annotated[
+        str | None, typer.Option("--session", help="replay a recorded session")
+    ] = None,
+    listing: Annotated[
+        Path | None, typer.Option("--listing", help="a listing text file")
+    ] = None,
+    live: Annotated[
+        bool, typer.Option("--live", help="one peek via `physiclaw mcp`")
+    ] = False,
 ) -> None:
     """Print the matcher's verdict for each input screen."""
     from physiclaw.common.paths import PACK_FILENAME
@@ -127,14 +131,16 @@ GUIDED_SHOTS = 4
 
 @pages_app.command()
 def calibrate(
-    app: str = typer.Argument(help="app pack to calibrate"),
-    corpus_file: Path | None = typer.Argument(None, help="labeled corpus JSONL"),
-    guided: bool = typer.Option(
-        False, "--guided", help="capture live, page by page, with prompts"
-    ),
-    shots: int = typer.Option(
-        GUIDED_SHOTS, "--shots", min=1, help="live peeks per page (--guided)"
-    ),
+    app: Annotated[str, typer.Argument(help="app pack to calibrate")],
+    corpus_file: Annotated[
+        Path | None, typer.Argument(help="labeled corpus JSONL")
+    ] = None,
+    guided: Annotated[
+        bool, typer.Option("--guided", help="capture live, page by page, with prompts")
+    ] = False,
+    shots: Annotated[
+        int, typer.Option("--shots", min=1, help="live peeks per page (--guided)")
+    ] = GUIDED_SHOTS,
 ) -> None:
     """Capture geometry + OCR variants for an app.
 
@@ -227,11 +233,15 @@ def _report_line(r: "CaptureReport") -> str:
 
 @pages_app.command()
 def propose(
-    session: str | None = typer.Option(
-        None, "--session", help="replay a recorded session"
-    ),
-    listing: Path | None = typer.Option(None, "--listing", help="a listing text file"),
-    live: bool = typer.Option(False, "--live", help="one peek via `physiclaw mcp`"),
+    session: Annotated[
+        str | None, typer.Option("--session", help="replay a recorded session")
+    ] = None,
+    listing: Annotated[
+        Path | None, typer.Option("--listing", help="a listing text file")
+    ] = None,
+    live: Annotated[
+        bool, typer.Option("--live", help="one peek via `physiclaw mcp`")
+    ] = False,
 ) -> None:
     """Suggest anchor declarations from screens — prune by eye into
     the pack's `pages:` section."""

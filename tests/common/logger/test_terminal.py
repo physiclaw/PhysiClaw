@@ -6,9 +6,11 @@ import json
 import logging
 import re
 import sys
+from contextvars import Context
 
 import pytest
 
+from physiclaw.common import log_style
 from physiclaw.common.logger import logger as logger_mod
 from physiclaw.common.logger.context import (
     bind_log_context,
@@ -450,6 +452,17 @@ def test_unknown_log_format_falls_back_with_an_actionable_warning(
 
     assert "Unknown PHYSICLAW_LOG_FORMAT='typo'" in console.getvalue()
     assert "choose pretty or json" in console.getvalue()
+
+
+def test_log_context_default_cannot_be_mutated_across_fresh_contexts():
+    default = Context().run(log_style._CONTEXT.get)
+    with pytest.raises(TypeError, match="item assignment"):
+        default["session_id"] = "leaked"
+
+    record = logging.LogRecord(
+        "physiclaw.test", logging.INFO, "test.py", 1, "hi", (), None
+    )
+    assert Context().run(record_fields, record) == {}
 
 
 async def test_log_context_is_isolated_between_tasks_and_restored_after_cancellation():

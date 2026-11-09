@@ -147,6 +147,21 @@ def test_listing_is_parsed_by_public_command(pack, listing_file, command, expect
     assert expected in result.stdout
 
 
+@pytest.mark.parametrize(
+    "command, args, expected",
+    [
+        (pages.propose, (), "candidates: '综合'"),
+        (pages.match, ("sample",), "match sample.home (1 anchor)"),
+    ],
+)
+def test_python_call_with_listing_uses_default_options(
+    pack, listing_file, capsys, command, args, expected
+):
+    command(*args, listing=listing_file)
+
+    assert expected in capsys.readouterr().out
+
+
 def test_session_suffix_proposes_recorded_anchors(recording):
     result = runner.invoke(pages.pages_app, ["propose", "--session", "abcdef"])
 

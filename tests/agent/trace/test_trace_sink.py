@@ -401,7 +401,58 @@ class _FaultyFile:
         return self._call("flush")
 
     def close(self):
-        return self._call("close")
+        self._call("close")
+        if self.fault.get("close_fails") and self.file.name.endswith(
+            self.fault["name"]
+        ):
+            raise OSError("simulated close failure")
+
+
+@pytest.mark.parametrize(
+    "operation, close_fails",
+    [
+        ("open", False),
+        ("write", False),
+        ("write", True),
+        ("flush", False),
+        ("flush", True),
+    ],
+)
+def test_note_header_failure_closes_stream_and_keeps_trace_usable(
+    mocker, caplog, operation, close_fails
+):
+    fault = {
+        "name": "notes.md",
+        "operation": operation,
+        "armed": True,
+        "close_fails": close_fails,
+    }
+    opened = []
+
+    def open_file(*args, **kwargs):
+        if operation == "open" and str(args[0]).endswith("notes.md"):
+            raise OSError("simulated disk failure")
+        file = builtins.open(*args, **kwargs)  # noqa: SIM115 -- the trace owns these streams.
+        opened.append(file)
+        return _FaultyFile(file, fault)
+
+    mocker.patch("physiclaw.agent.trace.trace.open", open_file, create=True)
+    with caplog.at_level(logging.DEBUG, logger="physiclaw.agent.trace.trace"):
+        trace = Trace("header-failure", Images("header-failure"))
+    try:
+        assert all(file.closed for file in opened if file.name.endswith("notes.md"))
+        failure = next(
+            record
+            for record in caplog.records
+            if record.getMessage() == "notes.md open failed"
+        )
+        assert failure.exc_info is not None
+        assert str(failure.exc_info[1]) == "simulated disk failure"
+        assert trace.write({"event": "request", "turn": 0}) is True
+    finally:
+        trace.close()
+
+    assert all(file.closed for file in opened)
 
 
 @pytest.mark.parametrize("name", ["events.jsonl", "notes.md"])

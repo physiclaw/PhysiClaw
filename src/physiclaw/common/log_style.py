@@ -11,9 +11,10 @@ import logging
 import os
 import sys
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from contextvars import ContextVar, Token
 from fnmatch import fnmatchcase
+from types import MappingProxyType
 from typing import Any
 
 from physiclaw.common.terminal import ANSI_RE as ANSI_RE
@@ -28,8 +29,9 @@ from physiclaw.common.terminal import (
 )
 from physiclaw.common.text import clip
 
-# bind_log_context copies this default before adding fields.
-_CONTEXT: ContextVar[dict[str, Any]] = ContextVar("physiclaw_log_context", default={})  # noqa: B039
+_CONTEXT: ContextVar[Mapping[str, Any]] = ContextVar(
+    "physiclaw_log_context", default=MappingProxyType({})
+)
 
 _FIELDS = (
     "event",
@@ -58,12 +60,12 @@ _FIELDS = (
 )
 
 
-def bind_log_context(**fields: Any) -> Token[dict[str, Any]]:
+def bind_log_context(**fields: Any) -> Token[Mapping[str, Any]]:
     """Merge correlation fields for this task; retain the token for its scope."""
     return _CONTEXT.set({**_CONTEXT.get(), **fields})
 
 
-def reset_log_context(token: Token[dict[str, Any]]) -> None:
+def reset_log_context(token: Token[Mapping[str, Any]]) -> None:
     """Restore the parent scope, including when a session is cancelled."""
     _CONTEXT.reset(token)
 

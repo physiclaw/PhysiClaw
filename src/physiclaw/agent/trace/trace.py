@@ -7,7 +7,7 @@ import time
 from collections import Counter, defaultdict
 from hashlib import sha256
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO
 
 from physiclaw.agent.trace import store
 from physiclaw.agent.trace.format import (
@@ -75,10 +75,11 @@ class Trace:
         t = self._summary.max_turn
         return t if t >= 0 else None
 
-    def _open_notes(self, path: Path):
+    def _open_notes(self, path: Path) -> TextIO | None:
         """Open the per-turn note-history file and write its header.
         Fail-open (returns None) — a note-log failure must never sink a
         session."""
+        f = None
         try:
             f = open(  # noqa: SIM115 -- ownership transfers to this session's close().
                 path, "a", encoding="utf-8", errors="backslashreplace", newline="\n"
@@ -87,6 +88,11 @@ class Trace:
             f.flush()
             return f
         except OSError:
+            if f is not None:
+                try:
+                    f.close()
+                except OSError:
+                    pass
             log.debug("notes.md open failed", exc_info=True)
             return None
 

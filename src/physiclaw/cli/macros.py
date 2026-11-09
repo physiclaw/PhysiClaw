@@ -188,13 +188,13 @@ def run(
         ),
     ],
     inputs: Annotated[
-        list[str],
+        list[str] | None,
         typer.Option(
             "--input",
             "-i",
             help="Input value as key=value; repeat per input.",
         ),
-    ] = [],  # noqa: B006 -- parse_inputs only reads it; preserve the CLI default.
+    ] = None,
     start_at: Annotated[
         str,
         typer.Option(
@@ -221,7 +221,7 @@ def run(
         spec = stepping.find_macro(name)
     except MacroError as e:
         exit_error(str(e))
-    values = parse_inputs(inputs)
+    values = parse_inputs(inputs or [])
     try:
         result = asyncio.run(
             _run_live(spec, values, start_at, stop_after, record_as=name)

@@ -28,6 +28,7 @@ receiving the asks.
 """
 
 import os
+from typing import Annotated
 
 import typer
 
@@ -39,31 +40,43 @@ from physiclaw.port.locks import FileLockBusy
 
 
 def debug(
-    task: str | None = typer.Option(
-        None,
-        "--task",
-        help="Start a run: the user's message, e.g. 'buy two boxes of milk'.",
-    ),
-    reply: list[str] | None = typer.Option(
-        None,
-        "--reply",
-        help="Stage a reply (repeatable) — released after the agent's next ask.",
-    ),
-    wake: bool = typer.Option(
-        True,
-        "--wake/--no-wake",
-        help="Arm a debug wake (default with --task; a bare --reply "
-        "wakes only a suspended walk).",
-    ),
-    macro_failure: bool = typer.Option(
-        True,
-        "--macro-failure/--no-macro-failure",
-        help="Halt the server at the first macro abort for inspection — "
-        "the debug default. --no-macro-failure drives on past aborts. "
-        "Applies when this command starts the server.",
-    ),
-    status: bool = typer.Option(False, "--status", help="Show the harness state."),
-    clear: bool = typer.Option(False, "--clear", help="Reset thread and wake."),
+    task: Annotated[
+        str | None,
+        typer.Option(
+            "--task",
+            help="Start a run: the user's message, e.g. 'buy two boxes of milk'.",
+        ),
+    ] = None,
+    reply: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--reply",
+            help="Stage a reply (repeatable) — released after the agent's next ask.",
+        ),
+    ] = None,
+    wake: Annotated[
+        bool,
+        typer.Option(
+            "--wake/--no-wake",
+            help="Arm a debug wake (default with --task; a bare --reply "
+            "wakes only a suspended walk).",
+        ),
+    ] = True,
+    macro_failure: Annotated[
+        bool,
+        typer.Option(
+            "--macro-failure/--no-macro-failure",
+            help="Halt the server at the first macro abort for inspection — "
+            "the debug default. --no-macro-failure drives on past aborts. "
+            "Applies when this command starts the server.",
+        ),
+    ] = True,
+    status: Annotated[
+        bool, typer.Option("--status", help="Show the harness state.")
+    ] = False,
+    clear: Annotated[
+        bool, typer.Option("--clear", help="Reset thread and wake.")
+    ] = False,
 ) -> None:
     """Run the e2e harness: seed the task, stage the replies, wake the
     agent — starting the server in debug mode if none is running. No

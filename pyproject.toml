@@ -144,9 +144,6 @@ ignore = [
 
 [tool.ruff.lint.flake8-bugbear]
 extend-immutable-calls = [
-    # Typer deliberately stores shared parameter metadata in callable defaults.
-    "typer.Argument",
-    "typer.Option",
     # These frozen dataclasses contain only immutable strings and integers.
     "physiclaw.contract.plugin.TurnProducer",
     "physiclaw.agent.llm.context_policy.CollapsePolicy",

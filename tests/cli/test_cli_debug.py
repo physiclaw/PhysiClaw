@@ -21,6 +21,7 @@ from typer.testing import CliRunner
 
 from physiclaw.agent.hooks.debug import wake_path
 from physiclaw.cli import app
+from physiclaw.cli.debug import debug
 from physiclaw.common import runtime_state
 from physiclaw.common.config import DEBUG_ENV_VAR, MACRO_FAILURE_ENV_VAR
 from physiclaw.debug import thread as vthread
@@ -91,6 +92,15 @@ def test_task_seeds_thread_stages_replies_and_arms_a_wake() -> None:
     assert thread.bubbles == [vthread.Bubble(sender=vthread.USER, text="buy milk")]
     assert thread.staged == ["ok"]
     assert json.loads(wake_path().read_text(encoding="utf-8"))["description"]
+
+
+def test_python_call_with_task_uses_default_options() -> None:
+    debug(task="buy milk")
+
+    thread = vthread.load()
+    assert thread.bubbles == [vthread.Bubble(sender=vthread.USER, text="buy milk")]
+    assert thread.staged == []
+    assert wake_path().exists()
 
 
 def test_task_no_wake_leaves_the_trigger_unarmed() -> None:
