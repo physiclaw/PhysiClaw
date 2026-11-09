@@ -80,7 +80,7 @@ ROUTES = [
     (
         "fmt",
         [],
-        [["ruff", "format", "src/", "tests/", "hardware/", "firmware/", "scripts/"]],
+        [["ruff", "format", "."]],
     ),
     ("typecheck", [], [["mypy"]]),
     ("loc", [], [["scripts/loc.py"]]),
@@ -318,26 +318,15 @@ def test_make_docs_deploy_missing_driver_fails_without_running_worker(make_proje
     assert records == []
 
 
-def test_make_lint_checks_scripts_and_formats_the_full_source_scope(make_project):
+def test_make_lint_checks_and_formats_the_repository_root(make_project):
     _, invoke = make_project
 
     result, records = invoke("lint")
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert len(records) == 2
-    assert records[0]["argv"][:2] == ["ruff", "check"]
-    assert "scripts/" in records[0]["argv"]
-    assert "hardware/" in records[0]["argv"]
-    assert records[1]["argv"] == [
-        "ruff",
-        "format",
-        "--check",
-        "src/",
-        "tests/",
-        "hardware/",
-        "firmware/",
-        "scripts/",
-    ]
+    assert records[0]["argv"] == ["ruff", "check", "."]
+    assert records[1]["argv"] == ["ruff", "format", "--check", "."]
 
 
 @pytest.mark.parametrize("target, variable", [("mutate", "MOD"), ("hw-step", "ARGS")])

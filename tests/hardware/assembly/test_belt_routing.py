@@ -44,7 +44,7 @@ assert not any(name.startswith('hardware.assembly') for name in sys.modules)
 def test_routes_preserve_motor_planes_and_cache_identity():
     a, b = motor_path("A"), motor_path("B")
     assert len(a) == len(b)
-    for (pa, ra), (pb, rb) in zip(a, b):
+    for (pa, ra), (pb, rb) in zip(a, b, strict=True):
         assert (pb[0], pb[2]) == pytest.approx((-pa[0], pa[2]))
         assert pa[1] - pb[1] == pytest.approx(9 if ra is not None else 9.55)
         assert ra == rb
@@ -62,8 +62,8 @@ def test_generic_belt_build_uses_supplied_route_without_motor_transform():
     b = Belt([((0, -9, 0), None), ((10, -9, 0), None)]).build()
     assert a.is_valid and b.is_valid
     assert a.volume == pytest.approx(b.volume)
-    assert a.bounding_box().center().Y == pytest.approx(0)
-    assert b.bounding_box().center().Y == pytest.approx(-9)
+    assert pytest.approx(0) == a.bounding_box().center().Y
+    assert pytest.approx(-9) == b.bounding_box().center().Y
 
 
 def test_empty_belt_route_has_actionable_error():
@@ -146,8 +146,8 @@ def test_illustrated_incoming_run_has_no_crease_at_carriage_edge(motor):
         tangent = _expand_wraps(path[first_idler - 1 : first_idler + 2])[1]
         # Both sides of the carriage entry must be the same straight line,
         # including depth; even a tiny kink becomes a false splice in HLR.
-        incoming = tuple(b - a for a, b in zip(before, entry))
-        outgoing = tuple(b - a for a, b in zip(entry, tangent))
+        incoming = tuple(b - a for a, b in zip(before, entry, strict=True))
+        outgoing = tuple(b - a for a, b in zip(entry, tangent, strict=True))
         scale = math.dist(entry, tangent) / math.dist(before, entry)
         assert outgoing == pytest.approx(tuple(v * scale for v in incoming), abs=1e-9)
 

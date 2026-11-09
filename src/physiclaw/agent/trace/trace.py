@@ -49,7 +49,8 @@ class Trace:
         # a frame filed here is what a request's scrub references.
         self._images = images
         ensure_readme(paths.sessions_dir(), store.SESSIONS_README)
-        self._events = open(d / "events.jsonl", "a", encoding="utf-8", newline="\n")
+        # Session-owned stream, released by close() after the final event.
+        self._events = open(d / "events.jsonl", "a", encoding="utf-8", newline="\n")  # noqa: SIM115
         # Self-containment: runtime.log (process log mirror) + server.log
         # (the server's log for this session's window) via the shared
         # sidecars, plus a human-readable per-turn note history — so a
@@ -79,7 +80,7 @@ class Trace:
         Fail-open (returns None) — a note-log failure must never sink a
         session."""
         try:
-            f = open(
+            f = open(  # noqa: SIM115 -- ownership transfers to this session's close().
                 path, "a", encoding="utf-8", errors="backslashreplace", newline="\n"
             )
             f.write(f"# Session {self.session_id} — note history\n\n")

@@ -9,9 +9,10 @@ down at process exit.
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from contextlib import AsyncExitStack
 from time import monotonic
-from typing import Any, Awaitable, Callable
+from typing import Any
 from urllib.parse import urlparse
 
 import httpx2
@@ -88,7 +89,7 @@ class McpClient:
             _, writer = await asyncio.wait_for(
                 asyncio.open_connection(host, port), timeout=5.0
             )
-        except (OSError, asyncio.TimeoutError) as e:
+        except (TimeoutError, OSError) as e:
             raise ConnectionError(f"cannot reach the MCP server at {self._url}") from e
         writer.close()
         try:

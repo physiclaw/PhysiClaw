@@ -23,6 +23,9 @@ class ProviderError(Exception):
 class ProviderTransientError(ProviderError):
     """Temporary transport, timeout or service failure; later calls may succeed."""
 
+    # Adapters may attach a decoded reply without coupling errors to a wire DTO.
+    reply: object
+
 
 class ProviderPermanentError(ProviderError):
     """Provider setup or service is unusable; changing requests cannot fix it."""

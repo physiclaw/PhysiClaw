@@ -136,7 +136,8 @@ def test_cache_diagnostics_preserve_tool_schema_properties_named_like_markers(fi
     )
     after = harness.request_cache_facts(changed)
     assert all(
-        a["hash"] != b["hash"] for a, b in zip(before["prefixes"], after["prefixes"])
+        a["hash"] != b["hash"]
+        for a, b in zip(before["prefixes"], after["prefixes"], strict=True)
     )
 
 

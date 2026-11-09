@@ -110,13 +110,12 @@ def check_resume(nodes: Sequence[Node]) -> None:
     `resume:` is a certain handover the moment the user says yes. Over
     `pairs`: a run's own such pair refused that playbook already."""
     for n, nxt in pairs(nodes):
-        if isinstance(n, AskNode) and n.pays and n.resume is None:
-            if screen_move(nxt):
-                raise PlaybookError(
-                    f"ask {n.id!r} (approve: payment) is followed by "
-                    f"{nxt.id!r}, which runs on the app — declare `resume:` "
-                    "on the ask to re-enter the app after the reply"
-                )
+        if isinstance(n, AskNode) and n.pays and n.resume is None and screen_move(nxt):
+            raise PlaybookError(
+                f"ask {n.id!r} (approve: payment) is followed by "
+                f"{nxt.id!r}, which runs on the app — declare `resume:` "
+                "on the ask to re-enter the app after the reply"
+            )
 
 
 def check_money(nodes: list[Node]) -> None:

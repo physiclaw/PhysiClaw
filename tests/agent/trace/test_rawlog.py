@@ -16,7 +16,7 @@ from physiclaw.contract.plugin import TurnProducer
 
 
 @pytest.mark.parametrize(
-    "text", ["hello\ud800", "hello\udfff", "你好😀", r"literal \ud800"]
+    "text", ["hello" + chr(0xD800), "hello" + chr(0xDFFF), "你好😀", r"literal \ud800"]
 )
 def test_regression_wire_response_preserves_unicode_text(text):
     wire = RawLog("response", Images("response"))
@@ -30,7 +30,7 @@ def test_regression_wire_response_preserves_unicode_text(text):
 
 def test_regression_wire_request_preserves_unpaired_surrogate():
     wire = RawLog("request", Images("request"))
-    messages = [{"role": "user", "content": "hello\ud800"}]
+    messages = [{"role": "user", "content": "hello" + chr(0xD800)}]
 
     wire.write_request(2, messages)
     wire.close()
@@ -41,7 +41,7 @@ def test_regression_wire_request_preserves_unpaired_surrogate():
 
 def test_regression_wire_micro_preserves_unpaired_surrogate():
     wire = RawLog("micro", Images("micro"))
-    request = [{"role": "user", "content": "hello\ud800"}]
+    request = [{"role": "user", "content": "hello" + chr(0xD800)}]
     micro = MicroRecord(
         call="agent_act",
         node="pick",
@@ -50,7 +50,7 @@ def test_regression_wire_micro_preserves_unpaired_surrogate():
         answer="0",
         confidence=1.0,
         request=request,
-        raw={"text": "hello\udfff"},
+        raw={"text": "hello" + chr(0xDFFF)},
     )
 
     wire.write_micro(micro)

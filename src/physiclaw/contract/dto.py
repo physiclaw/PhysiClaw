@@ -32,7 +32,7 @@ replay / debugging.
 
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any, Final, Literal, Union, get_args
+from typing import Any, Final, Literal, get_args
 
 
 class FinishReason(StrEnum):
@@ -70,7 +70,7 @@ class ImageBlock:
     data_b64: str  # base64-encoded image bytes
 
 
-ContentBlock = Union[TextBlock, ImageBlock]
+ContentBlock = TextBlock | ImageBlock
 
 
 # ---------- tool call / result primitives ----------
@@ -300,9 +300,13 @@ class OutputResultMessage:
     context_results: list[ToolResultMessage] = field(default_factory=list)
 
 
-Message = Union[
-    SystemMessage, UserMessage, AssistantMessage, ToolResultMessage, OutputResultMessage
-]
+Message = (
+    SystemMessage
+    | UserMessage
+    | AssistantMessage
+    | ToolResultMessage
+    | OutputResultMessage
+)
 
 
 def role_of(m: Message) -> str:

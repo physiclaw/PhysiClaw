@@ -12,7 +12,7 @@ import threading
 from collections.abc import Callable
 from contextlib import ExitStack
 from functools import partial
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 
@@ -80,7 +80,7 @@ def server(
         ),
     ] = False,
     cam_index: Annotated[
-        Optional[int],
+        int | None,
         typer.Option(
             "--cam-index",
             help="Camera index override for --warm-start / --hot-start "
@@ -589,9 +589,7 @@ def _refuse_if_already_running(host: str, port: int) -> None:
             )
 
 
-def _resolve_runtime_model(
-    *, no_runtime: bool
-) -> tuple[Optional[str], Optional[str], str]:
+def _resolve_runtime_model(*, no_runtime: bool) -> tuple[str | None, str | None, str]:
     """Validate the model before startup; external MCP mode needs no model."""
     from physiclaw.cli._format import exit_error
 
@@ -645,7 +643,7 @@ def _start_hardware_bringup(
     *,
     warm_start: bool,
     hot_start: bool,
-    cam_index: Optional[int],
+    cam_index: int | None,
     auto_calibrate: bool,
     no_setup_hardware: bool,
 ) -> None:
@@ -669,7 +667,7 @@ def _start_hardware_bringup(
 
 
 def _warm_start_hardware(
-    host: str, port: int, cam_index: Optional[int], *, verify: bool
+    host: str, port: int, cam_index: int | None, *, verify: bool
 ) -> None:
     """--warm-start / --hot-start: resume from the saved calibration bundle in
     a background thread (`verify=False` = --hot-start, which skips the bridge
@@ -749,7 +747,8 @@ def _open_hardware_wizard(host: str, port: int) -> None:
         if wait_for_port(host, port):
             try:
                 webbrowser.open(setup_url)
-            except Exception:  # noqa: BLE001 — never let a headless box crash startup
+            except Exception:
+                # A headless desktop must still be able to start the server.
                 log.debug("could not open browser for setup wizard", exc_info=True)
 
     threading.Thread(target=_open_setup, daemon=True).start()

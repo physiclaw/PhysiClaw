@@ -43,8 +43,8 @@ help:
 	@echo "  testall               — alias for test-all"
 	@echo "  test-studio-ui        — JavaScript UI regressions (Node 22+)"
 	@echo "  mutate MOD=path       — mutmut on a path (e.g. MOD=src/physiclaw/agent/engine/validator.py)"
-	@echo "  lint                  — ruff check + format check"
-	@echo "  fmt                   — ruff format (src, tests, hardware, firmware, scripts)"
+	@echo "  lint                  — ruff check + format check (repository Python files)"
+	@echo "  fmt                   — ruff format (repository Python files)"
 	@echo "  typecheck             — mypy on application and hardware port (scope in [tool.mypy])"
 	@echo "  loc                   — Total = Code + Test + Text (NO_COLOR=1 for plain output)"
 	@echo "  firmware [ARGS=...]    — rebuild fluidnc.zip, preserve output/.cache; ARGS=--help for options"
@@ -94,11 +94,11 @@ mutate:
 	$(PY) mutmut run --paths-to-mutate "$(MOD)"
 
 lint:
-	$(PY) ruff check src/ tests/ scripts/ firmware/ hardware/
-	$(PY) ruff format --check src/ tests/ hardware/ firmware/ scripts/
+	$(PY) ruff check .
+	$(PY) ruff format --check .
 
 fmt:
-	$(PY) ruff format src/ tests/ hardware/ firmware/ scripts/
+	$(PY) ruff format .
 
 # Scope and settings live in [tool.mypy] in pyproject.toml.
 typecheck:

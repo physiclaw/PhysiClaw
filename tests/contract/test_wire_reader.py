@@ -227,7 +227,7 @@ def test_nested_text_survives_scrubbing_and_json_roundtrip(case):
     restored = json.loads(json.dumps(scrubbed))
     blocks = list(wire.leaf_blocks(restored[0]["content"]))
 
-    assert list(map(lambda b: b["text"], blocks)) == expected
+    assert [b["text"] for b in blocks] == expected
     assert messages == original
 
 

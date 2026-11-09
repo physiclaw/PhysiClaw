@@ -6,7 +6,8 @@ turns one structured event into a readable narrative line — the CLI
 renders a session's narrative directly from its events.jsonl.
 """
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from physiclaw.agent.runtime import sentinel
 from physiclaw.common import gesture_vocab
@@ -196,7 +197,7 @@ def session_footer(summary: dict[str, Any]) -> str:
     return text
 
 
-def summarize_event(event: dict[str, Any]) -> str | None:  # noqa: C901 — flat dispatch
+def summarize_event(event: dict[str, Any]) -> str | None:
     name = event.get("event", "")
     t = event.get("turn")
     pfx = f"turn {t}: " if t is not None else ""
@@ -348,7 +349,7 @@ _TOOL_VERBS: dict[str, str | Callable[[dict[str, Any]], str]] = {
     "finish_job": lambda a: f"Finished job {a.get('id', '')}",
     "Skill": lambda a: f"Loaded skill {a.get('name', '')}",
 }
-assert gesture_vocab.PRESS_TOOLS | gesture_vocab.NAV_TOOLS <= _TOOL_VERBS.keys()
+assert _TOOL_VERBS.keys() >= gesture_vocab.PRESS_TOOLS | gesture_vocab.NAV_TOOLS
 
 
 def note_text(args: dict[str, Any]) -> str:

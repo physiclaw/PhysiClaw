@@ -355,7 +355,7 @@ def score_page(pp: PagePrint, screen: Screen) -> PageScore:
     las = [learned.anchors.get(a.text) if learned else None for a in anchors]
     rows_per = [
         candidate_rows(a, screen.rows, la.variants if la else ())
-        for a, la in zip(anchors, las)
+        for a, la in zip(anchors, las, strict=True)
     ]
 
     dy = 0.0
@@ -364,7 +364,7 @@ def score_page(pp: PagePrint, screen: Screen) -> PageScore:
 
     hits: list[str] = []
     missing: list[str] = []
-    for a, la, rows in zip(anchors, las, rows_per):
+    for a, la, rows in zip(anchors, las, rows_per, strict=True):
         # Chrome (a region-pinned anchor) does not scroll with the
         # content: it is checked at its absolute position, exactly as
         # `_vote_dy` leaves it out of the vote.
@@ -408,7 +408,7 @@ def _vote_dy(
     region hint are chrome — they vote for 0 implicitly by their absolute
     check and are excluded here."""
     votes: dict[int, list[float]] = {}
-    for a, la, rows in zip(anchors, las, rows_per):
+    for a, la, rows in zip(anchors, las, rows_per, strict=True):
         if la is None or a.within is not None:
             continue
         for row in rows:

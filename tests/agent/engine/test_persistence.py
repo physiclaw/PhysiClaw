@@ -47,7 +47,7 @@ def test_failed_state_replacement_preserves_previous_bytes(
     else:
         mocker.patch.object(Path, "replace", side_effect=OSError("cannot replace"))
 
-    with pytest.raises(OSError):
+    with pytest.raises(OSError, match="disk full|cannot replace"):
         update()
 
     assert path.read_bytes() == before

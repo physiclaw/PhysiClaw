@@ -27,7 +27,7 @@ from pathlib import Path
 
 # Run directly from a checkout without requiring the full application install.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from physiclaw.common.log_style import (  # noqa: E402
+from physiclaw.common.log_style import (
     add_log_arguments,
     configure_console,
     report_error,
@@ -49,7 +49,7 @@ except ImportError:
 
 # Support both `python scripts/...py` and package imports from tests/tools.
 if __package__:
-    from . import grbl_protocol
+    from scripts import grbl_protocol
 else:
     import grbl_protocol
 

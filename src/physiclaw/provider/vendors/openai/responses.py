@@ -109,7 +109,7 @@ def parse_response(raw: object, *, model: str, structured: bool) -> AssistantMes
     status = status if isinstance(status, str) else None
     if raw.get("error") or status in {"failed", "cancelled", "queued", "in_progress"}:
         error = ProviderTransientError(f"Responses generation failed: {status}")
-        setattr(error, "reply", reply)
+        error.reply = reply
         raise error
     if status == "incomplete":
         details = raw.get("incomplete_details")
@@ -190,7 +190,7 @@ def parse_response(raw: object, *, model: str, structured: bool) -> AssistantMes
         reply.finish_reason = FinishReason.TOOL_CALLS
     if reply.decode_error and not structured:
         error = ProviderTransientError(reply.decode_error)
-        setattr(error, "reply", reply)
+        error.reply = reply
         raise error
     if status == "completed" and not reply.decode_error:
         reply.vendor_extra["openai"] = {"model": model, "output": deepcopy(output)}

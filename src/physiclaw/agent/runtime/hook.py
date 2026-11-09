@@ -24,8 +24,8 @@ import importlib
 import inspect
 import logging
 import pkgutil
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Awaitable, Callable, Optional, Union
 
 from physiclaw.agent.runtime.stopping import checkpoint
 
@@ -47,7 +47,7 @@ class Trigger:
     label: str = ""  # Optional short task name; never replaces the wake prompt.
 
 
-Hook = Callable[[], Union[Optional[Trigger], Awaitable[Optional[Trigger]]]]
+Hook = Callable[[], Trigger | None | Awaitable[Trigger | None]]
 HOOKS_PACKAGE = "physiclaw.agent.hooks"
 
 _hooks: list[Hook] = []

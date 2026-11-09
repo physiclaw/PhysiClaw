@@ -267,7 +267,7 @@ class LLMProducer:
                     on_request=lambda body: self.run.rlog.write_native_request(
                         metadata.turn,
                         body,
-                        attempt=attempt,
+                        attempt=attempt,  # noqa: B023 -- provider invokes it within this awaited call.
                         schema_id=self._schema_id,
                         transport=self.provider.structured_transport,
                     ),

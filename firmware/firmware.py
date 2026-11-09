@@ -113,11 +113,14 @@ def fetch(
     url: str, dest: Path, *, digest: str | None = None, size: int | None = None
 ) -> bool:
     """Reuse only checksum-verified files; resume downloads only within this call."""
-    if digest and not dest.is_symlink() and dest.is_file():
-        if (size is None or dest.stat().st_size == size) and file_sha256(
-            dest
-        ) == digest:
-            return True
+    if (
+        digest
+        and not dest.is_symlink()
+        and dest.is_file()
+        and (size is None or dest.stat().st_size == size)
+        and file_sha256(dest) == digest
+    ):
+        return True
     dest.parent.mkdir(parents=True, exist_ok=True)
     # Never resume an unverified prefix from a previous run.
     dest.unlink(missing_ok=True)
@@ -134,7 +137,8 @@ def fetch(
                     "download does not match the GitHub asset checksum or size"
                 )
             return False
-        except Exception as e:  # noqa: BLE001 — any transport error: resume
+        except Exception as e:
+            # Any transport failure can retry from a verified prefix.
             if isinstance(e, HTTPError):
                 e.close()
                 if e.code == 404:

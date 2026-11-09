@@ -18,7 +18,7 @@ def test_build_paths_are_inside_firmware_output():
 
 def test_build_script_layout_matches_flash_command():
     offsets = {name: int(offset, 16) for offset, name in FLASH_LAYOUT}
-    assert firmware.FLASH_OFFSETS == offsets
-    assert firmware.LITTLEFS_OFFSET == offsets["littlefs.bin"]
+    assert offsets == firmware.FLASH_OFFSETS
+    assert offsets["littlefs.bin"] == firmware.LITTLEFS_OFFSET
     flashed = [name for name in firmware.ORDER if name not in firmware.REFERENCE_FILES]
     assert flashed == [name for _, name in FLASH_LAYOUT]

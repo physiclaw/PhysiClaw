@@ -195,7 +195,10 @@ def test_flash_rejects_each_empty_image_before_erasing(mocker, name):
 )
 def test_flash_preserves_image_bytes_offsets_and_uv_options(mocker, folders, images):
     prefix = "/".join([*folders, ""])
-    entries = [(prefix + n, b) for (_, n), b in zip(flash_mod.FLASH_LAYOUT, images)]
+    entries = [
+        (prefix + n, b)
+        for (_, n), b in zip(flash_mod.FLASH_LAYOUT, images, strict=True)
+    ]
     _mock_download(mocker, _zip_bytes(entries))
     captured = []
 
@@ -732,7 +735,7 @@ def test_flash_detects_platform_ports_and_preserves_unicode_paths(
     def run(cmd, on_line):
         assert callable(on_line)
         assert cmd[cmd.index("--port") + 1] == port
-        for (_, name), filename in zip(flash_mod.FLASH_LAYOUT, cmd[-9::2]):
+        for (_, name), filename in zip(flash_mod.FLASH_LAYOUT, cmd[-9::2], strict=True):
             path = Path(filename)
             assert path.is_relative_to(root)
             assert path.name == name

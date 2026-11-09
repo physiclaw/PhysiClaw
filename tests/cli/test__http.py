@@ -145,7 +145,7 @@ def test_fetch_json_raises_on_transport_error(mocker) -> None:
 def test_fetch_json_raises_on_bad_json(mocker) -> None:
     mocker.patch.object(_http._OPENER, "open", return_value=_resp(b"not json"))
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="Expecting value"):
         _http.fetch_json(f"{BASE}/api/bridge/state")
 
 
@@ -392,7 +392,7 @@ def test_fetch_json_closes_response_when_parsing_fails(mocker):
     response = _resp(b"broken")
     spy = mocker.patch.object(_http._OPENER, "open", return_value=response)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="Expecting value"):
         _http.fetch_json(BASE, timeout=4.5)
 
     assert response.closed

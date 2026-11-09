@@ -15,7 +15,7 @@ from physiclaw.contract.structured import (
     [("", "submit"), ("schema", "")],
 )
 def test_spec_invalid_configuration_rejected(name, function):
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="schema and function names"):
         OutputSpec(name, {}, str, function)
 
 

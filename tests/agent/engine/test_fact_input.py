@@ -182,7 +182,8 @@ async def test_four_pipeline_configurations_preserve_baseline_requests_and_actio
         SimpleNamespace(datetime=SimpleNamespace(now=lambda: stamp)),
     )
     no_decision_api = mocker.patch("physiclaw.provider.make_decision_provider")
-    for facts_enabled in (False, True):
+
+    async def run_configuration(facts_enabled):
         requests = []
 
         class CaptureProvider(FakeProvider):
@@ -269,6 +270,9 @@ async def test_four_pipeline_configurations_preserve_baseline_requests_and_actio
             assert not hasattr(history.advance.call_args.args[0], "messages")
             history.aclose.assert_awaited_once()
         outcomes.append((outcome.status, physical_calls, requests))
+
+    for facts_enabled in (False, True):
+        await run_configuration(facts_enabled)
 
     assert outcomes[0] == outcomes[1]
     no_decision_api.assert_not_called()

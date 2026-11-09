@@ -7,6 +7,7 @@ loaded flag, and equivalent final-component indexing on qualified names.
 from __future__ import annotations
 
 import logging
+from dataclasses import FrozenInstanceError
 from types import SimpleNamespace
 
 import pytest
@@ -27,7 +28,7 @@ def _reset_hooks() -> None:
 def test_trigger_dataclass_is_frozen() -> None:
     t = Trigger(description="x")
 
-    with pytest.raises(Exception):  # FrozenInstanceError
+    with pytest.raises(FrozenInstanceError, match="description"):
         t.description = "y"  # type: ignore[misc]
 
 

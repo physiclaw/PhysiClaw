@@ -45,7 +45,7 @@ def test_atomic_text_failure_preserves_existing_file(tmp_path, mocker, failure):
         mocker.patch.object(Path, "replace", side_effect=OSError("cannot replace"))
 
     with pytest.raises((OSError, UnicodeEncodeError)):
-        write_text_atomic(path, "\ud800" if failure == "unicode" else "new memory")
+        write_text_atomic(path, chr(0xD800) if failure == "unicode" else "new memory")
 
     assert path.read_bytes() == original
     assert list(directory.iterdir()) == [path]
@@ -79,7 +79,9 @@ def test_write_text_pins_lf_newlines(tmp_path: Path) -> None:
     assert raw == b"line1\nline2\n"
 
 
-@pytest.mark.parametrize("invalid", ["\ud800", "\udfff", "valid prefix\udc00"])
+@pytest.mark.parametrize(
+    "invalid", [chr(0xD800), chr(0xDFFF), "valid prefix" + chr(0xDC00)]
+)
 def test_regression_write_text_invalid_unicode_preserves_existing_file(
     tmp_path: Path, invalid: str
 ) -> None:
@@ -99,7 +101,7 @@ def test_regression_write_text_invalid_unicode_does_not_create_file(
     path = tmp_path / "state.md"
 
     with pytest.raises(UnicodeEncodeError):
-        write_text(path, "\ud800")
+        write_text(path, chr(0xD800))
 
     assert not path.exists()
 
@@ -187,7 +189,7 @@ def test_append_line_invalid_unicode_preserves_existing_bytes(tmp_path):
     path.write_bytes(b"old")
 
     with pytest.raises(UnicodeEncodeError):
-        append_line(path, "\ud800")
+        append_line(path, chr(0xD800))
 
     assert path.read_bytes() == b"old"
 
@@ -196,6 +198,6 @@ def test_append_line_invalid_unicode_does_not_create_file(tmp_path):
     path = tmp_path / "facts.md"
 
     with pytest.raises(UnicodeEncodeError):
-        append_line(path, "\ud800")
+        append_line(path, chr(0xD800))
 
     assert not path.exists()

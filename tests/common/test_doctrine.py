@@ -22,13 +22,13 @@ from physiclaw.common.doctrine import DOCTRINE_TOKENS, fill_tokens
 def test_token_map_mirrors_engine_config() -> None:
     """Every token renders the CONFIG value the engine actually
     enforces — the whole point of the mechanism."""
-    assert DOCTRINE_TOKENS == {
+    assert {
         "{{same_target_warn}}": str(CONFIG.engine.same_target_warn),
         "{{same_target_block}}": str(CONFIG.engine.same_target_block),
         "{{step_stuck_warn}}": str(CONFIG.engine.step_stuck_warn),
         "{{step_stuck_urgent}}": str(CONFIG.engine.step_stuck_urgent),
         "{{plan_required_after}}": str(CONFIG.engine.plan_required_after),
-    }
+    } == DOCTRINE_TOKENS
 
 
 # ---------- fill_tokens ----------

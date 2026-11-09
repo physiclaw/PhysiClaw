@@ -44,16 +44,17 @@ def test_cleanup_reaps_descendant_after_leader_exits(tmp_path):
 
 
 def test_body_failure_stops_child_and_closes_pipes():
-    with pytest.raises(ValueError, match="collection failed"):
-        with owned_process(
+    with (
+        pytest.raises(ValueError, match="collection failed"),
+        owned_process(
             [sys.executable, "-c", "import time; time.sleep(60)"],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-        ) as owner:
-            process = owner.process
+        ) as owner,
+    ):
+        raise ValueError("collection failed")
 
-            raise ValueError("collection failed")
-
+    process = owner.process
     assert process.poll() is not None
     assert process.stdout.closed and process.stderr.closed
 

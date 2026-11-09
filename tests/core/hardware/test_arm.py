@@ -11,7 +11,7 @@ that a few patterns cover every public method:
 from __future__ import annotations
 
 from collections import deque
-from typing import Iterable
+from collections.abc import Iterable
 
 import pytest
 
@@ -126,7 +126,7 @@ def test_non_numeric_or_nonfinite_coordinates_never_touch_hardware(
 @pytest.mark.parametrize("method", ["rapid_to", "_linear_move"])
 def test_invalid_feedrate_never_writes_gcode(mocker, method, speed):
     arm, serial = _arm(mocker)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="speed"):
         getattr(arm, method)(1, 2, speed=speed)
     assert serial.writes == []
 
@@ -154,7 +154,7 @@ def test_invalid_swipe_is_rejected_before_stylus_contact(mocker, kwargs):
 )
 def test_invalid_dwell_never_writes_gcode(mocker, seconds):
     arm, serial = _arm(mocker)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="seconds|dwell"):
         arm._dwell(seconds)
     assert serial.writes == []
 

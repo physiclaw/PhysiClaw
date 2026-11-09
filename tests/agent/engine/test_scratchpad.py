@@ -82,7 +82,7 @@ def test_write_oversize_does_not_mutate_session() -> None:
     session = SimpleNamespace(scratchpad="kept")
     too_big = "x" * (MAX_CHARS + 1)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="chars > .* cap"):
         write(session, too_big)
 
     assert session.scratchpad == "kept"

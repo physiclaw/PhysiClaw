@@ -94,7 +94,10 @@ class OCRReader:
             return []
 
         texts = []
-        for points, text, score in zip(result.boxes, result.txts, result.scores):
+        # Valid outputs are aligned; preserve truncation for malformed results.
+        for points, text, score in zip(
+            result.boxes, result.txts, result.scores, strict=False
+        ):
             if not np.isfinite(points).all() or not np.isfinite(score) or score < 0:
                 continue
             xs = [p[0] for p in points]
@@ -144,7 +147,7 @@ def results_to_elements(results: list[TextResult], transforms) -> list[dict]:
             transforms.pixel_to_pct(x, y)
             for x, y in ((x1, y1), (x2, y1), (x2, y2), (x1, y2))
         ]
-        xs, ys = zip(*corners)
+        xs, ys = zip(*corners, strict=True)
         left, top, right, bottom = min(xs), min(ys), max(xs), max(ys)
         elements.append(
             {

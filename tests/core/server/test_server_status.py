@@ -22,7 +22,7 @@ async def test_status_preserves_hardware_payload(async_request):
 async def test_readiness_polling_never_starts_setup(
     async_request, calibrated, physiclaw_home, caplog
 ):
-    recorder = SetupRecorder(lambda: {})
+    recorder = SetupRecorder(dict)
     payload = {"ready": False, "calibrated": calibrated}
     rig = SimpleNamespace(status=lambda: payload, setup_recording=recorder)
 

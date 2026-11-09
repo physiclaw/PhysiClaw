@@ -1,5 +1,6 @@
 """Exercise actual HTTP traffic against the small stdlib server."""
 
+import errno
 import http.client
 import json
 import re
@@ -25,11 +26,12 @@ def test_port_binding_does_not_depend_on_a_connection_probe(mocker, backend):
         "127.0.0.1", 0, service.TestSession(), desktop=True
     ) as server:
         assert server.server_port > 0
-        with pytest.raises(OSError) as error:
+        with pytest.raises(OSError) as error:  # noqa: PT011 -- errno is asserted below.
             service.open_server(
                 "127.0.0.1", server.server_port, service.TestSession(), desktop=True
             )
         assert not isinstance(error.value, TimeoutError)
+        assert error.value.errno == errno.EADDRINUSE
 
 
 def test_wildcard_listener_does_not_hide_an_existing_loopback_server(mocker):

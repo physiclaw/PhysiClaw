@@ -14,7 +14,7 @@ with it held, so no locking here.
 """
 
 import time
-from typing import Callable
+from collections.abc import Callable
 
 
 class ClipboardSyncError(RuntimeError):

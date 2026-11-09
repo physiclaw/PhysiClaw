@@ -3,7 +3,7 @@
 import asyncio
 import json
 from copy import deepcopy
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from email.utils import format_datetime
 from types import SimpleNamespace
 
@@ -57,11 +57,15 @@ async def test_exhausted_quota_is_permanent_not_a_rate_limit(
     provider = provider_class("openai")(model="gpt-6.1-terra")
     route = respx_mock.route().respond(429, json=payload, headers={"Retry-After": "1"})
     try:
-        with pytest.raises(ProviderPermanentError) as caught:
+
+        async def run_operation():
             if api == "chat":
                 await provider.chat([UserMessage("test")], [])
             else:
                 await provider.list_models()
+
+        with pytest.raises(ProviderPermanentError) as caught:
+            await run_operation()
         assert caught.value.status_code == 429
         assert caught.value.retry_after is None
         assert route.call_count == 1
@@ -383,13 +387,17 @@ async def test_one_adapter_call_is_one_http_attempt(
             raise OSError("request log unavailable")
 
     try:
-        with pytest.raises(ProviderTransientError) as caught:
+
+        async def run_operation():
             if structured:
                 await provider.generate_structured(
                     [UserMessage("test")], spec, on_request=observe
                 )
             else:
                 await provider.chat([UserMessage("test")], [], on_request=observe)
+
+        with pytest.raises(ProviderTransientError) as caught:
+            await run_operation()
         assert caught.value.status_code == 429
         assert caught.value.retry_after == 7
         assert route.call_count == len(captured) == 1
@@ -410,11 +418,15 @@ async def test_request_observer_cancellation_stops_before_transport(
         raise asyncio.CancelledError("stop requested")
 
     try:
-        with pytest.raises(asyncio.CancelledError, match="stop requested"):
+
+        async def run_operation():
             if structured:
                 await provider.generate_structured([], spec, on_request=cancel)
             else:
                 await provider.chat([], [], on_request=cancel)
+
+        with pytest.raises(asyncio.CancelledError, match="stop requested"):
+            await run_operation()
         assert len(respx_mock.calls) == 0
     finally:
         await provider.aclose()
@@ -504,5 +516,5 @@ def test_retry_after_invalid_and_numeric(value, expected):
 
 @freeze_time("2026-11-02T12:00:00Z")
 def test_retry_after_http_date():
-    future = format_datetime(datetime.now(timezone.utc) + timedelta(seconds=40))
+    future = format_datetime(datetime.now(UTC) + timedelta(seconds=40))
     assert retry_after_seconds(future) == 40

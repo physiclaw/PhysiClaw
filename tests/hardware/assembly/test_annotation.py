@@ -532,7 +532,7 @@ def test_clamp_threading_keeps_blue_route_on_left_in_both_views(camera_index):
     for color in (specs.BLUE, specs.RED):
         boxes = [
             bounds
-            for element, bounds in zip(drawing.elements, drawing.bounds)
+            for element, bounds in zip(drawing.elements, drawing.bounds, strict=True)
             if color in element
         ]
         centres[color] = (min(b[0] for b in boxes) + max(b[2] for b in boxes)) / 2
@@ -814,7 +814,7 @@ def test_frame_head_recesses_follow_the_slot_lip_cuts():
         for face in beam.faces().filter_by(GeomType.CYLINDER)
         if face.radius is not None
         and abs(face.radius - cb_head_d / 2) < 1e-6
-        and face.bounding_box().max.X <= mouth_x + leg - slot_lip_under_y + 1e-6
+        and mouth_x + leg - slot_lip_under_y + 1e-6 >= face.bounding_box().max.X
         and face.normal_at().dot(projection.direction) > 0
     ]
     assert len(walls) == 4

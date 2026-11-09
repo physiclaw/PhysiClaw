@@ -62,9 +62,12 @@ def test_hook_forwards_value_and_metadata(record, method, value):
 def test_hook_failure_is_counted_without_replacing_operation_error(record):
     sink = Sink(broken=True)
 
-    with pytest.raises(ValueError, match="physical error"), evidence_scope(sink):
+    def run_operation():
         record("input")
         raise ValueError("physical error")
+
+    with pytest.raises(ValueError, match="physical error"), evidence_scope(sink):
+        run_operation()
 
     assert sink.errors == ["evidence unavailable"]
     assert current_evidence() is None
@@ -91,9 +94,13 @@ def test_nested_scope_restores_outer_sink_after_exception():
     outer, inner = Sink(), Sink()
 
     with evidence_scope(outer):
-        with pytest.raises(ValueError), evidence_scope(inner):
+
+        def run_operation():
             record_event("inner")
             raise ValueError("failed")
+
+        with pytest.raises(ValueError, match="failed"), evidence_scope(inner):
+            run_operation()
         record_event("outer")
 
     assert outer.records == [("event", "outer", {})]

@@ -45,12 +45,48 @@ LOCKFILES = {
     "packages.lock.json",
     "bun.lockb",
 }
-EXCLUDED_SUFFIXES = set(
-    ".lock .svg .png .jpg .jpeg .gif .webp .ico .bmp .tif .tiff .avif .pdf "
-    ".woff .woff2 .ttf .otf .eot .zip .gz .bz2 .xz .7z .tar "
-    ".mp3 .mp4 .wav .mov .webm .pyc .pyo .so .dll .exe .bin .wasm "
-    ".stl .step .stp .fcstd".split()
-)
+EXCLUDED_SUFFIXES = {
+    ".lock",
+    ".svg",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".webp",
+    ".ico",
+    ".bmp",
+    ".tif",
+    ".tiff",
+    ".avif",
+    ".pdf",
+    ".woff",
+    ".woff2",
+    ".ttf",
+    ".otf",
+    ".eot",
+    ".zip",
+    ".gz",
+    ".bz2",
+    ".xz",
+    ".7z",
+    ".tar",
+    ".mp3",
+    ".mp4",
+    ".wav",
+    ".mov",
+    ".webm",
+    ".pyc",
+    ".pyo",
+    ".so",
+    ".dll",
+    ".exe",
+    ".bin",
+    ".wasm",
+    ".stl",
+    ".step",
+    ".stp",
+    ".fcstd",
+}
 TEST_DIRECTORIES = {"test", "tests", "__tests__"}
 
 

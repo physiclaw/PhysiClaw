@@ -194,7 +194,7 @@ def run(
             "-i",
             help="Input value as key=value; repeat per input.",
         ),
-    ] = [],
+    ] = [],  # noqa: B006 -- parse_inputs only reads it; preserve the CLI default.
     start_at: Annotated[
         str,
         typer.Option(

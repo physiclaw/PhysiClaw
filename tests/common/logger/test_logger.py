@@ -691,7 +691,7 @@ async def test_regression_logged_sink_failure_preserves_original_error(
     mocker.patch.object(logger_mod.log, "log", side_effect=OSError("disk full"))
 
     with caplog.at_level(logging.INFO, logger="physiclaw.tools"):
-        with pytest.raises(ValueError) as caught:
+        with pytest.raises(ValueError) as caught:  # noqa: PT011 -- original exception identity is asserted below.
             await tool()
 
     assert caught.value is failure
@@ -706,7 +706,7 @@ async def test_regression_logged_bad_arguments_do_not_mask_tool_error(caplog) ->
         raise failure
 
     with caplog.at_level(logging.INFO, logger="physiclaw.tools"):
-        with pytest.raises(ValueError) as caught:
+        with pytest.raises(ValueError) as caught:  # noqa: PT011 -- original exception identity is asserted below.
             await sequence(actions=[{"tool_name": None}])
 
     assert caught.value is failure

@@ -25,7 +25,7 @@ def test_socks_scheme_rewritten_to_socks5(monkeypatch, var):
 def test_uppercase_scheme_rewritten(monkeypatch):
     monkeypatch.setenv("all_proxy", "SOCKS://proxy.lan:1080")
     normalize_proxy_env()
-    assert os.environ["all_proxy"] == "socks5://proxy.lan:1080"
+    assert os.environ["all_proxy"] == "socks5://proxy.lan:1080"  # noqa: SIM112 -- lower-case proxy aliases are part of the compatibility contract.
 
 
 @pytest.mark.parametrize(
@@ -41,7 +41,7 @@ def test_uppercase_scheme_rewritten(monkeypatch):
 def test_other_values_left_untouched(monkeypatch, value):
     monkeypatch.setenv("all_proxy", value)
     normalize_proxy_env()
-    assert os.environ["all_proxy"] == value
+    assert os.environ["all_proxy"] == value  # noqa: SIM112 -- lower-case proxy aliases are part of the compatibility contract.
 
 
 def test_non_proxy_vars_left_untouched(monkeypatch):

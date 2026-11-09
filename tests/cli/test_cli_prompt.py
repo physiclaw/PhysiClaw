@@ -102,7 +102,7 @@ class _FrozenDatetime:
     run and the CLI build (both go through `assemble.dt.datetime.now`)."""
 
     @classmethod
-    def now(cls, tz=None):  # noqa: ARG003
+    def now(cls, tz=None):
         return _dt.datetime(2026, 7, 2, 10, 0, 0)
 
 

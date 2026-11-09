@@ -1006,7 +1006,7 @@ def test_malformed_toolchain_cannot_silently_reuse_cache(repo):
     write_outputs(repo)
     cache.store_source(STEM)
     repo.lock.write_text("not valid TOML", encoding="utf-8")
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="key/value"):
         cache.source_cached(STEM, want_bom=True)
 
 

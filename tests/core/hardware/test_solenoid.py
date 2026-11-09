@@ -59,7 +59,7 @@ def sol(rec: Recorder) -> Solenoid:
     "duration", [-1, float("nan"), float("inf"), True, "0.1", 10**1000]
 )
 def test_invalid_duration_cannot_energize_coil(rec, sol, method, duration):
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="seconds|dwell"):
         getattr(sol, method)(duration)
     assert rec.calls == []
 
@@ -247,10 +247,12 @@ def test_held_forces_coil_off_when_block_raises() -> None:
     rec = Recorder()
     sol = Solenoid(send=rec.send, dwell=rec.dwell)
 
-    with pytest.raises(ValueError, match="slide failed"):
-        with sol.held():
-            assert rec.sends[-1] == "M3 S750"  # held at hold current inside block
-            raise ValueError("slide failed")
+    def run_operation():
+        assert rec.sends[-1] == "M3 S750"  # held at hold current inside block
+        raise ValueError("slide failed")
+
+    with pytest.raises(ValueError, match="slide failed"), sol.held():
+        run_operation()
 
     assert rec.sends[-1] == "M5"  # released despite the error
     # The error path unwinds into rig.engaged()'s auto-park — the same

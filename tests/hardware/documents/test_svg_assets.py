@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import base64
 import os
-from xml.etree import ElementTree
+from xml.etree import ElementTree as ET
 
 import pytest
 
@@ -54,7 +54,7 @@ def test_svg_edits_replacements_and_removal_are_not_cached(
 
 def test_placeholder_treats_label_as_text():
     label = '<bolt & "nut">'
-    root = ElementTree.fromstring(assets.icon.hardware_placeholder_svg(label))
+    root = ET.fromstring(assets.icon.hardware_placeholder_svg(label))
     text = root.find("{http://www.w3.org/2000/svg}text")
     assert text is not None
     assert text.text == label

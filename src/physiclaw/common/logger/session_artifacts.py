@@ -10,8 +10,9 @@ import base64
 import datetime as dt
 import json
 import logging
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 from physiclaw.common.logger.logger import _open_log_file
 from physiclaw.common.text import read_text, write_text, write_text_atomic

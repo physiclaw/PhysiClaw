@@ -101,7 +101,7 @@ def test_parse_step_accepts_swipe() -> None:
     from physiclaw.core.orchestration.gestures import GestureValidator
 
     validator = GestureValidator.__new__(GestureValidator)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="swipe arg needs a dict"):
         validator.parse_step(SWIPE, "not-a-dict")
 
 
@@ -113,5 +113,5 @@ def test_swipe_ladder_matches_the_typed_gesture_vocabulary() -> None:
     from physiclaw.core.orchestration import gestures
 
     assert tuple(SWIPE_DISTANCES) == get_args(gestures.Size)
-    assert SWIPE_SPEEDS == get_args(gestures.Speed)
+    assert get_args(gestures.Speed) == SWIPE_SPEEDS
     assert gestures.SWIPE_DISTANCES is SWIPE_DISTANCES

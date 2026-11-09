@@ -15,7 +15,9 @@ from physiclaw.provider.chat.structured import decode_completion, strict_json
     "text", ['{"x":1,"x":2}', '{"x":NaN}', "[Infinity]", "{} garbage"]
 )
 def test_strict_json_invalid_input_rejected(text):
-    with pytest.raises(ValueError):
+    with pytest.raises(
+        ValueError, match="duplicate JSON key|invalid JSON constant|Extra data"
+    ):
         strict_json(text)
 
 
@@ -164,7 +166,7 @@ def test_decode_completion_diagnostic_identifies_required_correction(
     [('{"x":1,"x":2}', "duplicate JSON key: x"), ("NaN", "invalid JSON constant: NaN")],
 )
 def test_strict_json_diagnostic_identifies_invalid_token(value, expected):
-    with pytest.raises(ValueError) as error:
+    with pytest.raises(ValueError) as error:  # noqa: PT011 -- exact message is asserted below.
         strict_json(value)
 
     assert str(error.value) == expected

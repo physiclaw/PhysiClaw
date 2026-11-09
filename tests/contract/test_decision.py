@@ -90,7 +90,7 @@ def test_request_and_element_sequences_are_copied(request_dto):
     "value", [nan, inf, -inf, b"bytes", object(), {1: "bad"}, {"a": {1, 2}}]
 )
 def test_non_json_facts_rejected(value):
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="decision (numbers|object keys|facts)"):
         DecisionContext("o1", facts={"bad": value})
 
 
@@ -113,10 +113,14 @@ def test_cycles_and_overdeep_facts_rejected():
     ],
 )
 def test_invalid_frame_rejected(kwargs):
-    fields = dict(
-        id="o1", data=b"pixels", media_type="image/jpeg", width=300, height=300
-    )
-    with pytest.raises(ValueError):
+    fields = {
+        "id": "o1",
+        "data": b"pixels",
+        "media_type": "image/jpeg",
+        "width": 300,
+        "height": 300,
+    }
+    with pytest.raises(ValueError, match="decision"):
         DecisionFrame(**(fields | kwargs))
 
 
@@ -132,7 +136,7 @@ def test_frame_digest_and_identity():
     "bbox", [[0, 0, 0, 1], [0, 0, 2, 1], [0, nan, 1, 1], [0, 0, True, 1]]
 )
 def test_bad_element_geometry_rejected(bbox):
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="bbox"):
         DecisionElement("o1:e1", bbox)
 
 
@@ -155,8 +159,8 @@ def test_elements_must_be_unique_and_current():
     ],
 )
 def test_bad_candidate_rejected(kwargs):
-    with pytest.raises(ValueError):
-        ActionCandidate(**(dict(id="YIELD", description="Return control") | kwargs))
+    with pytest.raises(ValueError, match="decision|choice"):
+        ActionCandidate(**({"id": "YIELD", "description": "Return control"} | kwargs))
 
 
 def test_target_choice_references_evidence_without_an_executable_tool(request_dto):
@@ -207,7 +211,7 @@ def test_invalid_request_choice_set_and_target(request_dto):
 
 @pytest.mark.parametrize("value", [nan, inf, True, "0.8", -0.1, 1.1])
 def test_invalid_confidence_rejected(value):
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="decision (numbers|confidence)"):
         DecisionAnswer("home", confidence=value)
 
 
@@ -224,7 +228,7 @@ def test_invalid_confidence_rejected(value):
     ],
 )
 def test_invalid_distribution_rejected(probabilities):
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="decision"):
         DecisionAnswer("home", probabilities=probabilities)
 
 
@@ -234,14 +238,14 @@ def test_result_matching_and_probability_ties(request_dto):
     result.validate_for(request_dto)
     with pytest.raises(TypeError):
         result.answers["next_action"].probabilities["home"] = 0
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="decision"):
         replace(result, request_id="r2").validate_for(request_dto)
     for broken in (
         replace(answer, selected_id="unknown"),
         replace(answer, probabilities={"home": 0.5, "unknown": 0.5}),
         replace(answer, probabilities={"home": 0.1, "YIELD": 0.9}),
     ):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="decision"):
             replace(result, answers={"next_action": broken}).validate_for(request_dto)
 
 
@@ -268,7 +272,7 @@ def test_rounding_tolerance_and_scores_are_optional(request_dto):
 )
 @pytest.mark.parametrize("value", [True, -1, 1.5])
 def test_invalid_usage(field, value):
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="decision token counts"):
         DecisionUsage(**{field: value})
 
 
@@ -277,19 +281,19 @@ def test_invalid_usage(field, value):
     [{"elapsed_seconds": nan}, {"elapsed_seconds": -1}, {"provider_request_id": ""}],
 )
 def test_invalid_metadata(kwargs):
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="decision"):
         result_dto(**kwargs)
 
 
 @pytest.mark.parametrize("maximum", [1, True, 1.5])
 def test_invalid_capabilities(maximum):
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="max_choices"):
         DecisionCapabilities(max_choices=maximum)
 
 
 @pytest.mark.parametrize("maximum", [0, True, 1.5])
 def test_invalid_question_limit(maximum):
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="max_questions"):
         DecisionCapabilities(max_questions=maximum)
 
 
@@ -298,9 +302,9 @@ def test_questions_have_unique_names_and_question_local_choice_ids(request_dto):
     for questions in ((), (question, question)):
         with pytest.raises(ValueError, match="uniquely identified questions"):
             replace(request_dto, questions=questions)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="decision identifiers"):
         replace(question, id=" ")
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="decision identifiers"):
         replace(question, instructions="")
     request = replace(request_dto, questions=(question, replace(question, id="check")))
     # The same option IDs may have different meanings in different questions.

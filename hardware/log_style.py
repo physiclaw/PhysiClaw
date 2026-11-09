@@ -224,9 +224,7 @@ class ConsoleFilter(logging.Filter):
             return False
         if name == "build_started" and not event.get("stems"):
             return False
-        if name == "cache_checked" and not event["cached"]:
-            return False
-        return True
+        return not (name == "cache_checked" and not event["cached"])
 
 
 class BuildFormatter(logging.Formatter):

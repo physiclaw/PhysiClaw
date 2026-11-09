@@ -870,17 +870,17 @@ def test_server_warm_start_starts_thread(mocker) -> None:
 
 
 def _server_kwargs() -> dict:
-    return dict(
-        port=8048,
-        host="127.0.0.1",
-        verbose=False,
-        no_runtime=True,
-        warm_start=False,
-        cam_index=None,
-        save_tool_calls=False,
-        save_snapshots=False,
-        save_screenshots=False,
-    )
+    return {
+        "port": 8048,
+        "host": "127.0.0.1",
+        "verbose": False,
+        "no_runtime": True,
+        "warm_start": False,
+        "cam_index": None,
+        "save_tool_calls": False,
+        "save_snapshots": False,
+        "save_screenshots": False,
+    }
 
 
 def test_server_refuses_when_live_server_recorded(mocker, capsys) -> None:

@@ -26,4 +26,4 @@ def test_status_constants(name: str, expected: str) -> None:
 
 
 def test_statuses_frozenset_complete() -> None:
-    assert STATUSES == frozenset({"DONE", "STUCK", "FAIL", "IDLE", "WAIT"})
+    assert frozenset({"DONE", "STUCK", "FAIL", "IDLE", "WAIT"}) == STATUSES

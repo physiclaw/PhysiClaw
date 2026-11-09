@@ -172,7 +172,7 @@ def test_launch_normalizes_proxy_env_first(
     with pytest.raises(SystemExit):
         launcher.launch()
 
-    assert os.environ["all_proxy"] == "socks5://127.0.0.1:7897"
+    assert os.environ["all_proxy"] == "socks5://127.0.0.1:7897"  # noqa: SIM112 -- lower-case proxy aliases are part of the compatibility contract.
 
 
 def _stub_asyncio_run(mocker, *, raise_kbd_interrupt: bool = False):

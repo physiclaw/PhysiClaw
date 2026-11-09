@@ -54,7 +54,7 @@ class _FakeMcp:
         return [{"type": "image", "data": "x"}, {"type": "text", "text": HOME}]
 
 
-@pytest.fixture()
+@pytest.fixture
 def stepped_pack(mocker):
     write_pack(playbooks={"flow": FLOW}, macros=("open-app", "add-cart"))
     mocker.patch("physiclaw.agent.engine.mcp_tool.McpClient", _FakeMcp)

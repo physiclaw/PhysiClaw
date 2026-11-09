@@ -34,31 +34,33 @@ def test_image_and_canonical_elements_share_one_observation(observation_blocks):
 
 
 @pytest.mark.parametrize(
-    "field,value",
+    "field,value,message",
     [
-        ("image_sha256", "wrong"),
-        ("listing_sha256", "wrong"),
-        ("width", 81),
-        ("height", 121),
-        ("id", ""),
-        ("coordinate_space", "camera_pixels"),
-        ("image_to_screen", [0, 1, 0, 1, 0, 0]),
-        ("captured_at", float("nan")),
-        ("captured_at", -1),
-        ("observed_after", float("nan")),
-        ("observed_after", float("inf")),
-        ("observed_after", -1),
-        ("observed_after", True),
-        ("observed_after", "100"),
-        ("source", "unknown"),
-        ("quality_warning", False),
-        ("quality_warning", []),
+        ("image_sha256", "wrong", "capture mismatch"),
+        ("listing_sha256", "wrong", "capture mismatch"),
+        ("width", 81, "dimensions"),
+        ("height", 121, "dimensions"),
+        ("id", "", "decision identifiers"),
+        ("coordinate_space", "camera_pixels", "coordinates"),
+        ("image_to_screen", [0, 1, 0, 1, 0, 0], "coordinates"),
+        ("captured_at", float("nan"), "observation time"),
+        ("captured_at", -1, "observation time"),
+        ("observed_after", float("nan"), "observation time"),
+        ("observed_after", float("inf"), "observation time"),
+        ("observed_after", -1, "observation time"),
+        ("observed_after", True, "observation time"),
+        ("observed_after", "100", "observation time"),
+        ("source", "unknown", "unknown observation source"),
+        ("quality_warning", False, "observation quality warning"),
+        ("quality_warning", [], "observation quality warning"),
     ],
 )
-def test_rejects_unbound_or_unsupported_view_metadata(observation_blocks, field, value):
+def test_rejects_unbound_or_unsupported_view_metadata(
+    observation_blocks, field, value, message
+):
     blocks = observation_blocks()
     blocks[0]["_meta"][OBSERVATION_META][field] = value
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=message):
         read_observation(blocks)
 
 
@@ -79,23 +81,34 @@ def test_older_view_metadata_without_quality_warning_is_supported(observation_bl
 
 
 @pytest.mark.parametrize(
-    "rows",
+    "rows,message",
     [
-        '0 [icon] "" [-0.100,0.200,0.300,0.400] 0.87',
-        '0 [icon] "" [0.300,0.200,0.100,0.400] 0.87',
-        '0 [icon] "" [0.100,0.200,1.100,0.400] 0.87',
-        '0 [icon] "" [0.100,0.200,0.300] 0.87',
-        '0 [icon] "" [0.100,0.200,0.300,0.400] 1.10',
-        '-1 [text] "negative id" [0.100,0.200,0.300,0.400] 0.90',
-        '0 [unknown] "unknown kind" [0.100,0.200,0.300,0.400] 0.90',
-        '0 [icon] "" [0.100,0.200,0.300,0.400] 0.87\n0 [text] "重复" [0.4,0.2,0.8,0.4] 0.9',
+        ('0 [icon] "" [-0.100,0.200,0.300,0.400] 0.87', "bbox"),
+        ('0 [icon] "" [0.300,0.200,0.100,0.400] 0.87', "bbox"),
+        ('0 [icon] "" [0.100,0.200,1.100,0.400] 0.87', "bbox"),
+        ('0 [icon] "" [0.100,0.200,0.300] 0.87', "not an element row"),
+        ('0 [icon] "" [0.100,0.200,0.300,0.400] 1.10', "confidence"),
+        (
+            '-1 [text] "negative id" [0.100,0.200,0.300,0.400] 0.90',
+            "not an element row",
+        ),
+        (
+            '0 [unknown] "unknown kind" [0.100,0.200,0.300,0.400] 0.90',
+            "not an element row",
+        ),
+        (
+            '0 [icon] "" [0.100,0.200,0.300,0.400] 0.87\n0 [text] "重复" [0.4,0.2,0.8,0.4] 0.9',
+            "duplicate",
+        ),
     ],
 )
-def test_rejects_invalid_geometry_and_duplicate_element_ids(observation_blocks, rows):
+def test_rejects_invalid_geometry_and_duplicate_element_ids(
+    observation_blocks, rows, message
+):
     from physiclaw.common.listing import LISTING_HEADER
 
     blocks = observation_blocks(listing=f"{LISTING_HEADER}\n{rows}")
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=message):
         read_observation(blocks)
 
 

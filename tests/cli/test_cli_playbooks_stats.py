@@ -15,16 +15,16 @@ runner = CliRunner()
 
 
 def _record(**overrides) -> None:
-    base = dict(
-        app="demo",
-        playbook="flow",
-        outcome="handover",
-        idx=1,
-        nodes=2,
-        node="search",
-        reason="leg did not land",
-        micros=1,
-    )
+    base = {
+        "app": "demo",
+        "playbook": "flow",
+        "outcome": "handover",
+        "idx": 1,
+        "nodes": 2,
+        "node": "search",
+        "reason": "leg did not land",
+        "micros": 1,
+    }
     walklog.record(**{**base, **overrides})
 
 

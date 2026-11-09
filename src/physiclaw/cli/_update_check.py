@@ -18,7 +18,7 @@ import os
 import sys
 import urllib.error
 import urllib.request
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from physiclaw import __version__ as _pkg_version
@@ -52,7 +52,7 @@ def _write_cache(latest_version: str) -> None:
             p,
             json.dumps(
                 {
-                    "checked_at": datetime.now(timezone.utc).isoformat(),
+                    "checked_at": datetime.now(UTC).isoformat(),
                     "latest_version": latest_version,
                 }
             ),
@@ -67,8 +67,8 @@ def _cache_is_fresh(checked_at: str) -> bool:
     except (TypeError, ValueError):
         return False
     if ts.tzinfo is None:
-        ts = ts.replace(tzinfo=timezone.utc)
-    age = datetime.now(timezone.utc) - ts
+        ts = ts.replace(tzinfo=UTC)
+    age = datetime.now(UTC) - ts
     return timedelta(0) <= age < timedelta(days=_CACHE_TTL_DAYS)
 
 

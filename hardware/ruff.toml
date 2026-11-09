@@ -2,12 +2,8 @@ extend = "../pyproject.toml"
 src = ["..", "../src"]
 extend-exclude = ["output"]
 
-[lint]
-extend-select = ["B", "C4", "ICN", "PIE", "RUF100", "TID252", "UP"]
-
-[lint.per-file-ignores]
+[lint.extend-per-file-ignores]
 # Dynamic OS-only APIs must remain type-checkable from either platform.
 "port/backends/*.py" = ["B009"]
-
-[lint.flake8-tidy-imports]
-ban-relative-imports = "all"
+# Nested build123d contexts describe the part/sketch hierarchy.
+"parts/**.py" = ["SIM117"]

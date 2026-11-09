@@ -214,10 +214,7 @@ class ID10Lu(BaseAssembly):
         # so the bore axis sits at world y = ty + thickness/2. Shift so
         # the bore lands on top_pocket_center_y.
         top_nut_y = top_pocket_center_y - m5_nut_thickness / 2
-        if self.exploded:
-            top_nut_z = block_top_z + TOP_NUT_LIFT
-        else:
-            top_nut_z = front_hole_center_z
+        top_nut_z = block_top_z + TOP_NUT_LIFT if self.exploded else front_hole_center_z
         top_nut.move(Location((0, top_nut_y, top_nut_z)))
         placed.append(top_nut)
 

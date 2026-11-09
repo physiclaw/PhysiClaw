@@ -7,8 +7,8 @@ this one, never on each other through it, so it must not import any of
 them.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 from physiclaw.agent.engine.builtin_tool import LocalTool
 from physiclaw.agent.engine.mcp_tool import McpClient

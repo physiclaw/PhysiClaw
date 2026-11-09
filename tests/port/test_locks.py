@@ -8,6 +8,7 @@ The deadline equality variant is also accepted: a zero-duration retry before
 the advancing monotonic clock exceeds the deadline does not extend the budget.
 """
 
+import errno
 import os
 import sys
 from types import SimpleNamespace
@@ -84,8 +85,9 @@ def test_windows_lock_covers_byte_zero_and_closes_handle(
 
     assert len(calls) == 1
     assert calls[0][1:] == (2, 1, 0)
-    with pytest.raises(OSError):
+    with pytest.raises(OSError) as error:  # noqa: PT011 -- errno is asserted below.
         os.fstat(calls[0][0])
+    assert error.value.errno == errno.EBADF
 
 
 def test_windows_contention_is_reported_before_entering_body(

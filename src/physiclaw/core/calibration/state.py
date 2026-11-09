@@ -247,7 +247,7 @@ class Calibration:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict) -> "Calibration":
+    def from_dict(cls, payload: dict) -> Calibration:
         """Reconstruct from the output of to_dict().
 
         Populated fields must be usable before readiness checks or motion.
@@ -320,7 +320,7 @@ class Calibration:
         log.info(f"Saved calibration bundle → {path}")
 
     @classmethod
-    def load(cls, path: Path = BUNDLE_PATH) -> "Calibration | None":
+    def load(cls, path: Path = BUNDLE_PATH) -> Calibration | None:
         """Return the bundle at ``path``, or None if missing/unreadable."""
         try:
             return cls.from_dict(json.loads(read_text(path)))

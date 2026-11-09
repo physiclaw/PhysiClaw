@@ -30,7 +30,8 @@ class RawLog:
         store._purge_old()
         self.session_id = session_id
         self.path = d / "model.jsonl"
-        self._f = open(self.path, "a", encoding="utf-8", newline="\n")
+        # Owned by this session; close() releases it after the final event.
+        self._f = open(self.path, "a", encoding="utf-8", newline="\n")  # noqa: SIM115
         # The turn the latest request/response record carried: a micro
         # record files an unseen frame under it (its frame is normally
         # one a tool result already filed, so the store returns that

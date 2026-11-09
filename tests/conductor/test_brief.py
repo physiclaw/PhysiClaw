@@ -11,7 +11,7 @@ from physiclaw.conductor.walk.ledger import Ledger
 
 def _walk(outputs=None, paid=None, **overrides) -> str:
     ledger = Ledger(ref="demo/flow", task={}, decided=outputs or {}, paid=paid)
-    base = dict(ledger=ledger, where="search (3/9)", consented=None)
+    base = {"ledger": ledger, "where": "search (3/9)", "consented": None}
     return brief.walk_brief("move did not land", **{**base, **overrides})
 
 

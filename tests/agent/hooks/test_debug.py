@@ -27,7 +27,7 @@ def _arm(payload: str) -> None:
     wake_path().write_text(payload, encoding="utf-8")
 
 
-@pytest.fixture()
+@pytest.fixture
 def _enabled(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(DEBUG_ENV_VAR, "1")
 

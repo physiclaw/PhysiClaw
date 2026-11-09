@@ -16,7 +16,7 @@ from functools import wraps
 from io import TextIOWrapper
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Any, TextIO, TypeVar, cast
+from typing import Any, TextIO, cast
 
 from physiclaw.common.log_style import PLAYBOOK_ACCENT as PLAYBOOK_ACCENT
 from physiclaw.common.log_style import (
@@ -43,10 +43,6 @@ from physiclaw.common.text import read_text, write_text
 from physiclaw.port.locks import FileLockBusy, exclusive_file_lock
 
 log = logging.getLogger("physiclaw.tools")
-
-# Bound tight so @logged on a sync function is a type error, not a
-# runtime `TypeError` from awaiting a non-coroutine.
-AsyncFn = TypeVar("AsyncFn", bound=Callable[..., Awaitable[Any]])
 
 
 def _colorize() -> bool:
@@ -504,7 +500,9 @@ def _format_args(fn_name: str, kwargs: dict) -> str:
     return arg_str
 
 
-def logged(fn: AsyncFn) -> AsyncFn:
+# Bound tight so @logged on a sync function is a type error, not a
+# runtime `TypeError` from awaiting a non-coroutine.
+def logged[AsyncFn: Callable[..., Awaitable[Any]]](fn: AsyncFn) -> AsyncFn:
     """Announce each MCP call once; save its completion timing on disk.
 
     Success timings are DEBUG (the runtime/client displays the action result).

@@ -21,7 +21,7 @@ def register(mcp: "MCPServer", physiclaw: "PhysiClaw") -> None:
     """Register completion endpoints; requests acknowledge, workers record outcomes."""
 
     @mcp.custom_route("/api/phone/home", methods=["POST"])
-    async def _home(request: Request) -> JSONResponse:  # noqa: ARG001
+    async def _home(request: Request) -> JSONResponse:
         try:
             await asyncio.to_thread(
                 run_setup_step, physiclaw.rig, "finish.home", physiclaw.home_screen
@@ -32,7 +32,7 @@ def register(mcp: "MCPServer", physiclaw: "PhysiClaw") -> None:
             return JSONResponse({"error": str(e)}, status_code=503)
 
     @mcp.custom_route("/api/ready", methods=["POST"])
-    async def _mark_ready(request: Request) -> JSONResponse:  # noqa: ARG001
+    async def _mark_ready(request: Request) -> JSONResponse:
         # Fire-and-forget: setup just parked the phone on the home screen
         # (the dark scene that exposes AE failure). become_ready settles
         # the camera FIRST (exposure tune) and

@@ -27,7 +27,7 @@ executor knows exactly what it may read and call without opening
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Generic, Protocol, TypeVar
+from typing import TYPE_CHECKING, Protocol
 
 from physiclaw.conductor.micro.decision import MicroOutcome, MicroRequest
 from physiclaw.contract.dto import AssistantMessage, ImageBlock, Thinking
@@ -144,10 +144,7 @@ class Walk(Protocol):
     def close_done(self, recap: str, memory: str | None) -> AssistantMessage: ...
 
 
-N = TypeVar("N")
-
-
-class Step(Generic[N]):
+class Step[N]:
     kinds: frozenset[str] = frozenset()
 
     def __init__(self, walk: Walk, node: N) -> None:

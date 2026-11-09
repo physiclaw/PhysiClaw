@@ -632,9 +632,13 @@ def test_from_dict_rejects_malformed_viewport_shift(value) -> None:
     ],
 )
 def test_from_dict_rejects_unusable_viewport_shift(field, value) -> None:
-    shift = dict(
-        offset_x=0, offset_y=0, dpr=2, screenshot_width=100, screenshot_height=200
-    )
+    shift = {
+        "offset_x": 0,
+        "offset_y": 0,
+        "dpr": 2,
+        "screenshot_width": 100,
+        "screenshot_height": 200,
+    }
     shift[field] = value
 
     with pytest.raises(ValueError, match="viewport_shift"):
@@ -736,9 +740,13 @@ def test_regression_load_rejects_dimensions_that_overflow_coordinate_math(
 ) -> None:
     values = {
         "cam_size": [10**400, 1],
-        "viewport_shift": dict(
-            offset_x=0, offset_y=0, dpr=1, screenshot_width=1, screenshot_height=10**400
-        ),
+        "viewport_shift": {
+            "offset_x": 0,
+            "offset_y": 0,
+            "dpr": 1,
+            "screenshot_width": 1,
+            "screenshot_height": 10**400,
+        },
     }
     path = tmp_path / "bundle.json"
     path.write_text(json.dumps({field: values[field]}), encoding="utf-8")

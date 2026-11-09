@@ -67,18 +67,18 @@ class Record:
         self.outcome = outcome
         # One set of fields, two readers: the session's event and the
         # runs row (which adds its stamp and the input values).
-        fields: dict[str, Any] = dict(
-            app=self.app,
-            playbook=self.playbook,
-            outcome=outcome,
-            node=node,
-            idx=idx,
-            nodes=nodes,
-            reason=reason,
-            micros=micros,
-            rescues=rescues,
-            total=total,
-        )
+        fields: dict[str, Any] = {
+            "app": self.app,
+            "playbook": self.playbook,
+            "outcome": outcome,
+            "node": node,
+            "idx": idx,
+            "nodes": nodes,
+            "reason": reason,
+            "micros": micros,
+            "rescues": rescues,
+            "total": total,
+        }
         self._event("walk", fields)
         if not self.dry:
             walklog.record(**fields, values=values)
@@ -91,15 +91,15 @@ class Record:
         the same reading as fields."""
         self._event(
             "walk_read",
-            dict(
-                app=self.app,
-                playbook=self.playbook,
-                after=after,
-                node=node,
-                verdict=verdict.describe(),
-                kind=str(verdict.kind),
-                page=verdict.page_id,
-            ),
+            {
+                "app": self.app,
+                "playbook": self.playbook,
+                "after": after,
+                "node": node,
+                "verdict": verdict.describe(),
+                "kind": str(verdict.kind),
+                "page": verdict.page_id,
+            },
         )
 
     def _event(self, name: str, fields: dict[str, Any]) -> None:

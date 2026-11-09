@@ -5,7 +5,7 @@ to retry, suppress a request, disable a service, or yield to another producer.
 """
 
 import math
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 
 import httpx
@@ -51,9 +51,7 @@ def retry_after_seconds(value: str | None) -> float | None:
         seconds = float(value)
     except ValueError:
         try:
-            seconds = (
-                parsedate_to_datetime(value) - datetime.now(timezone.utc)
-            ).total_seconds()
+            seconds = (parsedate_to_datetime(value) - datetime.now(UTC)).total_seconds()
         except (ValueError, TypeError, OverflowError):
             return None
     return max(0.0, seconds) if math.isfinite(seconds) else None

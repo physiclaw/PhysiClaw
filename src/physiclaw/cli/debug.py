@@ -28,7 +28,6 @@ receiving the asks.
 """
 
 import os
-from typing import Optional
 
 import typer
 
@@ -40,12 +39,12 @@ from physiclaw.port.locks import FileLockBusy
 
 
 def debug(
-    task: Optional[str] = typer.Option(
+    task: str | None = typer.Option(
         None,
         "--task",
         help="Start a run: the user's message, e.g. 'buy two boxes of milk'.",
     ),
-    reply: Optional[list[str]] = typer.Option(
+    reply: list[str] | None = typer.Option(
         None,
         "--reply",
         help="Stage a reply (repeatable) — released after the agent's next ask.",

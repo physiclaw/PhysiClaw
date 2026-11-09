@@ -12,8 +12,9 @@ carried beside its whole element listing — the listing stamped as data
 """
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, replace
-from typing import Any, Callable
+from typing import Any
 
 from physiclaw.common.bbox import parse_box
 from physiclaw.conductor.micro import prompts

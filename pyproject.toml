@@ -113,12 +113,47 @@ physiclaw = "physiclaw.cli:app"
 [tool.ruff]
 # Exclude generated hardware diagnostic scripts from source checks.
 extend-exclude = ["hardware/output"]
+force-exclude = true
+target-version = "py312"
 
 [tool.ruff.lint]
-# Ruff's defaults (pycodestyle errors + pyflakes) made explicit, plus
-# import sorting. Wider rule sets (ANN/ARG/BLE/C901) are deliberately
-# not enabled: ~435 findings, mostly deliberate patterns and pytest noise.
-select = ["E4", "E7", "E9", "F", "I"]
+select = [
+    "E", "W", "F", "I",  # Python style, undefined names and import ordering.
+    "UP", "B", "SIM", "C4", "PIE",  # Modern syntax and common mistakes.
+    "ICN", "TID252", "RUF100",  # Import conventions and valid suppressions.
+    "ASYNC", "PT",  # Async correctness and pytest checks.
+]
+ignore = [
+    # Ruff's formatter owns indentation and wrapping, including long templates.
+    "E111", "E114", "E117", "E501", "W191",
+    # Keep established parameter-name, composite-assert and fixture-name styles.
+    "PT006", "PT018", "PT019",
+    # suppress() also filters ExceptionGroups; retain try/except boundaries.
+    "SIM105",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Pytest rules apply to the test suite, not similarly named application methods.
+"!tests/**.py" = ["PT"]
+# Nested fixture lifetimes are intentional; temporary fixture I/O is synchronous.
+"tests/**.py" = ["SIM117", "ASYNC240"]
+# This test's timeout argument is input data for the lifecycle API under test.
+"tests/cli/test_runtime_process.py" = ["ASYNC109"]
+# Native APIs use dynamic lookup so both platforms can type-check these files.
+"src/physiclaw/port/backends/**.py" = ["B009"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = [
+    # Typer deliberately stores shared parameter metadata in callable defaults.
+    "typer.Argument",
+    "typer.Option",
+    # These frozen dataclasses contain only immutable strings and integers.
+    "physiclaw.contract.plugin.TurnProducer",
+    "physiclaw.agent.llm.context_policy.CollapsePolicy",
+]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
 
 [tool.mypy]
 # Baseline gate: mypy defaults plus untyped-def bodies and ignore hygiene.

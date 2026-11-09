@@ -17,7 +17,7 @@ import json
 import sys
 import urllib.error
 from contextlib import redirect_stdout
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -112,17 +112,17 @@ def test_non_tty_skips_check(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_cache_is_fresh_within_ttl() -> None:
-    recent = datetime.now(timezone.utc) - timedelta(days=3)
+    recent = datetime.now(UTC) - timedelta(days=3)
     assert uc._cache_is_fresh(recent.isoformat()) is True
 
 
 def test_cache_is_stale_past_ttl() -> None:
-    old = datetime.now(timezone.utc) - timedelta(days=8)
+    old = datetime.now(UTC) - timedelta(days=8)
     assert uc._cache_is_fresh(old.isoformat()) is False
 
 
 def test_cache_is_fresh_handles_naive_timestamp() -> None:
-    naive = (datetime.now(timezone.utc) - timedelta(days=1)).replace(tzinfo=None)
+    naive = (datetime.now(UTC) - timedelta(days=1)).replace(tzinfo=None)
     # Treats naive as UTC (forward-compatible).
     assert uc._cache_is_fresh(naive.isoformat()) is True
 
@@ -200,9 +200,7 @@ def test_resolve_latest_refetches_when_stale(
     cache_file.write_text(
         json.dumps(
             {
-                "checked_at": (
-                    datetime.now(timezone.utc) - timedelta(days=30)
-                ).isoformat(),
+                "checked_at": (datetime.now(UTC) - timedelta(days=30)).isoformat(),
                 "latest_version": "0.0.4",
             }
         ),
@@ -438,7 +436,7 @@ def test_banner_cache_ttl_depends_on_instant_not_timezone(
     fetch.reset_mock()
     terminal.seek(0)
     terminal.truncate()
-    now = datetime(2026, 10, 14, 12, tzinfo=timezone.utc)
+    now = datetime(2026, 10, 14, 12, tzinfo=UTC)
     checked = (now - timedelta(seconds=age)).astimezone(
         timezone(timedelta(hours=offset))
     )

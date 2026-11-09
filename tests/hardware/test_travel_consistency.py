@@ -47,7 +47,7 @@ def _illustration_probe() -> None:
     from hardware.documents.manual import assets
     from hardware.scheme import OUTPUT_DIR, SVG_DIR
 
-    assert REPO_ROOT != Path(__file__).resolve().parents[2]
+    assert Path(__file__).resolve().parents[2] != REPO_ROOT
     assert (t.X_TRAVEL, t.Y_TRAVEL) == t.ILLUSTRATION_TRAVEL
     assert (t.X_EXTRUSION_LENGTH, t.Y_EXTRUSION_LENGTH) == (190, 345)
     assert OUTPUT_DIR == REPO_ROOT / "artifacts/manual-illustrations"
@@ -82,7 +82,7 @@ def _probe(x_delta: int, y_delta: int) -> None:
     import html
     import re
     from html.parser import HTMLParser
-    from xml.etree import ElementTree
+    from xml.etree import ElementTree as ET
 
     from hardware.assembly import cache
 
@@ -108,13 +108,15 @@ def _probe(x_delta: int, y_delta: int) -> None:
         invalidation_mode=py_compile.PycInvalidationMode.TIMESTAMP,
     )
     configured_travel = []
-    for axis, delta in zip(("X", "Y"), (x_delta, y_delta)):
+    for axis, delta in zip(("X", "Y"), (x_delta, y_delta), strict=True):
         configured_travel.append(
             int(re.search(rf"^{axis}_TRAVEL = (\d+)", source, re.MULTILINE)[1]) + delta
         )
         source, count = re.subn(
             rf"^{axis}_TRAVEL = (\d+)",
-            lambda match: f"{axis}_TRAVEL = {int(match[1]) + delta}",
+            lambda match, axis=axis, delta=delta: (
+                f"{axis}_TRAVEL = {int(match[1]) + delta}"
+            ),
             source,
             flags=re.MULTILINE,
         )
@@ -149,7 +151,7 @@ def _probe(x_delta: int, y_delta: int) -> None:
     rows = load_bom_rows()
     from hardware.scheme import OUTPUT_DIR
 
-    assert (t.X_TRAVEL, t.Y_TRAVEL) == tuple(configured_travel)
+    assert tuple(configured_travel) == (t.X_TRAVEL, t.Y_TRAVEL)
     assert assets.SVG_DIR == OUTPUT_DIR / "manual-illustrations/svg"
     by_id = {row["part_id"]: row for row in rows}
     cuts = drawing.cut_list(rows)
@@ -226,9 +228,7 @@ def _probe(x_delta: int, y_delta: int) -> None:
         # Measure the actual SVG faces at their declared scales, then compare
         # with the lengths checked in STEP below. Coordinates round to 0.001 mm
         # on paper, so allow only that rounding amplified by the view scale.
-        sheet = ElementTree.fromstring(
-            re.search(r"<svg\b.*?</svg>", drawing_html, re.S)[0]
-        )
+        sheet = ET.fromstring(re.search(r"<svg\b.*?</svg>", drawing_html, re.S)[0])
         faces = [
             node
             for node in sheet.iter("{http://www.w3.org/2000/svg}rect")
@@ -241,7 +241,7 @@ def _probe(x_delta: int, y_delta: int) -> None:
             and int(match[1]) > 1
         ]
         assert len(faces) == len(scales) == len(cuts)
-        for face, scale, cut in zip(faces, scales, cuts):
+        for face, scale, cut in zip(faces, scales, cuts, strict=True):
             tolerance = 0.0005 * scale + 1e-6
             assert (
                 abs(float(face.get("width")) * scale - lengths[cut.spec.part_id])

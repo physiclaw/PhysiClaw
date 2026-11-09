@@ -67,7 +67,7 @@ def test_default_seed_step_is_pinned_literal() -> None:
 
 
 def test_statuses_frozenset_is_exactly_three_members() -> None:
-    assert STATUSES == frozenset({PENDING, IN_PROGRESS, COMPLETED})
+    assert frozenset({PENDING, IN_PROGRESS, COMPLETED}) == STATUSES
 
 
 @pytest.mark.parametrize(
@@ -207,7 +207,7 @@ def test_update_validates_before_mutating_so_failure_leaves_plan_intact() -> Non
         {"content": "b", "status": "in_progress"},
     ]
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="at most one step"):
         p.update(user_said="should not stick", steps=bad_steps)
 
     # user_said unchanged because steps validation failed first.

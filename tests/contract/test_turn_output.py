@@ -19,7 +19,7 @@ from physiclaw.contract.turn import TurnOutput
     ],
 )
 def test_turn_output_invalid_envelope_rejected(summary, scratchpad, action):
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="summary|scratchpad|action|decision facts"):
         TurnOutput(summary, scratchpad, action)
 
 

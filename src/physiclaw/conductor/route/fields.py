@@ -4,7 +4,7 @@ rule has one home and one wording.
 """
 
 from collections.abc import Callable
-from typing import Any, TypeVar
+from typing import Any
 
 from physiclaw.conductor.route.scope import Line, Scope
 from physiclaw.conductor.spec.limits import (
@@ -26,15 +26,13 @@ from physiclaw.macros.model import (
     MacroInput,
 )
 
-_T = TypeVar("_T")
 
-
-def unique_list(raw: Any, where: str, check: Callable[[Any], _T]) -> list[_T]:
+def unique_list[T](raw: Any, where: str, check: Callable[[Any], T]) -> list[T]:
     """A list of distinct entries, each validated (and normalized) by
     `check` — the one shape `tools` and the reply words share."""
     if not isinstance(raw, list):
         raise PlaybookError(f"{where} must be a list")
-    out: list[_T] = []
+    out: list[T] = []
     for item in raw:
         value = check(item)
         if value in out:

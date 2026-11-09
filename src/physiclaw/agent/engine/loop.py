@@ -275,9 +275,10 @@ def _proposed_message(
     message = proposal.message
     _validate_turn(message)
     observation = facts.observation
-    if proposal.observation_id is not None or proposal.targets:
-        if observation is None or proposal.observation_id != observation.id:
-            raise ValueError("proposal observation is absent or stale")
+    if (proposal.observation_id is not None or proposal.targets) and (
+        observation is None or proposal.observation_id != observation.id
+    ):
+        raise ValueError("proposal observation is absent or stale")
     if proposal.targets:
         assert (
             observation is not None

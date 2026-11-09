@@ -683,10 +683,10 @@ async def test_loop_corrective_counter_resets_on_good_turn(patched_loop_deps) ->
         return _reply({"summary": f"turn {i}"}, {"peek": {}})
 
     responses = []
-    for i in range(CORRECTIVE_LIMIT - 1):
+    for _ in range(CORRECTIVE_LIMIT - 1):
         responses.append(_asst(tool_calls=[_tc("peek")]))  # bad shape
     responses.append(good(0))  # resets the counter
-    for i in range(CORRECTIVE_LIMIT - 1):
+    for _ in range(CORRECTIVE_LIMIT - 1):
         responses.append(_asst(tool_calls=[_tc("peek")]))  # bad again
     responses.append(
         _reply({"summary": "closing"}, {"end_session": {"status": DONE, "recap": "ok"}})

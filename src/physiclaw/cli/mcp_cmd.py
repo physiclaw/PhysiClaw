@@ -11,7 +11,7 @@ The module is named ``mcp_cmd`` (not ``mcp``) so it can't shadow the
 ``mcp`` SDK package in imports; the command name is set at registration.
 """
 
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 
@@ -49,7 +49,7 @@ def mcp(
         ),
     ] = False,
     cam_index: Annotated[
-        Optional[int],
+        int | None,
         typer.Option(
             "--cam-index",
             help="Camera index override for --warm-start / --hot-start "

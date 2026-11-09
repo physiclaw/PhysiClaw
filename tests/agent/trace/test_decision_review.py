@@ -522,5 +522,5 @@ def test_ambiguous_or_nonfinite_label_files_are_rejected(tmp_path, text):
     path = tmp_path / "labels.json"
     path.write_text(text, encoding="utf-8")
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="JSON"):
         read_json(path)

@@ -27,7 +27,7 @@ def register(mcp: "MCPServer", physiclaw: "PhysiClaw") -> None:
     """Wire the /api/phone/watch route onto the MCPServer server."""
 
     @mcp.custom_route("/api/phone/watch", methods=["GET"])
-    async def _watch(request: Request) -> JSONResponse:  # noqa: ARG001
+    async def _watch(request: Request) -> JSONResponse:
         try:
             result = await asyncio.to_thread(physiclaw.perception.watch)
             return JSONResponse(result)

@@ -104,7 +104,7 @@ def _write_pack(app: str, manifest: str, **playbooks: str):
     return root
 
 
-@pytest.fixture()
+@pytest.fixture
 def shop():
     write_placeholder_values({"CONTACT": "Alice"})
     return _write_pack("shop", MANIFEST, buy=BUY, track=TRACK)

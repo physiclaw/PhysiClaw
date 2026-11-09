@@ -542,7 +542,7 @@ def test_threshold_gate_interprets_once_and_returns_independent_copies(
 )
 def test_probability_thresholds_reject_invalid_values(question, value):
     values = {"phase": 0.9, "action_type": 0.9, "target": 0.9, question: value}
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="probability thresholds"):
         ProbabilityThresholds(**values)
 
 

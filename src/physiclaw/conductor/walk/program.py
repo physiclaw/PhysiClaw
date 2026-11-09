@@ -163,7 +163,7 @@ class Program:
         # baton that step hands on: the program the conductor drives
         # once this walk goes quiet.
         self.activation = activation
-        self.baton: "Program | None" = None
+        self.baton: Program | None = None
         self.course = Course(spec)  # the route and the cursor (course.py)
         # Turn minting + the one action in flight (`turns.py`). The scope
         # is the playbook ref: two walks in one session (the boot, then

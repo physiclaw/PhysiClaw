@@ -5,7 +5,8 @@ option is impossible rather than unlikely. Anything else is `MISSING`,
 and the channel asks once more before the walk hands over.
 """
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from physiclaw.common.bbox import parse_box
 from physiclaw.common.text import json_span

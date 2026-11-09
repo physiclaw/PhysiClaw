@@ -15,7 +15,7 @@ from collections import Counter
 from contextlib import nullcontext
 from copy import deepcopy
 from dataclasses import replace
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from html.parser import HTMLParser
 
 import pytest
@@ -24,7 +24,7 @@ from hardware.documents import BuildError
 from hardware.documents.sourcing import urls
 from hardware.scheme import REPO_ROOT
 
-NOW = datetime(2026, 10, 22, 9, tzinfo=timezone.utc)
+NOW = datetime(2026, 10, 22, 9, tzinfo=UTC)
 
 
 def bom_rows(count=8):

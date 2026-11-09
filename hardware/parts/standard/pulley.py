@@ -233,7 +233,7 @@ class Pulley2GT20T(BaseStandardPart):
                     c = e.center()
                     if (
                         abs(c.Z - set_screw_z) < chamfer_z_tol
-                        and (c.X**2 + c.Y**2) ** 0.5 > hub_r - chamfer_r_tol
+                        and hub_r - chamfer_r_tol < (c.X**2 + c.Y**2) ** 0.5
                     ):
                         entry_edges.append(e)
                 chamfer(entry_edges, length=set_screw_chamfer)

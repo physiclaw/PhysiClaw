@@ -50,7 +50,7 @@ def test_failed_pdf_render_is_not_reported_as_completed_task(
     monkeypatch.setattr(builder, finder, lambda *args: "chrome")
     monkeypatch.setattr(builder, "render_pdf", lambda *args: False)
     if document == "manual":
-        monkeypatch.setattr(manual, "load_pages", lambda: [])
+        monkeypatch.setattr(manual, "load_pages", list)
         monkeypatch.setattr(manual_assets, "HAND_FIGURES", {})
         monkeypatch.setattr(manual_assets, "SVG_DIR", tmp_path / "svg")
     kwargs = {"inline": False} if document == "manual" else {}

@@ -250,7 +250,7 @@ class PhoneBed(BaseCustomPart):
             wall_vedges = [
                 e
                 for e in my_part.edges().filter_by(Axis.Z)
-                if e.bounding_box().max.Z > thickness + 0.1
+                if thickness + 0.1 < e.bounding_box().max.Z
             ]
             fillet(wall_vedges, radius=wall_fillet_radius)
 

@@ -118,10 +118,17 @@ def test_crash_path_is_inherited_and_restored_without_overwriting_previous_runs(
             assert worker.crash_path == first.crash_path
         assert os.environ[buildlog.CRASH_LOG_ENV] == str(first.crash_path)
     assert os.environ[buildlog.CRASH_LOG_ENV] == previous
-    with pytest.raises(ValueError), buildlog.session(tmp_path) as second:
+
+    def run_operation():
         assert second.crash_path != first.crash_path
         second.crash_path.write_text("Second run native stack\n", encoding="utf-8")
         raise ValueError("Build failed")
+
+    with (
+        pytest.raises(ValueError, match="Build failed"),
+        buildlog.session(tmp_path) as second,
+    ):
+        run_operation()
     assert os.environ[buildlog.CRASH_LOG_ENV] == previous
     assert first.crash_path.read_text(encoding="utf-8") == "First run native stack\n"
     assert second.crash_path.read_text(encoding="utf-8") == "Second run native stack\n"
@@ -175,7 +182,7 @@ def test_terminal_wraps_long_messages_without_losing_identifiers(monkeypatch, co
         "phone_30_bed_extrusion, phone_40_bed_frame"
     )
     rendered = log_style._text_lines(
-        dict(level="info", elapsed_s=164.5, worker_pid=12345, message=message)
+        {"level": "info", "elapsed_s": 164.5, "worker_pid": 12345, "message": message}
     )
     lines = rendered.splitlines()
     assert len(lines) > 1
@@ -191,7 +198,7 @@ def test_terminal_aligns_messages_across_contexts_and_severities(monkeypatch):
         "get_terminal_size",
         lambda **kwargs: os.terminal_size((100, 24)),
     )
-    common = dict(elapsed_s=164.5, message="Message starts here", level="info")
+    common = {"elapsed_s": 164.5, "message": "Message starts here", "level": "info"}
     rows = [
         {**common, "stem": "phone_40_bed_frame", "completed": 59, "total": 71},
         {
@@ -221,7 +228,7 @@ def test_terminal_wraps_long_context_and_file_paths_without_truncation(monkeypat
     stem = "phone_40_" + "long_assembly_name" * 3
     path = "/some/long/directory/" + "file-name" * 10 + ".json"
     rendered = log_style._text_lines(
-        dict(level="error", elapsed_s=164.5, stem=stem, message=path)
+        {"level": "error", "elapsed_s": 164.5, "stem": stem, "message": path}
     )
     lines = rendered.splitlines()
     assert all(len(line) <= 80 for line in lines)
@@ -312,16 +319,16 @@ def test_terminal_ends_with_elapsed_time_and_omits_step_duration(monkeypatch, co
         lambda **kwargs: os.terminal_size((columns, 24)),
     )
     rendered = log_style._text_lines(
-        dict(
-            event="step_finished",
-            status="success",
-            elapsed_s=257.6,
-            level="info",
-            completed=29,
-            total=71,
-            stem="idler_21_ru",
-            message="3.0s",
-        ),
+        {
+            "event": "step_finished",
+            "status": "success",
+            "elapsed_s": 257.6,
+            "level": "info",
+            "completed": 29,
+            "total": 71,
+            "stem": "idler_21_ru",
+            "message": "3.0s",
+        },
         show_level=False,
     )
     assert rendered.startswith("[29/71]")
@@ -385,7 +392,7 @@ def test_python_warnings_are_saved_with_source_and_kept_out_of_terminal(
     original_handler = warnings.showwarning
     with buildlog.session(tmp_path) as log:
         for _ in range(2):
-            warnings.warn("Geometry warning", RuntimeWarning)
+            warnings.warn("Geometry warning", RuntimeWarning, stacklevel=1)
     saved = records(log.path)
     assert len(saved) == 2
     assert all(

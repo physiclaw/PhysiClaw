@@ -206,10 +206,15 @@ def test_cyclic_diagnostic_preserves_physical_exception_and_finalizes_attempt(re
     details = {}
     details["cycle"] = details
 
-    with pytest.raises(ValueError, match="physical failure"):
-        with recorder.operation("camera.mapping"):
-            record_event("test.decision", summarize=True, details=details)
-            raise ValueError("physical failure")
+    def run_operation():
+        record_event("test.decision", summarize=True, details=details)
+        raise ValueError("physical failure")
+
+    with (
+        pytest.raises(ValueError, match="physical failure"),
+        recorder.operation("camera.mapping"),
+    ):
+        run_operation()
 
     assert recorder.active == 0
     assert current_evidence() is None
@@ -525,10 +530,15 @@ def test_failed_writer_future_preserves_physical_exception_and_releases_scope(re
     future = Future()
     future.set_exception(OSError("worker failed"))
 
-    with pytest.raises(ValueError, match="physical failure"):
-        with recorder.operation("camera.frame") as attempt:
-            attempt.futures.append(future)
-            raise ValueError("physical failure")
+    def run_operation():
+        attempt.futures.append(future)
+        raise ValueError("physical failure")
+
+    with (
+        pytest.raises(ValueError, match="physical failure"),
+        recorder.operation("camera.frame") as attempt,
+    ):
+        run_operation()
 
     assert current_evidence() is None
     assert recorder.active == 0
@@ -888,7 +898,7 @@ def test_numeric_evidence_always_serializes_as_strict_json(value):
     from pathlib import Path
 
     with tempfile.TemporaryDirectory() as folder:
-        run = SetupRecorder(lambda: {})
+        run = SetupRecorder(dict)
         run.directory = Path(folder)
         run.emit("measurement", value=value)
         data = events(run)[0]

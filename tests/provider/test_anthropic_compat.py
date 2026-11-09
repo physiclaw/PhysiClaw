@@ -432,7 +432,7 @@ async def test_chat_payload_includes_system_with_cache_control_when_present(
         content=[SimpleNamespace(type="text", text="OK")],
         stop_reason="end_turn",
         usage=None,
-        model_dump=lambda: {},
+        model_dump=dict,
     )
     provider._client.messages.create.return_value = fake_resp
 
@@ -459,7 +459,7 @@ async def test_chat_payload_omits_system_when_no_system_messages(
         content=[SimpleNamespace(type="text", text="OK")],
         stop_reason="end_turn",
         usage=None,
-        model_dump=lambda: {},
+        model_dump=dict,
     )
     provider._client.messages.create.return_value = fake_resp
 
@@ -477,7 +477,7 @@ async def test_chat_payload_includes_tools_when_present(
         content=[SimpleNamespace(type="text", text="OK")],
         stop_reason="end_turn",
         usage=None,
-        model_dump=lambda: {},
+        model_dump=dict,
     )
     provider._client.messages.create.return_value = fake_resp
 
@@ -506,7 +506,7 @@ async def test_chat_payload_omits_tools_when_empty(
         content=[SimpleNamespace(type="text", text="OK")],
         stop_reason="end_turn",
         usage=None,
-        model_dump=lambda: {},
+        model_dump=dict,
     )
     provider._client.messages.create.return_value = fake_resp
 
@@ -813,7 +813,7 @@ def test_from_response_extracts_text_blocks_joined_by_newline() -> None:
         ],
         stop_reason="end_turn",
         usage=None,
-        model_dump=lambda: {},
+        model_dump=dict,
     )
 
     out = _from_anthropic_response(resp)
@@ -831,7 +831,7 @@ def test_from_response_drops_thinking_blocks_from_content() -> None:
         ],
         stop_reason="end_turn",
         usage=None,
-        model_dump=lambda: {},
+        model_dump=dict,
     )
 
     out = _from_anthropic_response(resp)
@@ -846,7 +846,7 @@ def test_from_response_extracts_tool_use_blocks() -> None:
         ],
         stop_reason="tool_use",
         usage=None,
-        model_dump=lambda: {},
+        model_dump=dict,
     )
 
     out = _from_anthropic_response(resp)
@@ -860,7 +860,7 @@ def test_from_response_uses_default_finish_reason_when_stop_unknown() -> None:
         content=[SimpleNamespace(type="text", text="OK")],
         stop_reason="future_unknown_reason",
         usage=None,
-        model_dump=lambda: {},
+        model_dump=dict,
     )
 
     out = _from_anthropic_response(resp)
@@ -873,7 +873,7 @@ def test_from_response_defaults_stop_reason_to_end_turn_when_none() -> None:
         content=[SimpleNamespace(type="text", text="OK")],
         stop_reason=None,
         usage=None,
-        model_dump=lambda: {},
+        model_dump=dict,
     )
 
     out = _from_anthropic_response(resp)

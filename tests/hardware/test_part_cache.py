@@ -63,8 +63,8 @@ def test_cached_leaves_have_independent_placement_labels_and_bom_entries(monkeyp
     assert first.build() is moved
     assert second is not moved
     assert second.label == "Part"
-    assert second.bounding_box().center().X == pytest.approx(0)
-    assert moved.bounding_box().center().X == pytest.approx(10)
+    assert pytest.approx(0) == second.bounding_box().center().X
+    assert pytest.approx(10) == moved.bounding_box().center().X
     assert base.BOM_REGISTRY == [
         (("Part",), 2, "custom", None),
         (("Part",), 3, "custom", None),

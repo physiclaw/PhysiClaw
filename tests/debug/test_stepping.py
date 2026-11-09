@@ -28,13 +28,13 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "conductor"))
-from conductor_fakes import make_screen, write_pack  # noqa: E402
-from typer.testing import CliRunner  # noqa: E402
+from conductor_fakes import make_screen, write_pack
+from typer.testing import CliRunner
 
-from physiclaw.cli import app  # noqa: E402
-from physiclaw.common import paths  # noqa: E402
-from physiclaw.conductor.spec import model  # noqa: E402
-from physiclaw.debug import stepping  # noqa: E402
+from physiclaw.cli import app
+from physiclaw.common import paths
+from physiclaw.conductor.spec import model
+from physiclaw.debug import stepping
 
 runner = CliRunner()
 HOME = make_screen(("Files", 0.5, 0.1)).text
@@ -90,7 +90,7 @@ class _FakeMcp:
         return [{"type": "image", "data": "x"}, {"type": "text", "text": HOME}]
 
 
-@pytest.fixture()
+@pytest.fixture
 def pack(mocker):
     write_pack(playbooks={"flow": FLOW}, macros=("open-app", "add-cart"))
     mocker.patch("physiclaw.agent.engine.mcp_tool.McpClient", _FakeMcp)
@@ -912,7 +912,8 @@ def test_stepping_the_boot_reads_the_staged_reply_as_the_request(pack, mocker) -
             return None
 
     mocker.patch(
-        "physiclaw.conductor.drive.rehearsal.micro_caller", lambda rlog=None: _Micro()
+        "physiclaw.conductor.drive.rehearsal.micro_caller",
+        side_effect=lambda rlog=None: _Micro(),
     )
 
     result = runner.invoke(

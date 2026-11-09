@@ -17,7 +17,7 @@ import os
 import shutil
 import subprocess
 import threading
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import typer
@@ -113,7 +113,7 @@ def _write_staged(version: str) -> bool:
             json.dumps(
                 {
                     "version": version,
-                    "staged_at": datetime.now(timezone.utc).isoformat(),
+                    "staged_at": datetime.now(UTC).isoformat(),
                 }
             ),
         )

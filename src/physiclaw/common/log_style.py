@@ -28,7 +28,8 @@ from physiclaw.common.terminal import (
 )
 from physiclaw.common.text import clip
 
-_CONTEXT: ContextVar[dict[str, Any]] = ContextVar("physiclaw_log_context", default={})
+# bind_log_context copies this default before adding fields.
+_CONTEXT: ContextVar[dict[str, Any]] = ContextVar("physiclaw_log_context", default={})  # noqa: B039
 
 _FIELDS = (
     "event",
@@ -278,7 +279,7 @@ class TaggedFormatter(logging.Formatter):
         if self.diagnostic or self.verbose or not hasattr(record, "console_message"):
             msg = record.getMessage()
         else:
-            msg = getattr(record, "console_message")
+            msg = record.console_message
         if self.diagnostic and (fields := record_fields(record)):
             first, sep, rest = msg.partition("\n")
             metadata = " ".join(f"{key}={value}" for key, value in fields.items())

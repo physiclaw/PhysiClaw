@@ -35,13 +35,13 @@ def test_progress_copies_steps_without_rewriting_text():
     ],
 )
 def test_malformed_progress_step_is_rejected(content, status):
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="progress step"):
         ProgressStep(content, status)
 
 
 @pytest.mark.parametrize("quote", ["", " ", 1])
 def test_task_quote_is_explicit_text_or_unknown(quote):
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="task quote"):
         ProgressSnapshot(quote)
 
 

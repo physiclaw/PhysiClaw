@@ -166,7 +166,7 @@ def test_catalog_excludes_note_without_dropping_following_actions(note_index):
 def test_catalog_unsupported_constraints_fail_compilation(schema):
     tools = [{"name": "custom", "input_schema": schema}]
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="schema"):
         ActionCatalog.compile(tools, [], max_scratchpad=32)
 
 
@@ -180,7 +180,7 @@ def test_catalog_unsupported_constraints_fail_compilation(schema):
     ],
 )
 def test_catalog_invalid_setup_fails(tools, limit):
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="action|scratchpad|sequence"):
         ActionCatalog.compile(tools, [], max_scratchpad=limit)
 
 

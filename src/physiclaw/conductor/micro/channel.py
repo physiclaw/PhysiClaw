@@ -22,7 +22,8 @@ off the setup context.
 import asyncio
 import logging
 import time
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from physiclaw.common.config import CONFIG
 from physiclaw.common.log_style import console_text

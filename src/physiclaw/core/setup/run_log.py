@@ -127,7 +127,7 @@ inspect a run before sharing it.
 
 
 def _now() -> str:
-    return dt.datetime.now(dt.timezone.utc).isoformat(timespec="milliseconds")
+    return dt.datetime.now(dt.UTC).isoformat(timespec="milliseconds")
 
 
 def _dependency_versions() -> dict[str, str | None]:
@@ -219,24 +219,24 @@ class _SetupLogs(logging.Handler):
                 )
 
     def _emit(self, record: logging.LogRecord, attempt: "SetupAttempt | None") -> None:
-        fields: dict[str, Any] = dict(
-            level=record.levelname.lower(),
-            logger=record.name,
-            message=record.getMessage(),
-            source_event=getattr(record, "event", None),
-            source_fields=record_fields(record),
-            device_id=getattr(record, "device_id", None),
-            source_timestamp=dt.datetime.fromtimestamp(
-                record.created, dt.timezone.utc
+        fields: dict[str, Any] = {
+            "level": record.levelname.lower(),
+            "logger": record.name,
+            "message": record.getMessage(),
+            "source_event": getattr(record, "event", None),
+            "source_fields": record_fields(record),
+            "device_id": getattr(record, "device_id", None),
+            "source_timestamp": dt.datetime.fromtimestamp(
+                record.created, dt.UTC
             ).isoformat(timespec="milliseconds"),
-            pid=record.process,
-            thread=record.threadName,
-            source_file=record.pathname,
-            source_line=record.lineno,
-            exception="".join(traceback.format_exception(*record.exc_info))
+            "pid": record.process,
+            "thread": record.threadName,
+            "source_file": record.pathname,
+            "source_line": record.lineno,
+            "exception": "".join(traceback.format_exception(*record.exc_info))
             if record.exc_info
             else None,
-        )
+        }
         # Journal and summary must retain the same values, even if a caller
         # later mutates structured fields. Reject unrecordable fields before
         # retaining them: one cyclic extra must not poison every later summary.

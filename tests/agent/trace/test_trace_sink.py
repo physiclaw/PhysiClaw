@@ -30,8 +30,8 @@ from physiclaw.contract.dto import USAGE_BUCKETS
 @pytest.mark.parametrize(
     "text, expected",
     [
-        ("hello\ud800", r"hello\ud800"),
-        ("hello\udfff", r"hello\udfff"),
+        ("hello" + chr(0xD800), r"hello\ud800"),
+        ("hello" + chr(0xDFFF), r"hello\udfff"),
         ("你好😀", "你好😀"),
     ],
 )
@@ -55,7 +55,9 @@ def test_regression_trace_note_preserves_unpaired_surrogates(text, expected):
     assert f"- turn 2 — {expected}\n" in notes
 
 
-@pytest.mark.parametrize("text", ["hello\ud800", "hello\udfff", "你好😀"])
+@pytest.mark.parametrize(
+    "text", ["hello" + chr(0xD800), "hello" + chr(0xDFFF), "你好😀"]
+)
 def test_regression_trace_events_preserve_unpaired_surrogates(text):
     trace = Trace("event", Images("event"))
 
@@ -138,7 +140,9 @@ def test_missing_event_image_stays_explicit_without_inline_bytes(mocker, failure
     assert "data_b64" not in text
 
 
-@pytest.mark.parametrize("text", ["hello\ud800", "hello\udfff", "你好😀"])
+@pytest.mark.parametrize(
+    "text", ["hello" + chr(0xD800), "hello" + chr(0xDFFF), "你好😀"]
+)
 def test_regression_trace_close_keeps_surrogate_recap_and_completed_outcome(text):
     trace = Trace("finished", Images("finished"))
     trace.write({"event": "done", "sentinel": "DONE", "recap": text})
@@ -409,7 +413,7 @@ def test_trace_file_failure_preserves_session_and_closes_other_files(
     opened = []
 
     def open_file(*args, **kwargs):
-        file = builtins.open(*args, **kwargs)
+        file = builtins.open(*args, **kwargs)  # noqa: SIM115 -- wrapper tests the owner's close().
         opened.append(file)
         return _FaultyFile(file, fault)
 

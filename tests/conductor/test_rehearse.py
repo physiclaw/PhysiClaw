@@ -512,9 +512,9 @@ async def test_a_suspended_walk_reports_the_suspension_and_drops_its_file(
 async def test_rehearse_drives_the_walk_and_persists_nothing(mocker) -> None:
     write_pack(playbooks={"flow": FLOW}, macros=("open-app", "add-cart"))
     mcp = _FakeMcp()
-    mocker.patch.object(cli, "McpClient", lambda: mcp, create=True)
+    mocker.patch.object(cli, "McpClient", return_value=mcp, create=True)
     mocker.patch(
-        "physiclaw.agent.engine.mcp_tool.McpClient", lambda *a, **k: mcp, create=True
+        "physiclaw.agent.engine.mcp_tool.McpClient", return_value=mcp, create=True
     )
     mocker.patch(
         "physiclaw.macros.runner.run_and_record",

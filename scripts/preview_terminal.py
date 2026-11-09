@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from physiclaw.common.log_style import (  # noqa: E402
+from physiclaw.common.log_style import (
     add_log_arguments,
     bind_log_context,
     configure_console,

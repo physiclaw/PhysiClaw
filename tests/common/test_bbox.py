@@ -151,7 +151,7 @@ def test_core_reexport_is_the_same_object() -> None:
 def test_engine_validator_wraps_the_same_message(bad) -> None:
     from physiclaw.agent.engine.validator import ValidationError, validate_arguments
 
-    with pytest.raises(ValueError) as common_err:
+    with pytest.raises(ValueError, match="bbox:") as common_err:
         validate_bbox(bad)
     with pytest.raises(ValidationError) as engine_err:
         validate_arguments({"bbox": bad}, {"type": "object", "properties": {}})

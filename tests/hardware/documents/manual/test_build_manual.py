@@ -36,7 +36,7 @@ def test_pdf_uses_selected_browser(tmp_path, monkeypatch, browser):
     monkeypatch.setattr(build_manual, "find_browser", finder)
     monkeypatch.setattr(build_manual, "render_pdf", renderer)
     monkeypatch.setattr(build_manual, "prepare_figures", lambda: None)
-    monkeypatch.setattr(build_manual, "load_pages", lambda: [])
+    monkeypatch.setattr(build_manual, "load_pages", list)
 
     build_manual.build(["en", "zh"], tmp_path, inline=False, pdf=True, browser=browser)
 
@@ -49,7 +49,7 @@ def test_html_only_does_not_require_selected_browser(tmp_path, monkeypatch):
     finder = Mock(side_effect=AssertionError("HTML builds must not look for browsers"))
     monkeypatch.setattr(build_manual, "find_browser", finder)
     monkeypatch.setattr(build_manual, "prepare_figures", lambda: None)
-    monkeypatch.setattr(build_manual, "load_pages", lambda: [])
+    monkeypatch.setattr(build_manual, "load_pages", list)
 
     paths = build_manual.build(["en"], tmp_path, inline=False, browser="edge")
 

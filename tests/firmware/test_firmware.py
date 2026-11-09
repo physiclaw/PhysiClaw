@@ -376,7 +376,7 @@ def test_download_invalid_headers_never_append(
         return_value=Response(b"b", status=status, **headers),
     )
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="download|Content-|invalid literal"):
         bundle._download_once("https://example.invalid/release.zip", dest)
 
     assert dest.read_bytes() == b"a"
@@ -702,13 +702,16 @@ def test_conversion_failure_cleans_only_cli_managed_output(
     out.write_bytes(b"previous complete bundle")
     compilers.elf.side_effect = SystemExit(2)
 
-    with pytest.raises(SystemExit) as error:
+    def run_operation():
         if entry_point == "python":
             bundle.build_bundle(tag="v-test", posix_zip=posix, elf=elf, out=out)
         else:
             bundle.main(
                 ["--tag", "v-test", "--posix-zip", str(posix), "--elf", str(elf)]
             )
+
+    with pytest.raises(SystemExit) as error:
+        run_operation()
 
     assert error.value.code == 2
     compilers.littlefs.assert_not_called()

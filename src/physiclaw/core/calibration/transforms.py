@@ -121,7 +121,7 @@ class ScreenTransforms:
             apply_affine(self.pct_to_cam, x, y)
             for x, y in ((left, top), (right, top), (right, bottom), (left, bottom))
         ]
-        xs, ys = zip(*corners)
+        xs, ys = zip(*corners, strict=True)
         w, h = self.cam_size
         return (
             (math.floor(min(xs) * w), math.floor(min(ys) * h)),

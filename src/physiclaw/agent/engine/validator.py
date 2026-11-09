@@ -65,7 +65,7 @@ def _json_equal(left: Any, right: Any) -> bool:
         )
     if isinstance(left, list) and isinstance(right, list):
         return len(left) == len(right) and all(
-            _json_equal(a, b) for a, b in zip(left, right)
+            _json_equal(a, b) for a, b in zip(left, right, strict=True)
         )
     return left == right
 

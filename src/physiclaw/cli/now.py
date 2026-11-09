@@ -6,7 +6,7 @@ wizard, no bridge wait, no sanity tap. Use only when nothing moved since
 the last clean shutdown.
 """
 
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 
@@ -26,7 +26,7 @@ def now(
         typer.Option("-v", "--verbose", help="Show detailed debug output."),
     ] = False,
     cam_index: Annotated[
-        Optional[int],
+        int | None,
         typer.Option(
             "--cam-index",
             help="Camera index override (default: value stored in the bundle).",

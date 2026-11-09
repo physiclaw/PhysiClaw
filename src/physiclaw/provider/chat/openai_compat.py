@@ -188,7 +188,7 @@ class OpenAICompatibleProvider(HTTPChatProvider):
                     for c in choices
                 )
             ):
-                setattr(exc, "reply", reply)
+                exc.reply = reply
                 raise
         return reply
 

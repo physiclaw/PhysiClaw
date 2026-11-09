@@ -243,7 +243,7 @@ def test_regression_listeners_cannot_be_stolen_during_spawn(tmp_path, mocker):
     def spawn(args, **kwargs):
         for host, offset in (("127.0.0.1", 0), ("0.0.0.0", 1)):
             with socket.socket() as competitor:
-                with pytest.raises(OSError) as caught:
+                with pytest.raises(OSError) as caught:  # noqa: PT011 -- errno is asserted below.
                     competitor.bind((host, int(args[3]) + offset))
             assert caught.value.errno == errno.EADDRINUSE
         return popen(args, **kwargs)

@@ -72,7 +72,7 @@ def session_frames(session_dir: Path) -> list[Frame]:
             for b in blocks
             if b.get("type") == "text" and is_screen(b["text"])
         ]
-        for ref, listing in zip(refs, screens):
+        for ref, listing in zip(refs, screens, strict=False):
             _append_frame(frames, session_dir, ref, listing)
     return frames
 

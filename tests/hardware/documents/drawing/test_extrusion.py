@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import replace
-from xml.etree import ElementTree
+from xml.etree import ElementTree as ET
 
 import pytest
 
@@ -127,7 +127,7 @@ def test_2040_outline_spans_two_cells_and_is_mirror_symmetric():
     pts = bed.outline_2040()
 
     assert bbox(pts) == (-2 * spec.leg, 2 * spec.leg, -spec.leg, spec.leg)
-    assert all(not bed._same(a, b) for a, b in zip(pts, pts[1:] + pts[:1]))
+    assert all(not bed._same(a, b) for a, b in zip(pts, pts[1:] + pts[:1], strict=True))
     for fn in (lambda x, y: (-x, y), lambda x, y: (x, -y)):
         assert mirrored(pts, fn) == mirrored(pts, lambda x, y: (x, y))
 
@@ -316,7 +316,7 @@ def test_output_names_are_ascii_release_asset_names():
 def _face_widths(svg: str) -> list[float]:
     return [
         float(node.get("width"))
-        for node in ElementTree.fromstring(svg).iter("{http://www.w3.org/2000/svg}rect")
+        for node in ET.fromstring(svg).iter("{http://www.w3.org/2000/svg}rect")
         if float(node.get("x", "-1")) == bed.MARGIN + 66
     ]
 
@@ -355,7 +355,7 @@ def test_original_frame_keeps_its_one_to_two_face_views():
 @pytest.mark.parametrize("scale", [1 / 3, 1 / 4, 1 / 6])
 def test_reduced_counterbore_callout_clears_plate_and_fits_reported_ink(lang, scale):
     svg, end = bed.face_2040_cb(74, 20, 545, lang, scale=scale)
-    root = ElementTree.fromstring(f"<svg>{svg}</svg>")
+    root = ET.fromstring(f"<svg>{svg}</svg>")
     plate = next(n for n in root.iter("rect") if n.get("class") == "outline")
     bottom = float(plate.get("y")) + float(plate.get("height"))
     notes = [n for n in root.iter("text") if n.get("class") == "note"]

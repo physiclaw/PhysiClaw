@@ -37,8 +37,8 @@ GRBL drops the spindle PWM whenever it enters an alarm state.
 """
 
 import logging
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from typing import Callable, Iterator
 
 from physiclaw.core.hardware._validation import validate_dwell
 

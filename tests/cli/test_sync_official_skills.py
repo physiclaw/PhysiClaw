@@ -17,6 +17,7 @@ byte-zero lock (https://learn.microsoft.com/en-us/cpp/c-runtime-library/referenc
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import importlib
 import io
@@ -62,7 +63,7 @@ class _FakeResp:
         self._data = data
         self._pos = 0
 
-    def __enter__(self) -> "_FakeResp":
+    def __enter__(self) -> _FakeResp:
         return self
 
     def __exit__(self, *_a: object) -> bool:
@@ -1229,8 +1230,9 @@ def test_windows_lock_uses_byte_zero_and_closes_handle(
 
     assert len(observed) == 1
     assert observed[0][1:] == (2, 1, 0)
-    with pytest.raises(OSError):
+    with pytest.raises(OSError) as error:  # noqa: PT011 -- errno is asserted below.
         os.fstat(observed[0][0])
+    assert error.value.errno == errno.EBADF
 
 
 def test_windows_lock_contention_prevents_fetch(official_home, monkeypatch, mocker):

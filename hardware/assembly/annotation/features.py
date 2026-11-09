@@ -142,7 +142,7 @@ def _frame_head_recess(part, projection):
             for face in native.faces().filter_by(GeomType.CYLINDER)
             if face.radius is not None
             and abs(face.radius - cb_head_d / 2) < 1e-6
-            and face.bounding_box().min.Y >= slot_lip_under_y - 1e-6
+            and slot_lip_under_y - 1e-6 <= face.bounding_box().min.Y
             and face.normal_at().dot(direction) > 0
         ]
     )

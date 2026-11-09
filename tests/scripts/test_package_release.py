@@ -248,7 +248,9 @@ def test_publish_checks_prerequisites_before_upload(
 ):
     if missing != "token":
         monkeypatch.setenv("UV_PUBLISH_TOKEN", "test-token")
-    for label, path in zip(("wheel", "sdist"), release.artifact_paths("0.8.4")):
+    for label, path in zip(
+        ("wheel", "sdist"), release.artifact_paths("0.8.4"), strict=True
+    ):
         if label != missing:
             path.parent.mkdir(exist_ok=True)
             path.write_bytes(b"package")

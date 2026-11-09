@@ -162,7 +162,9 @@ def calibrate_arm(
     screen_pts: list = probe_screen.tolist()
     grid_touches: list = []
 
-    for idx, ((col, row), (gx, gy)) in enumerate(zip(grid, grid_targets), start=1):
+    for idx, ((col, row), (gx, gy)) in enumerate(
+        zip(grid, grid_targets, strict=True), start=1
+    ):
         log.info(
             f"    Grid {idx}/{len(grid)}: viewport ({col:.2f}, {row:.2f}) → "
             f"arm ({gx:.1f}, {gy:.1f})mm"

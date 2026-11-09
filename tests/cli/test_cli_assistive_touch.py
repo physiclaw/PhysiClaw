@@ -34,14 +34,14 @@ def service(mocker):
     browser = mocker.patch.object(command.webbrowser, "open", return_value=True)
     write = mocker.patch.object(command.runtime_state, "write")
     clear = mocker.patch.object(command.runtime_state, "clear")
-    return dict(
-        connection=connection,
-        listener=listener,
-        serve=serve,
-        browser=browser,
-        write=write,
-        clear=clear,
-    )
+    return {
+        "connection": connection,
+        "listener": listener,
+        "serve": serve,
+        "browser": browser,
+        "write": write,
+        "clear": clear,
+    }
 
 
 def test_standalone_starts_both_listeners_and_opens_page(service):

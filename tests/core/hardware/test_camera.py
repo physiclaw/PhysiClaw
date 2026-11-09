@@ -87,7 +87,7 @@ class FakeVideoCapture:
         self.set_calls: list[tuple[int, float]] = []
         self._properties: dict[int, float] = {}
 
-    def isOpened(self) -> bool:  # noqa: N802 — cv2 API
+    def isOpened(self) -> bool:  # Match the OpenCV capture API.
         return self._is_open and not self.released
 
     def read(self):
@@ -1546,7 +1546,7 @@ def _scheduled_camera(mocker, *, focus_value=None):
         return reader
 
     gate = ScheduledLock()
-    mocker.patch.object(camera_mod.platform, "camera_capture_lock", lambda **kw: gate)
+    mocker.patch.object(camera_mod.platform, "camera_capture_lock", return_value=gate)
     mocker.patch.object(camera_mod, "FrameReader", side_effect=make_reader)
     mocker.patch.object(cv2, "VideoCapture", side_effect=captures)
     camera = Camera(index=0, focus_value=focus_value)

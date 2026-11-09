@@ -49,7 +49,7 @@ def native(mocker):
             assert slot == 3 and args[0] == 6
             if state.fail == "range":
                 return -1
-            for target, value in zip(args[1:], state.bounds):
+            for target, value in zip(args[1:], state.bounds, strict=True):
                 target._obj.value = value
         else:
             raise AssertionError((obj, slot))

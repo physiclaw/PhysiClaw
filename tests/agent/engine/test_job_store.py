@@ -50,6 +50,7 @@ from __future__ import annotations
 
 import datetime as dt
 import re
+from dataclasses import FrozenInstanceError
 from pathlib import Path
 from textwrap import dedent
 
@@ -143,7 +144,7 @@ def test_protocol_constant_pinned(name: str, expected: str) -> None:
 
 
 def test_terminal_statuses_set_is_cancel_done_fail_only() -> None:
-    assert TERMINAL_STATUSES == frozenset({STATUS_CANCEL, STATUS_DONE, STATUS_FAIL})
+    assert frozenset({STATUS_CANCEL, STATUS_DONE, STATUS_FAIL}) == TERMINAL_STATUSES
 
 
 # ---------- Job dataclass ----------
@@ -152,7 +153,7 @@ def test_terminal_statuses_set_is_cancel_done_fail_only() -> None:
 def test_job_is_frozen() -> None:
     j = Job(id="x", kind="periodic", schedule="* * * * *", description="d")
 
-    with pytest.raises(Exception):  # FrozenInstanceError
+    with pytest.raises(FrozenInstanceError, match="id"):
         j.id = "y"  # type: ignore[misc]
 
 
@@ -759,7 +760,7 @@ def test_regression_expire_fired_jobs_with_offset_timestamps(
     tmp_path: Path, age_minutes: int, expected: list[str]
 ) -> None:
     now = dt.datetime(2026, 4, 29, 7)
-    stamp = (now - dt.timedelta(minutes=age_minutes)).astimezone(dt.timezone.utc)
+    stamp = (now - dt.timedelta(minutes=age_minutes)).astimezone(dt.UTC)
     p = _write_jobs(
         tmp_path,
         _job_section(
@@ -782,7 +783,7 @@ def test_regression_purge_respects_age_of_offset_activity_timestamps(
     tmp_path: Path, field: str, age_minutes: int, expected: list[str]
 ) -> None:
     now = dt.datetime(2026, 4, 29, 7)
-    stamp = (now - dt.timedelta(minutes=age_minutes)).astimezone(dt.timezone.utc)
+    stamp = (now - dt.timedelta(minutes=age_minutes)).astimezone(dt.UTC)
     p = _write_jobs(
         tmp_path,
         _job_section(

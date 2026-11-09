@@ -11,7 +11,8 @@ the packages that call them.
 """
 
 import json
-from typing import Any, Callable, Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
+from typing import Any
 
 from physiclaw.contract.dto import ContentBlock, ImageBlock, TextBlock
 

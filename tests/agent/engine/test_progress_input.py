@@ -182,7 +182,8 @@ async def test_real_workflow_and_requests_match_with_decision_off_and_shadow(
     blocks = observation_blocks()
     blocks[0]["_meta"][OBSERVATION_META]["observed_after"] = time.time()
     results = []
-    for mode in ("disabled", "off", "shadow"):
+
+    async def run_mode(mode):
         monkeypatch.setattr(CONFIG.decision, "model", "fake/shadow")
         monkeypatch.setattr(
             CONFIG.decision, "mode", "shadow" if mode == "shadow" else "off"
@@ -318,4 +319,7 @@ async def test_real_workflow_and_requests_match_with_decision_off_and_shadow(
             decision_provider.evaluate.assert_not_awaited()
             decision_provider.aclose.assert_not_awaited()
             events.write.assert_not_called()
+
+    for mode in ("disabled", "off", "shadow"):
+        await run_mode(mode)
     assert results[0] == results[1] == results[2]

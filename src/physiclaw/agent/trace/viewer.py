@@ -218,7 +218,7 @@ def _mark_request_deltas(records: list[dict[str, Any]]) -> None:
             continue
         cur = [_without_cache_marks(m) for m in msgs]
         same = 0
-        for a, b in zip(prev, cur):
+        for a, b in zip(prev, cur, strict=False):
             if a != b:
                 break
             same += 1

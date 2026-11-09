@@ -96,6 +96,24 @@ def test_read_returns_text_results_sorted(mocker) -> None:
     assert out[0].confidence == 0.8
 
 
+@pytest.mark.parametrize("short_field", ["boxes", "txts", "scores"])
+@pytest.mark.parametrize("length", [0, 1])
+def test_read_preserves_common_prefix_of_unequal_backend_arrays(
+    mocker, short_field, length
+) -> None:
+    result = _ocr_result(
+        [[(1, 2), (3, 2), (3, 4), (1, 4)]] * 2,
+        ["first", "second"],
+        [0.9, 0.8],
+    )
+    setattr(result, short_field, getattr(result, short_field)[:length])
+    reader = _new_reader(mocker, MagicMock(return_value=result))
+
+    out = reader.read(np.zeros((10, 10, 3), dtype=np.uint8))
+
+    assert out == [TextResult("first", (1, 2, 3, 4), 0.9)][:length]
+
+
 def test_read_with_crop_box_offsets_bbox(mocker) -> None:
     boxes = [[(5, 5), (15, 5), (15, 15), (5, 15)]]
     fake_ocr = MagicMock(return_value=_ocr_result(boxes, ["X"], [1.0]))

@@ -152,14 +152,14 @@ def _tc(name: str, args: dict | None = None, *, tcid: str = None) -> ToolCall:
 
 
 def _settings(**over) -> Settings:
-    base = dict(
-        max_turns=300,
-        max_session_attempts=3,
-        provider_retry_attempts=3,
-        retry_backoff_seconds=0.0,
-        wait_default_minutes=15,
-        max_session_seconds=0,
-    )
+    base = {
+        "max_turns": 300,
+        "max_session_attempts": 3,
+        "provider_retry_attempts": 3,
+        "retry_backoff_seconds": 0.0,
+        "wait_default_minutes": 15,
+        "max_session_seconds": 0,
+    }
     base.update(over)
     return Settings(**base)
 

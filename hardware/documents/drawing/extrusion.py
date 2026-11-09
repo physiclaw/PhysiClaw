@@ -504,7 +504,7 @@ def face_2040_cb(
     callout = callout_lines(CB, lang)
     callout_y = y0 + W / 2 + 0.6
     ink_end = y0 + W + DIM_STANDOFF + DIM_OVER
-    if W / 2 < NOTE_LEAD * len(callout):
+    if NOTE_LEAD * len(callout) > W / 2:
         # Reduced views cannot fit the text between the centre and lower edge.
         callout_y = y0 + W + 4.5
         ink_end = max(ink_end, callout_y + NOTE_LEAD * len(callout))

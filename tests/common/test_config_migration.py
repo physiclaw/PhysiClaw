@@ -163,9 +163,9 @@ def test_legacy_qwen_selection_and_key_reach_runtime(
 
     path = config.config_path()
     original = (
-        '[provider]\nname = "qwen"\nqwen_api_key = "synthetic-legacy-key"\n'
-        '[providers.qwen]\nbase_url = "https://proxy.example.test/v1"\n'
-    ).encode()
+        b'[provider]\nname = "qwen"\nqwen_api_key = "synthetic-legacy-key"\n'
+        b'[providers.qwen]\nbase_url = "https://proxy.example.test/v1"\n'
+    )
     path.write_bytes(original)
     monkeypatch.delenv(config.MODEL_ENV_VAR, raising=False)
     monkeypatch.delenv("QWEN_MODEL", raising=False)
@@ -242,7 +242,7 @@ def test_full_file_preserves_all_credentials_and_custom_providers(
     provider_overrides = tomllib.loads(original)["providers"]
 
     config.CONFIG = config.load(path)
-    assert config.CONFIG == cfg
+    assert cfg == config.CONFIG
     saved = tomllib.loads(path.read_text(encoding="utf-8"))
     assert saved["provider"] == asdict(cfg.provider)
     assert saved["providers"] == provider_overrides

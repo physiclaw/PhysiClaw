@@ -184,7 +184,10 @@ class Watchdog:
             if (
                 self._ema is None
                 or (now - self._poll_time) > EMA_STALE
-                or any(f.shape != c.shape for (f, _), c in zip(self._ema, crops))
+                or any(
+                    f.shape != c.shape
+                    for (f, _), c in zip(self._ema, crops, strict=True)
+                )
             ):
                 self._ema = tuple(
                     (c.astype(np.float32), c.astype(np.float32)) for c in crops
@@ -195,7 +198,7 @@ class Watchdog:
 
             self._ema = tuple(
                 (_ema_update(f, c, EMA_FAST), _ema_update(s, c, EMA_SLOW))
-                for (f, s), c in zip(self._ema, crops)
+                for (f, s), c in zip(self._ema, crops, strict=True)
             )
             self._poll_time = now
             ema = self._ema

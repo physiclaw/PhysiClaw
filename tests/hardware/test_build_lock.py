@@ -41,7 +41,7 @@ def test_separate_process_is_rejected_but_child_can_inherit(tmp_path, monkeypatc
 
 def test_exception_releases_lock(tmp_path, monkeypatch):
     monkeypatch.setattr(lock, "OUTPUT_DIR", tmp_path)
-    with pytest.raises(ValueError), lock.build_lock():
+    with pytest.raises(ValueError, match="interrupted"), lock.build_lock():
         raise ValueError("interrupted")
     with lock.build_lock():
         with locks.child_inheritance() as options:

@@ -42,11 +42,11 @@ def test_regression_live_session_id_ignores_invalid_utf8() -> None:
 
 
 def test_HOME_resolves_to_per_test_tmp_path(physiclaw_home: Path) -> None:
-    assert paths.HOME == physiclaw_home
+    assert physiclaw_home == paths.HOME
 
 
 def test_LOG_DIR_is_HOME_slash_log(physiclaw_home: Path) -> None:
-    assert paths.LOG_DIR == physiclaw_home / "log"
+    assert physiclaw_home / "log" == paths.LOG_DIR
 
 
 # ---------- ensure_dirs ----------
@@ -227,7 +227,7 @@ def test_HOME_at_import_reads_PHYSICLAW_HOME_env_var(
 
     importlib.reload(paths)
 
-    assert paths.HOME == custom
+    assert custom == paths.HOME
 
 
 def test_HOME_at_import_falls_back_to_tilde_physiclaw_when_env_unset(
@@ -238,7 +238,7 @@ def test_HOME_at_import_falls_back_to_tilde_physiclaw_when_env_unset(
 
     importlib.reload(paths)
 
-    assert paths.HOME == Path("~/.physiclaw").expanduser()
+    assert Path("~/.physiclaw").expanduser() == paths.HOME
 
 
 def test_LOG_DIR_at_import_is_HOME_slash_log(
@@ -250,4 +250,4 @@ def test_LOG_DIR_at_import_is_HOME_slash_log(
 
     importlib.reload(paths)
 
-    assert paths.LOG_DIR == tmp_path / "log"
+    assert tmp_path / "log" == paths.LOG_DIR

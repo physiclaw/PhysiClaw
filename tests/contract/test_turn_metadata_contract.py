@@ -36,6 +36,11 @@ def test_turn_metadata_is_immutable_and_has_no_producer_context():
     ],
 )
 def test_invalid_turn_metadata_is_rejected(overrides):
-    values = dict(session_id="session", turn=0, deadline=None, turns_remaining=300)
-    with pytest.raises(ValueError):
+    values = {
+        "session_id": "session",
+        "turn": 0,
+        "deadline": None,
+        "turns_remaining": 300,
+    }
+    with pytest.raises(ValueError, match="turn|remaining"):
         TurnMetadata(**(values | overrides))

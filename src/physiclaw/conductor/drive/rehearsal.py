@@ -179,7 +179,7 @@ class _Decider:
         self._emit = emit
         self._raw = raw
         self._on_exchange = on_exchange
-        self._micro: "MicroCaller | None" = None
+        self._micro: MicroCaller | None = None
         self._unwired: str | None = None  # why no model can be called, once known
         self._wire = ModelLog()
 

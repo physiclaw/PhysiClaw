@@ -549,7 +549,8 @@ def await_bridge_and_calibrate(host: str, port: int) -> None:
             run(auto=True)
     except SystemExit as e:
         log.error("auto-calibration stopped: %s", e)
-    except Exception:  # noqa: BLE001 — a failed setup must not crash the server
+    except Exception:
+        # A failed setup should be diagnosed without stopping the server.
         log.exception("auto-calibration failed")
 
 

@@ -244,7 +244,7 @@ def test_phone_app_collects_routes_and_builds_starlette() -> None:
     app = PhoneApp()
 
     @app.custom_route("/bridge", methods=["GET"])
-    async def _page(request):  # noqa: ARG001
+    async def _page(request):
         raise NotImplementedError
 
     built = app.build()

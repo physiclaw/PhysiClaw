@@ -13,7 +13,7 @@ Stepping keeps only its debugger position; replay uses recorded screens.
 import asyncio
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Optional
+from typing import TYPE_CHECKING, Annotated
 
 import typer
 
@@ -131,7 +131,7 @@ def install(
         ),
     ],
     set_values: Annotated[
-        Optional[list[str]],
+        list[str] | None,
         typer.Option(
             "--set",
             help="Fill a placeholder non-interactively: KEY=VALUE (repeatable).",
@@ -328,7 +328,7 @@ def step(
         ),
     ] = None,
     at: Annotated[
-        Optional[str],
+        str | None,
         typer.Option(
             "--at",
             help="Put the cursor on this node (its name) first — jump there, "
@@ -336,7 +336,7 @@ def step(
         ),
     ] = None,
     to: Annotated[
-        Optional[str],
+        str | None,
         typer.Option(
             "--to",
             help="Keep stepping until the cursor has passed this node "
@@ -353,7 +353,7 @@ def step(
         ),
     ] = None,
     reply: Annotated[
-        Optional[str],
+        str | None,
         typer.Option(
             "--reply",
             help="Stage the user's reply for the next ask (the user channel "
@@ -476,11 +476,11 @@ def step(
 def replay(
     ref: Annotated[str, typer.Argument(help="<app>/<playbook> to replay.")],
     session: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--session", help="A recorded session id (suffix ok if unique)."),
     ] = None,
     listings: Annotated[
-        Optional[list[Path]],
+        list[Path] | None,
         typer.Option("--listing", help="A listing text file, one screen (repeatable)."),
     ] = None,
     inputs: Annotated[
@@ -625,7 +625,7 @@ def micro(
         str, typer.Argument(help="A recorded session id (suffix ok if unique).")
     ],
     model: Annotated[
-        Optional[str],
+        str | None,
         typer.Option(
             "--model",
             help="provider/model to ask (default: [conductor] micro_model, "
@@ -633,7 +633,7 @@ def micro(
         ),
     ] = None,
     think: Annotated[
-        Optional[str],
+        str | None,
         typer.Option(
             "--think", help="off|low|medium|high — override the recorded level."
         ),
@@ -642,7 +642,7 @@ def micro(
         int, typer.Option("--reps", help="How many times to ask each call.")
     ] = 1,
     only: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--only", help="Only this call kind (parse_task…) or node id."),
     ] = None,
     as_json: Annotated[bool, typer.Option("--json", help="Rows as JSON.")] = False,
@@ -793,7 +793,7 @@ def check() -> None:
     if not apps:
         typer.echo("No app packs found.")
         return
-    specs: dict[str, "Playbook"] = {}
+    specs: dict[str, Playbook] = {}
     bad = False
     for app in apps:
         app_bad, app_specs = _check_app(app)

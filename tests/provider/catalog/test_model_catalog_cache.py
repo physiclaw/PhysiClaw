@@ -235,5 +235,5 @@ def test_dir_at_import_lives_under_paths_HOME(physiclaw_home: Path) -> None:
 
     importlib.reload(discovery)
 
-    assert discovery._DIR == physiclaw_home / "discovered"
+    assert physiclaw_home / "discovered" == discovery._DIR
     assert discovery._DIR.name == "discovered"

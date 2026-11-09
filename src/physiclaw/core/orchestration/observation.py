@@ -24,8 +24,9 @@ vocabulary with the agent engine's stuck guard — byte-stable.
 
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, replace
-from typing import Any, Callable
+from typing import Any
 
 from physiclaw.common import verdict
 from physiclaw.core.hardware.frame_reader import PublishedFrame
@@ -229,7 +230,9 @@ class GestureObserver:
             issues = (report.dark, report.blurry, report.blown)
             labels = [
                 label
-                for active, label in zip(issues, ("dark", "blurry", "overexposed"))
+                for active, label in zip(
+                    issues, ("dark", "blurry", "overexposed"), strict=True
+                )
                 if active
             ]
             log.log(

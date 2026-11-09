@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from itertools import pairwise
+
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
@@ -100,7 +102,7 @@ def test_balanced_split_preserves_rows_and_component_grouping(sizes):
 
     boundary_ok = all(
         chunk[0]["component"] != prev[-1]["component"]
-        for prev, chunk in zip(chunks, chunks[1:])
+        for prev, chunk in pairwise(chunks)
         if prev and chunk
     )
     assert ([r for c in chunks for r in c], boundary_ok) == (rows, True)

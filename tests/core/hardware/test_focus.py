@@ -249,15 +249,15 @@ def test_exhaustive_focus_meter_sequences(freeze_ok):
         events = []
         iterator = iter(sequence)
 
-        def meter():
+        def meter(events=events, iterator=iterator):
             events.append("meter")
             return next(iterator)
 
-        def freeze():
+        def freeze(events=events):
             events.append("freeze")
             return freeze_ok
 
-        result = lock(meter, freeze, lambda: events.append("unfreeze"))
+        result = lock(meter, freeze, lambda events=events: events.append("unfreeze"))
 
         assert result.locked is expected, sequence
         assert events.count("meter") == reads, sequence

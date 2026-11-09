@@ -6,23 +6,20 @@ skin parses, and the qualified key every macro dispatches under.
 """
 
 from dataclasses import dataclass, field
-from typing import Generic, TypeVar
 
 from physiclaw.common import paths
 from physiclaw.conductor.spec.model import Playbook, PlaybookError, Recovery
 from physiclaw.conductor.spec.pages import Landmark, PageDecl, PagePrint
 from physiclaw.macros.model import MACRO_SUFFIX, Macro
 
-_T = TypeVar("_T")
-
 
 @dataclass(frozen=True)
-class Scanned(Generic[_T]):
+class Scanned[T]:
     """One leaf folder, read: what parsed, by bare name, and what did
     not, with its reason — so a route naming a broken file fails with
     the cause instead of "not found"."""
 
-    ok: dict[str, _T] = field(default_factory=dict)
+    ok: dict[str, T] = field(default_factory=dict)
     errors: dict[str, str] = field(default_factory=dict)
 
 

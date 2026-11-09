@@ -17,7 +17,7 @@ import re
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, ClassVar, TypeVar
+from typing import TYPE_CHECKING, ClassVar
 
 from physiclaw.common import gesture_vocab
 from physiclaw.common.bbox import Bbox, center_of, inside
@@ -447,10 +447,9 @@ COMBINATORS: dict[str, tuple[Callable[[tuple[Clause, ...]], Clause], int]] = {
 
 
 # The two shapes carrying `{name}` placeholders through `sub`.
-_S = TypeVar("_S", "Clause", "MacroGuard")
-
-
-def sub(value: _S | None, values: dict[str, str]) -> _S | None:
+def sub[S: ("Clause", "MacroGuard")](
+    value: S | None, values: dict[str, str]
+) -> S | None:
     """`value.substituted(values)`, passing None through. Every optional
     check field needs it, so the ternary is written once."""
     return None if value is None else value.substituted(values)

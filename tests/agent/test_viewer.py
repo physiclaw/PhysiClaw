@@ -856,7 +856,7 @@ def test_load_keeps_non_object_lines_whole(tmp_path, line):
 
 
 def test_load_inventory_reports_byte_sizes(tmp_path):
-    payload = "记录\n".encode("utf-8")
+    payload = "记录\n".encode()
     (tmp_path / "notes.md").write_bytes(payload)
 
     model = viewer.load(tmp_path)

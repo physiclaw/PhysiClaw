@@ -588,7 +588,7 @@ def test_lint_fails_open_on_malformed_actions() -> None:
 # ---------- KeyboardTracker ----------
 
 
-def _tracker_with_layout() -> "layout.KeyboardTracker":
+def _tracker_with_layout() -> layout.KeyboardTracker:
     _write_layout(_LINT_LAYOUT)
     return layout.KeyboardTracker()
 

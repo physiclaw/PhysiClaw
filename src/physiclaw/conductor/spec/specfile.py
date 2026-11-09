@@ -11,7 +11,8 @@ distinct catch surfaces without re-spelling the validation:
     _require_str, _prose, _opt_prose, _check_name = specfile.bind(PagesError)
 """
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from physiclaw.common.placeholders import resolve_data_placeholders
 from physiclaw.common.yaml import safe_yaml

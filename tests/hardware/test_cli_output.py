@@ -114,13 +114,19 @@ def test_shared_lifecycle_saves_failure_and_cancellation_without_terminal_traceb
     tmp_path, monkeypatch, capsys, interrupted
 ):
     monkeypatch.setattr(scheme, "OUTPUT_DIR", tmp_path)
-    with pytest.raises(SystemExit) as stopped:
-        with buildlog.command("Hardware test"):
-            with buildlog.step("Render HTML"):
-                buildlog.event("warning", "Hidden warning", level="warning")
-                if interrupted:
-                    raise KeyboardInterrupt
-                raise ValueError("Missing source")
+
+    def run_operation():
+        buildlog.event("warning", "Hidden warning", level="warning")
+        if interrupted:
+            raise KeyboardInterrupt
+        raise ValueError("Missing source")
+
+    with (
+        pytest.raises(SystemExit) as stopped,
+        buildlog.command("Hardware test"),
+        buildlog.step("Render HTML"),
+    ):
+        run_operation()
     assert stopped.value.code == (130 if interrupted else 1)
     output = capsys.readouterr().out
     assert ("CANCELLED" if interrupted else "FAILED") in output

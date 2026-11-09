@@ -15,8 +15,9 @@ verdict marker (`physiclaw.common.verdict`), and echoed free-form content
 could carry marker-like text.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable, Literal, get_args
+from typing import TYPE_CHECKING, Literal, get_args
 
 from physiclaw.common import gesture_vocab
 from physiclaw.core.vision.util import validate_bbox

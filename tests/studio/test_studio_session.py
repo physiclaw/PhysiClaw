@@ -533,7 +533,7 @@ async def test_job_error_after_cancellation_does_not_retain_connection(
         try:
             await asyncio.sleep(0)
         except asyncio.CancelledError:
-            raise error_type("driver failed during cancellation")
+            raise error_type("driver failed during cancellation") from None
 
     action = asyncio.create_task(s.drive(job))
     with pytest.raises(asyncio.CancelledError, match="cancel before failure"):

@@ -31,6 +31,13 @@ from physiclaw.core.vision.watchdog import (
     _ema_update,
 )
 
+
+@pytest.fixture
+def clock():
+    with freeze_time("2026-10-14 10:00:00") as frozen:
+        yield frozen
+
+
 # ---------- _check_content ----------
 
 
@@ -417,8 +424,7 @@ def test_crop_zones_leaves_1080p_scale_crops_untouched() -> None:
     assert all(c.shape[1] == 100 for c in crops)
 
 
-@freeze_time("2026-10-14 10:00:00", as_kwarg="clock")
-def test_poll_resolution_change_resets_baseline_without_wake(clock=None):
+def test_poll_resolution_change_resets_baseline_without_wake(clock):
     from physiclaw.core.calibration.transforms import ScreenTransforms
 
     identity = np.array([[1.0, 0, 0], [0, 1.0, 0]])
@@ -436,8 +442,7 @@ def test_poll_resolution_change_resets_baseline_without_wake(clock=None):
     assert result == {"wake": False, "reason": "ema initialized"}
 
 
-@freeze_time("2026-10-14 10:00:00", as_kwarg="clock")
-def test_poll_reflected_calibration_detects_banner(clock=None):
+def test_poll_reflected_calibration_detects_banner(clock):
     from physiclaw.core.calibration.transforms import ScreenTransforms
 
     identity = np.array([[1.0, 0, 0], [0, 1.0, 0]])

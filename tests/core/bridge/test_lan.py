@@ -37,7 +37,7 @@ def test_get_lan_ip_falls_back_to_loopback_on_socket_error(mocker) -> None:
 def test_get_lan_ip_falls_back_to_loopback_on_timeout(mocker) -> None:
     fake_sock = MagicMock()
     fake_sock.__enter__.return_value = fake_sock
-    fake_sock.connect.side_effect = socket.timeout()
+    fake_sock.connect.side_effect = TimeoutError()
     mocker.patch.object(lan.socket, "socket", return_value=fake_sock)
 
     assert lan.get_lan_ip() == "127.0.0.1"

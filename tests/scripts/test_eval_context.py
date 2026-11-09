@@ -300,7 +300,7 @@ async def test_unreplayable_requests_fail_before_any_api_call(tmp_path, mocker, 
         after["messages"] = []
     (tmp_path / "after.json").write_text(json.dumps(after), encoding="utf-8")
     factory = mocker.patch("physiclaw.provider.make_chat_provider")
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="same model|TurnOutput|nonempty"):
         await replay.evaluate(args)
     factory.assert_not_called()
 

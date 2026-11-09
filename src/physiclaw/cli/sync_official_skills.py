@@ -19,9 +19,9 @@ import tempfile
 import threading
 import urllib.error
 import zipfile
+from collections.abc import Callable
 from contextlib import suppress
 from pathlib import Path
-from typing import Callable
 
 import click
 import typer
@@ -245,7 +245,7 @@ def _write_sync_state(
         "zipHash": f"sha256:{zip_hex}",
         "commit": commit,
         "skillCount": count,
-        "syncedAt": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "syncedAt": dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
     write_text(staging / SYNC_STATE_FILE, json.dumps(payload, indent=2) + "\n")
 

@@ -18,7 +18,7 @@ import pytest
 # targets and CI install the cad dependency group; direct pytest runs may not.
 pytest.importorskip("build123d", reason="CAD group not installed")
 
-from hardware.assembly import build_procedures as bp  # noqa: E402
+from hardware.assembly import build_procedures as bp
 
 STEM = "frame_10_base"
 

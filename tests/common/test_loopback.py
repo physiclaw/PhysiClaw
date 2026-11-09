@@ -18,10 +18,10 @@ def test_hosts_are_the_no_proxy_entries_in_order() -> None:
 
 
 def test_ips_are_hosts_minus_the_hostname() -> None:
-    assert LOOPBACK_IPS == frozenset({"127.0.0.1", "::1"})
+    assert frozenset({"127.0.0.1", "::1"}) == LOOPBACK_IPS
 
 
 def test_host_headers_add_only_the_bracketed_v6() -> None:
-    assert LOOPBACK_HOST_HEADERS == frozenset(
-        {"127.0.0.1", "localhost", "::1", "[::1]"}
+    assert (
+        frozenset({"127.0.0.1", "localhost", "::1", "[::1]"}) == LOOPBACK_HOST_HEADERS
     )

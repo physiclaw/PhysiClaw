@@ -133,7 +133,7 @@ class TNut(BaseStandardPart):
 
                 def diag(edges):
                     return [
-                        e for e in edges if (e.center().X > 0) == (e.center().Z > mid_z)
+                        e for e in edges if (e.center().X > 0) == (mid_z < e.center().Z)
                     ]
 
                 # Fillet the (+X,+Z) / (-X,-Z) plate corners. Gives the
@@ -158,7 +158,7 @@ class TNut(BaseStandardPart):
                 # curved diagonal from plate to boss reads as a visual
                 # key for the tilt-insert orientation.
                 boss_edges = [
-                    e for e in p.edges().filter_by(Axis.Y) if e.center().Y > height
+                    e for e in p.edges().filter_by(Axis.Y) if height < e.center().Y
                 ]
                 fillet(diag(boss_edges), radius=2 * MM)
 

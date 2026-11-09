@@ -121,7 +121,7 @@ class InstallerIO:
         return self.model.parent / "convert"
 
     def set_cdn(self, data):
-        self.responses.update(dict(zip(self.cdn_urls, split_parts(data))))
+        self.responses.update(dict(zip(self.cdn_urls, split_parts(data), strict=True)))
 
     @property
     def cdn_urls(self):

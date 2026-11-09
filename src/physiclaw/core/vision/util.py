@@ -231,7 +231,7 @@ def find_numpad_digit(elements: list[dict], digit: str) -> list[float] | None:
         if label not in _NUMPAD_GRID or not bbox_on_screen(e["bbox"]):
             continue
         _, y1, _, y2 = e["bbox"]
-        if 0.2 <= y1 and y2 <= 0.8:
+        if y1 >= 0.2 and y2 <= 0.8:
             detected[label] = e
 
     if len(detected) < NUMPAD_MIN_DIGITS:

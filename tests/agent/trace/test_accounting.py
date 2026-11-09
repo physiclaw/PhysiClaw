@@ -232,7 +232,7 @@ def test_cost_needs_no_rate_for_a_known_zero_and_does_not_infer_chat_zero():
     ],
 )
 def test_invalid_or_double_billing_rates_are_rejected_even_with_no_calls(rates):
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="rate"):
         estimate_cost([], rates)
 
 

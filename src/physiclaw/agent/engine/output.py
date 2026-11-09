@@ -25,11 +25,35 @@ from physiclaw.contract.structured import OutputSpec
 from physiclaw.contract.turn import TurnOutput
 
 _KEYWORDS = frozenset(
-    "type enum const minimum maximum minLength maxLength items minItems maxItems "
-    "properties required additionalProperties minProperties maxProperties "
-    "anyOf oneOf allOf title description default examples deprecated".split()
+    [
+        "type",
+        "enum",
+        "const",
+        "minimum",
+        "maximum",
+        "minLength",
+        "maxLength",
+        "items",
+        "minItems",
+        "maxItems",
+        "properties",
+        "required",
+        "additionalProperties",
+        "minProperties",
+        "maxProperties",
+        "anyOf",
+        "oneOf",
+        "allOf",
+        "title",
+        "description",
+        "default",
+        "examples",
+        "deprecated",
+    ]
 )
-_TYPES = frozenset("object array string number integer boolean null".split())
+_TYPES = frozenset(
+    ["object", "array", "string", "number", "integer", "boolean", "null"]
+)
 
 
 def _check_schema(schema: dict | bool) -> None:

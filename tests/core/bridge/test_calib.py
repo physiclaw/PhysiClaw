@@ -49,7 +49,7 @@ def test_grid_rows_pct_pinned() -> None:
 
 
 def test_phases_set_pinned_to_known_nine_members() -> None:
-    assert CalibrationState.PHASES == {
+    assert {
         "idle",
         "screenshot_cal",
         "center",
@@ -59,7 +59,7 @@ def test_phases_set_pinned_to_known_nine_members() -> None:
         "grid",
         "dot",
         "assistive_touch",
-    }
+    } == CalibrationState.PHASES
 
 
 # ---------- init ----------
@@ -463,7 +463,7 @@ def test_invalid_phase_payload_preserves_existing_state_and_touches(phase, kwarg
     cal.report_touch({"x": 0.4, "y": 0.5})
     before = cal.get_state()
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="phase|dot_x/dot_y|nonce_bits"):
         cal.set_phase(phase, **kwargs)
 
     assert cal.get_state() == before

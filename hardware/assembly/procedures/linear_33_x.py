@@ -54,10 +54,7 @@ class LI33X(BaseAssembly):
         rail_center_z = base.beam_center_world_z
         self.joint_base = base.joint_base
 
-        if self.exploded:
-            rail_bottom_y = slot_face_y - RAIL_EXPLODE
-        else:
-            rail_bottom_y = slot_face_y
+        rail_bottom_y = slot_face_y - RAIL_EXPLODE if self.exploded else slot_face_y
 
         rail = LI32X(exploded=False).build()
         rail.move(

@@ -12,16 +12,16 @@ from physiclaw.conductor.walk import walklog
 
 
 def _record(**overrides) -> None:
-    base = dict(
-        app="demo",
-        playbook="flow",
-        outcome="handover",
-        idx=1,
-        nodes=3,
-        node="search",
-        reason="leg did not land",
-        micros=2,
-    )
+    base = {
+        "app": "demo",
+        "playbook": "flow",
+        "outcome": "handover",
+        "idx": 1,
+        "nodes": 3,
+        "node": "search",
+        "reason": "leg did not land",
+        "micros": 2,
+    }
     walklog.record(**{**base, **overrides})
 
 

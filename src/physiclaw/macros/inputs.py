@@ -9,7 +9,8 @@ over `template`'s tokenizer, nothing more. Clause text templates itself
 (`model.Clause.substituted`); this half handles step arguments.
 """
 
-from typing import Any, Protocol, Sequence
+from collections.abc import Sequence
+from typing import Any, Protocol
 
 from physiclaw.macros.model import MacroError
 from physiclaw.macros.template import fill

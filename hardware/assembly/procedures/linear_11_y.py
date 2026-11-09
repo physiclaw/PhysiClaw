@@ -85,10 +85,7 @@ class LI11Y(BaseAssembly):
         ld_block_top_z = (LONG_BOT_GAP - ld_slot_center_y) + ld_block_width / 2
         rail_center_z = (ld_block_top_z + lu_block_bottom_z) / 2
 
-        if self.exploded:
-            rail_bottom_y = slot_face_y - RAIL_EXPLODE
-        else:
-            rail_bottom_y = slot_face_y
+        rail_bottom_y = slot_face_y - RAIL_EXPLODE if self.exploded else slot_face_y
 
         # Slider position along the rail (MGN9H places it at
         # slider_position * RAIL_LENGTH from the -X end of the rail).

@@ -18,8 +18,8 @@ and the diagnostic freeze helper testable without hardware.
 import logging
 import math
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 from physiclaw.common.logger.evidence import record_event
 from physiclaw.core.vision.quality import BLUR_THRESHOLD

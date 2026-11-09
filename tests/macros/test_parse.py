@@ -329,7 +329,7 @@ def test_allowed_step_tools_all_exist_on_the_mcp_server() -> None:
     # core/server/tools.py, so a server rename can't silently orphan macros.
     server_tools = {t["name"] for t in discover_mcp_tools()}
 
-    assert ALLOWED_STEP_TOOLS - LOCAL_STEP_TOOLS <= server_tools
+    assert server_tools >= ALLOWED_STEP_TOOLS - LOCAL_STEP_TOOLS
 
 
 def test_local_step_tools_are_deliberately_absent_from_the_server() -> None:
@@ -339,7 +339,7 @@ def test_local_step_tools_are_deliberately_absent_from_the_server() -> None:
     # cover a tool that WAS supposed to be registered and isn't.
     server_tools = {t["name"] for t in discover_mcp_tools()}
 
-    assert LOCAL_STEP_TOOLS == {"wait"}
+    assert {"wait"} == LOCAL_STEP_TOOLS
     assert not (LOCAL_STEP_TOOLS & server_tools)
 
 

@@ -10,8 +10,9 @@ order in `tools[]` and exploits LLM position bias.
 import asyncio
 import logging
 import os
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 from physiclaw.agent import layout
 from physiclaw.agent.engine import (

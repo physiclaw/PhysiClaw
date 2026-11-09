@@ -196,7 +196,7 @@ route:
 """
 
 
-README_CONTENT = """\
+README_CONTENT = f"""\
 # App packs
 
 One directory per app, self-contained — everything its playbooks use:
@@ -370,9 +370,9 @@ name/description/enabled, enabled with the playbook); an ask's
 `resume:` and a page's `recover:` take the same form and dispatch
 argument-less.
 
-Limits: ≤ {max_nodes} moves, ≤ {max_inputs} inputs per playbook.
+Limits: ≤ {MAX_NODES} moves, ≤ {MAX_INPUTS} inputs per playbook.
 Macro format: see ~/.physiclaw/macros/README.md (identical grammar).
-""".format(max_nodes=MAX_NODES, max_inputs=MAX_INPUTS)
+"""
 
 
 CHANNEL_PACK_STUB = """\

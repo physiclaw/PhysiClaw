@@ -17,7 +17,8 @@ import asyncio
 import inspect
 import logging
 import math
-from typing import Awaitable, Callable, Union
+from collections.abc import Awaitable, Callable
+from typing import Union
 
 import httpx
 
@@ -35,7 +36,7 @@ log = logging.getLogger(__name__)
 # React may return the session's final outcome; None keeps the legacy
 # fire-and-forget contract (no streak bookkeeping either way).
 _ReactResult = Union["contract.SessionOutcome", None]
-React = Callable[[list[Trigger]], Union[_ReactResult, Awaitable[_ReactResult]]]
+React = Callable[[list[Trigger]], _ReactResult | Awaitable[_ReactResult]]
 
 # Unproductive-streak backoff: a session that closes DONE / WAIT (or asks
 # for a restart) resets the streak; anything else — STUCK, FAIL, IDLE, no

@@ -298,7 +298,7 @@ def process_group_options() -> dict:
 
 def prepare_managed_runtime() -> None:
     """Load NumPy before a thread reads piped stdin (numpy/numpy#24290)."""
-    import numpy  # noqa: F401
+    import numpy as np  # noqa: F401
 
 
 def pid_alive(pid: int) -> bool:

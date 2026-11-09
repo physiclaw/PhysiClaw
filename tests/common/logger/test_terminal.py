@@ -536,7 +536,7 @@ async def test_json_mcp_transport_records_have_tool_events_and_timings(
         return "ok"
 
     await probe()
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="camera offline"):
         await probe(fail=True)
 
     records = [json.loads(line) for line in console.getvalue().splitlines()]

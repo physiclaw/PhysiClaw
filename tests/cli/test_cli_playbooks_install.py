@@ -39,7 +39,7 @@ MANIFEST = (
 )
 
 
-@pytest.fixture()
+@pytest.fixture
 def template(tmp_path: Path) -> Path:
     src = tmp_path / "template" / "channel" / "wechat"
     (src / "macros").mkdir(parents=True)

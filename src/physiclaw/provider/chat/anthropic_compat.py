@@ -360,7 +360,7 @@ class AnthropicCompatibleProvider(BaseChatProvider):
                 decode_error=str(exc),
             )
             if output_spec is None:
-                setattr(exc, "reply", reply)
+                exc.reply = reply
                 raise
             return reply
 

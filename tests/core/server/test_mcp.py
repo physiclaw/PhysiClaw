@@ -46,8 +46,9 @@ def test_instructions_are_rendered_from_disk() -> None:
         / "context"
         / "PHYSICLAW.md"
     )
-    assert mcp_mod._INSTRUCTIONS == fill_tokens(
-        "PHYSICLAW.md", expected.read_text(encoding="utf-8")
+    assert (
+        fill_tokens("PHYSICLAW.md", expected.read_text(encoding="utf-8"))
+        == mcp_mod._INSTRUCTIONS
     )
 
 

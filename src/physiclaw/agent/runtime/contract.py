@@ -7,8 +7,8 @@ failures. The runtime uses ``productive()`` to back off unproductive wakes.
 
 import datetime as dt
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Awaitable, Callable
 
 from physiclaw.agent.runtime.hook import Trigger
 from physiclaw.agent.runtime.sentinel import DONE, STUCK, WAIT

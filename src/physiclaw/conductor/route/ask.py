@@ -55,12 +55,11 @@ def parse_ask(scope: Scope, line: Line) -> AskNode:
     where, nid, entry, before = line.where, line.name, line.entry, line.before
     approve = require_str(entry.get("approve"), f"{where}: `approve`")
     check_name(approve, f"{where}: `approve`")
-    if approve == PAYMENT:
-        if before is None or "." in before:
-            raise PlaybookError(
-                f"{where}: a payment ask reads its total off the page before "
-                "it — put the sheet's page waypoint immediately before the ask"
-            )
+    if approve == PAYMENT and (before is None or "." in before):
+        raise PlaybookError(
+            f"{where}: a payment ask reads its total off the page before "
+            "it — put the sheet's page waypoint immediately before the ask"
+        )
     # A payment ask may quote the consent slot (a move literally named
     # `ask` is shadowed in this message — the money slot wins, both at
     # parse and at fill).

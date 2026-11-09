@@ -201,7 +201,7 @@ def test_terminal_none_when_iokit_unavailable(monkeypatch) -> None:
 
 def test_terminal_none_when_no_uvc_device(monkeypatch) -> None:
     monkeypatch.setattr(uvc, "_load", lambda: True)
-    monkeypatch.setattr(uvc, "_video_control_interfaces", lambda: [])
+    monkeypatch.setattr(uvc, "_video_control_interfaces", list)
 
     assert uvc.camera_terminal() is None
 
@@ -441,7 +441,7 @@ def test_focus_range_rejects_unavailable_or_invalid_metadata(monkeypatch, values
         {
             (uvc._IN, request, uvc._CT_FOCUS_ABS): value
             for request, value in zip(
-                (uvc._GET_MIN, uvc._GET_MAX, uvc._GET_RES), values
+                (uvc._GET_MIN, uvc._GET_MAX, uvc._GET_RES), values, strict=True
             )
             if value is not None
         },

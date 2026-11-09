@@ -38,8 +38,9 @@ manual value.
 """
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Literal
+from typing import Literal
 
 from physiclaw.core.vision.quality import (
     BLOWN_BLOB_COUNT,

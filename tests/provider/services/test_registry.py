@@ -185,7 +185,7 @@ def test_make_chat_provider_raises_value_error_for_unknown_id() -> None:
 
 
 def test_make_chat_provider_error_message_lists_each_chat_provider_id() -> None:
-    with pytest.raises(ValueError) as exc_info:
+    with pytest.raises(ValueError, match="(?i)unknown.*provider") as exc_info:
         make_chat_provider("nope", "model")
 
     msg = str(exc_info.value)
@@ -215,5 +215,5 @@ def test_validate_chat_model_ref_rejects_unknown_provider(ref):
 
 @pytest.mark.parametrize("ref", ["bare", "/model", "openai/"])
 def test_validate_chat_model_ref_rejects_malformed_reference(ref):
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="model ref|unknown provider"):
         validate_chat_model_ref(ref)
