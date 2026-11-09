@@ -44,7 +44,7 @@
           "zh": "安装时，电机接线端子的朝向应与图示一致，以便为后续接线留出空间。"
         },
         "classes": "note overlay sm",
-        "style": "left:130mm; top:130mm; width:80mm;"
+        "style": "left:125mm; top:130mm; width:75mm;"
       },
       {
         "h3": {
@@ -341,7 +341,7 @@
           "zh": "电机 A 和电机 B 的同步带高度不同。电机 A 的同步轮（左）位于下层同步带平面，电机 B 的同步轮（右）位于上层同步带平面。沿电机轴调整各同步轮的高度，使其与对应惰轮处于同一平面。"
         },
         "classes": "note overlay sm",
-        "style": "left:40mm; top:15mm; width:90mm;"
+        "style": "left:40mm; top:17mm; width:90mm;"
       },
       {
         "h3": {

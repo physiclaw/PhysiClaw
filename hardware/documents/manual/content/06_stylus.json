@@ -45,7 +45,7 @@
           "zh": "电磁铁底端出厂时拧有一颗螺母。1. 拧下螺母。2. 在原位拧上触控笔尖。"
         },
         "classes": "note overlay sm",
-        "style": "left:120mm; top:60mm; width:60mm;"
+        "style": "left:120mm; top:60mm; width:76mm;"
       },
       {
         "h3": {
@@ -57,7 +57,7 @@
           "zh": "把电磁铁装到支架上之前，先接长正负极引线，方法见“接线 — 接长引线”。"
         },
         "classes": "note overlay sm",
-        "style": "left:120mm; top:105mm; width:60mm;"
+        "style": "left:120mm; top:105mm; width:76mm;"
       }
     ],
     "bom": {

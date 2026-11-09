@@ -118,6 +118,7 @@
     text-transform: uppercase;
     letter-spacing: 0.01em;
     line-height: 1.2;
+    text-wrap: pretty;
   }
   .unit { text-transform: none; }  /* a unit symbol keeps its case under capitals */
   .note p {
@@ -125,6 +126,7 @@
     font-size: 11pt;
     line-height: 1.5;
     margin: 0 0 3mm 0;
+    text-wrap: pretty;
   }
   .note p:last-child { margin-bottom: 0; }
   .note p a { color: var(--link); text-decoration: none; }
@@ -326,7 +328,12 @@
     display: grid;
     place-items: center;
   }
-  .hw-entry .note { max-width: none; }
+  .hw-entry .note {
+    max-width: none;
+    /* Paired entries share a heading baseline, even with different copy lengths. */
+    align-self: start;
+    margin-top: 11mm;
+  }
 
   /* INTRODUCTION — two reference notes above GitHub / Docs links */
   .intro-body { padding: 18mm 0 0 40mm; }
@@ -338,13 +345,16 @@
      sibling `.intro-url`; the six items (icon/word/url × 2) are then placed
      explicitly. Columns: icon1 | text1 | icon2 | text2. */
   .intro-links {
+    /* Keep the resource links on the same baseline in both editions. */
+    position: absolute;
+    left: 56mm;
+    bottom: 30mm;
     display: grid;
     grid-template-columns: auto auto auto auto;
     grid-template-rows: auto auto;
     column-gap: 6mm;
     row-gap: 1mm;
     justify-content: start;
-    margin-top: 30mm;
   }
   .intro-logo { display: contents; color: var(--ink); }
   .intro-logo svg { height: 10mm; width: auto; }
@@ -369,7 +379,7 @@
      Content (intro + grid) is vertically centred in the page body so the
      sheet stays balanced now that there is no closing section below it. */
   .print-page {
-    padding-left: 28mm;
+    padding-left: 40mm;
     min-height: 155mm;
     display: flex;
     flex-direction: column;
@@ -403,7 +413,8 @@
 
   /* CHAPTER OPENER */
   .opener {
-    height: 100%;
+    /* Centre within the body below the masthead, like the figure pages. */
+    height: 155mm;
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -424,6 +435,7 @@
     color: var(--ink);
     letter-spacing: -0.015em;
     max-width: 220mm;
+    text-wrap: balance;
   }
   .opener .lede {
     font-size: 13pt;
@@ -431,6 +443,7 @@
     max-width: 200mm;
     line-height: 1.55;
     margin: 0;
+    text-wrap: balance;
   }
   .opener .bar {
     width: 60mm;

@@ -44,7 +44,7 @@
           "zh": "为托架装配两根相同横梁。"
         },
         "classes": "note overlay sm",
-        "style": "left:150mm; top:88mm; width:90mm;"
+        "style": "left:150mm; top:108mm; width:90mm;"
       }
     ],
     "bom": {

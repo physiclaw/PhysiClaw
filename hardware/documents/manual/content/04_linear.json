@@ -56,7 +56,7 @@
           "zh": "Y 轴用两根相同的导轨。"
         },
         "classes": "note overlay sm",
-        "style": "left:120mm; top:95mm; width:60mm;"
+        "style": "left:120mm; top:91mm; width:80mm;"
       },
       {
         "h3": {
@@ -68,7 +68,7 @@
           "zh": "MGN9H 导轨出厂时涂有防锈油。安装前把防锈油擦净，然后给滑块涂润滑脂，使其滑动顺畅、更耐用。导轨始终不可沾水。"
         },
         "classes": "note overlay sm",
-        "style": "left:120mm; bottom:25mm; width:80mm;"
+        "style": "left:120mm; top:140mm; width:80mm;"
       },
       {
         "h3": {
@@ -156,7 +156,7 @@
           "zh": "调整远离电机一侧的惰轮支座，确认两根 Y 导轨的末端都紧靠支座。"
         },
         "classes": "note overlay sm",
-        "style": "left:0mm; top:0mm; width:70mm;"
+        "style": "left:0mm; top:2mm; width:70mm;"
       },
       {
         "h3": {
@@ -342,7 +342,7 @@
           "zh": "用手沿 Y 导轨推动 X 横梁，如果横梁卡滞，重新校正 Y 导轨。"
         },
         "classes": "note overlay sm",
-        "style": "right:16mm; top:50mm; width:60mm;"
+        "style": "right:16mm; top:50mm; width:64mm;"
       },
       {
         "h3": {
@@ -354,7 +354,7 @@
           "zh": "1. 将几颗 Y 导轨螺栓拧至零件刚好贴合。2. 推动 X 横梁，感受阻力。3. 微调 Y 导轨。4. 再次推动。5. 横梁滑动顺畅后，把螺栓从中间向两端拧紧。此过程可能需要几分钟。"
         },
         "classes": "note overlay sm",
-        "style": "right:16mm; top:100mm; width:60mm;"
+        "style": "right:16mm; top:84mm; width:64mm;"
       }
     ],
     "bom": {
@@ -467,7 +467,7 @@
           "zh": "确认滑块能沿 X 导轨顺畅滑动，整根横梁仍能沿 Y 导轨自由滑动。如有卡滞，重新调整相应导轨的位置，再拧紧固定螺栓。"
         },
         "classes": "note overlay sm",
-        "style": "right:16mm; top:60mm; width:60mm;"
+        "style": "right:16mm; top:80mm; width:60mm;"
       }
     ]
   },
@@ -500,7 +500,7 @@
           "zh": "这个惰轮装在左连接件上，承载电机 B 的同步带，加 9 mm 轴套后位于上层同步带平面。"
         },
         "classes": "note overlay sm",
-        "style": "left:110mm; top:80mm; width:80mm;"
+        "style": "left:110mm; top:88mm; width:80mm;"
       }
     ],
     "bom": {
@@ -577,7 +577,7 @@
           "zh": "把惰轮装在左连接件的上孔。"
         },
         "classes": "note overlay sm",
-        "style": "left:140mm; top:120mm; width:80mm;"
+        "style": "left:140mm; top:128mm; width:80mm;"
       }
     ],
     "bom": {
@@ -626,7 +626,7 @@
           "zh": "<p style=\"color: var(--accent); font-weight: 600; margin: 0 0 1.5mm;\">这里用带齿惰轮，不要用光面惰轮。</p><p>这个惰轮承载电机 A 的同步带，不加轴套，因此位于下层同步带平面。</p>"
         },
         "classes": "note overlay sm",
-        "style": "left:110mm; top:80mm; width:80mm;"
+        "style": "left:110mm; top:88mm; width:80mm;"
       }
     ],
     "bom": {
@@ -731,7 +731,7 @@
           "zh": "这个惰轮装在右连接件的上孔，承载电机 A 的同步带，不加轴套，因此位于下层同步带平面。"
         },
         "classes": "note overlay sm",
-        "style": "left:110mm; top:80mm; width:80mm;"
+        "style": "left:110mm; top:88mm; width:80mm;"
       }
     ],
     "bom": {
@@ -836,7 +836,7 @@
           "zh": "<p style=\"color: var(--accent); font-weight: 600; margin: 0 0 1.5mm;\">这里用带齿惰轮，不要用光面惰轮。</p><p>这个惰轮装在右连接件上，承载电机 B 的同步带，加 9 mm 轴套后位于上层同步带平面。</p>"
         },
         "classes": "note overlay sm",
-        "style": "left:110mm; top:60mm; width:80mm;"
+        "style": "left:110mm; top:88mm; width:80mm;"
       }
     ],
     "bom": {
@@ -913,7 +913,7 @@
           "zh": "确认各惰轮的安装孔位正确。"
         },
         "classes": "note overlay sm",
-        "style": "left:140mm; top:120mm; width:78mm;"
+        "style": "left:140mm; top:128mm; width:78mm;"
       }
     ],
     "bom": {

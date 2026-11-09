@@ -23,7 +23,7 @@
         "en": "Bill of materials",
         "zh": "物料清单"
       },
-      "small": "11 — BOM"
+      "small": "BOM"
     },
     "rows_source": "bom"
   }

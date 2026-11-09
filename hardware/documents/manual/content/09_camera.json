@@ -246,7 +246,7 @@
           "zh": "把角码装进右侧型材外侧面的下方型材槽。"
         },
         "classes": "note overlay sm",
-        "style": "right:10mm; top:30mm; width:80mm;"
+        "style": "right:14mm; top:36mm; width:80mm;"
       },
       {
         "h3": {
@@ -258,7 +258,7 @@
           "zh": "弯折金属软管，使摄像头正对手机屏幕。调整摄像头方向，使传感器的长边方向与手机的长边方向一致。"
         },
         "classes": "note overlay sm",
-        "style": "right:10mm; top:80mm; width:80mm;"
+        "style": "right:14mm; top:76mm; width:80mm;"
       },
       {
         "h3": {
@@ -270,7 +270,7 @@
           "zh": "确认摄像头固定牢靠，不会移位或晃动。"
         },
         "classes": "note overlay sm",
-        "style": "right:10mm; top:140mm; width:80mm;"
+        "style": "right:14mm; top:122mm; width:80mm;"
       },
       {
         "h3": {
