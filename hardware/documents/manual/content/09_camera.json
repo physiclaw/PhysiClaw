@@ -53,8 +53,8 @@
           "zh": "英制工具"
         },
         "body": {
-          "en": "The 1/4-20 SHCS takes a 3/16\" hex key. The 1/4-20 hex nut takes a 7/16\" (or metric 11 mm) open-end wrench. Needle-nose pliers also do the job. There is no need to buy tools for this.",
-          "zh": "1/4-20 圆柱头螺栓用 3/16\" 内六角扳手，1/4-20 六角螺母用 7/16\"（或公制 11 mm）开口扳手。也可用尖嘴钳代替，无需专门购买工具。"
+          "en": "The 1/4-20 SHCS takes a 3/16\" hex key. The 1/4-20 hex nut takes a 7/16\" (or metric 11 mm) open-end wrench. Needle-nose pliers also do the job.",
+          "zh": "1/4-20 圆柱头螺栓用 3/16\" 内六角扳手，1/4-20 六角螺母用 7/16\"（或公制 11 mm）开口扳手。也可用尖嘴钳代替。"
         },
         "classes": "note overlay sm",
         "style": "left:130mm; top:120mm; width:70mm;"
