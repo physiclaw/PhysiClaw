@@ -109,12 +109,16 @@ function, class, or module entrypoint, write tests in this priority order:
 
 ## Commands
 
-- Run all tests: `pytest`
-- Run with coverage: `pytest --cov=src --cov-report=term-missing --cov-report=html`
-- Run one file: `pytest tests/billing/test_invoice.py -v`
-- Run one test: `pytest tests/billing/test_invoice.py::test_name -v`
-- Run only fast: `pytest -m "not slow and not integration"`
-- Mutation pass on a module: `mutmut run --paths-to-mutate src/myapp/billing/`
+The Make targets select the locked `dev` and `cad` dependency groups before
+collecting tests. Plain `uv run pytest` selects only the default groups, so CAD
+tests can be skipped or fail against a stale CAD installation after an upgrade.
+
+- Run all tests, including slow and integration: `make test-all` (alias: `make testall`)
+- Run with coverage: `make test-cov`
+- Run one file: `uv run --locked --group dev --group cad pytest tests/test_package_init.py -v`
+- Run one test: `uv run --locked --group dev --group cad pytest tests/test_package_init.py::test_package_version_matches_installed_distribution -v`
+- Run only fast: `make test`
+- Mutation pass on a module: `make mutate MOD=src/physiclaw/common/text.py`
 
 ## When you are uncertain
 

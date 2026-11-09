@@ -23,15 +23,16 @@ ENCODING_TESTS = [
 ]
 CAD = ["--locked", "--group", "cad", "python", "-m", "hardware"]
 DOC = ["--locked", "python", "-m", "hardware"]
+PYTEST = ["--locked", "--group", "dev", "--group", "cad", "pytest"]
 ROUTES = [
-    ("test", [], [["pytest"]]),
-    ("test-fast", [], [["pytest"]]),
+    ("test", [], [PYTEST]),
+    ("test-fast", [], [PYTEST]),
     (
         "test-cov",
         [],
         [
             [
-                "pytest",
+                *PYTEST,
                 "--cov=src/physiclaw",
                 "--cov-report=term-missing",
                 "--cov-report=html",
@@ -39,9 +40,10 @@ ROUTES = [
             ]
         ],
     ),
-    ("test-slow", [], [["pytest", "-m", "slow"]]),
-    ("test-integration", [], [["pytest", "-m", "integration"]]),
-    ("test-all", [], [["pytest", "-m", ""]]),
+    ("test-slow", [], [[*PYTEST, "-m", "slow"]]),
+    ("test-integration", [], [[*PYTEST, "-m", "integration"]]),
+    ("test-all", [], [[*PYTEST, "-m", ""]]),
+    ("testall", [], [[*PYTEST, "-m", ""]]),
     (
         "test-encoding",
         [],

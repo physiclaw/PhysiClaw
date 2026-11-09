@@ -1,8 +1,12 @@
-.PHONY: test test-cov test-fast test-encoding test-slow test-integration test-all test-studio-ui mutate lint fmt typecheck loc help firmware bump build publish release docs-deploy \
+.PHONY: test test-cov test-fast test-encoding test-slow test-integration test-all testall test-studio-ui mutate lint fmt typecheck loc help firmware bump build publish release docs-deploy \
         hw-help hw-parts hw-build hw-check hw-step hw-print hw-manual hw-manual-pdf hw-sourcing hw-url hw-drawing hw-rebuild hw-preflight hw-prepare hw-verify hw-publish hw-release _hw-package
 
 PY ?= uv run
 PYTHON ?= $(PY) python
+
+# The suites collect CAD modules as well as application tests. Select both
+# groups so uv updates stale optional dependencies instead of retaining them.
+PYTEST = $(PY) --locked --group dev --group cad pytest
 
 # Like the other targets, docs-deploy runs from the checkout by default.
 # External -f callers can set this path explicitly; the hook stays relative to
@@ -36,6 +40,7 @@ help:
 	@echo "  test-slow             — only @pytest.mark.slow"
 	@echo "  test-integration      — only @pytest.mark.integration"
 	@echo "  test-all              — every test, including slow and integration"
+	@echo "  testall               — alias for test-all"
 	@echo "  test-studio-ui        — JavaScript UI regressions (Node 22+)"
 	@echo "  mutate MOD=path       — mutmut on a path (e.g. MOD=src/physiclaw/agent/engine/validator.py)"
 	@echo "  lint                  — ruff check + format check"
@@ -56,10 +61,10 @@ help:
 	@$(MAKE) --no-print-directory hw-help
 
 test:
-	$(PY) pytest
+	$(PYTEST)
 
 test-cov:
-	$(PY) pytest --cov=src/physiclaw --cov-report=term-missing --cov-report=html --cov-branch
+	$(PYTEST) --cov=src/physiclaw --cov-report=term-missing --cov-report=html --cov-branch
 
 test-fast: test
 
@@ -71,13 +76,15 @@ test-encoding:
 	$(PYTHON) -X utf8=1 -X warn_default_encoding -W error::EncodingWarning -m pytest $(ENCODING_TESTS)
 
 test-slow:
-	$(PY) pytest -m slow
+	$(PYTEST) -m slow
 
 test-integration:
-	$(PY) pytest -m integration
+	$(PYTEST) -m integration
 
 test-all:
-	$(PY) pytest -m ""
+	$(PYTEST) -m ""
+
+testall: test-all
 
 test-studio-ui:
 	node --test tests/studio/test_studio_ui.cjs tests/agent/test_viewer_ui.cjs tests/core/test_setup_hardware_ui.cjs tests/core/test_bridge_focus_ui.cjs tests/cli/test_assistive_touch_ui.cjs

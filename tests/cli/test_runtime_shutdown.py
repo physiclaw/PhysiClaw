@@ -3,6 +3,7 @@
 Run: pytest -m integration tests/cli/test_runtime_shutdown.py
 """
 
+import errno
 import os
 import re
 import signal
@@ -25,8 +26,11 @@ TARGET_ERRORS = (
 )
 
 
-def free_ports():
-    # The server's bridge always uses control+1.
+@contextmanager
+def reserved_ports():
+    # Keep the actual bind addresses reserved until the child inherits them.
+    # A loopback probe misses conflicts on other interfaces; closing the
+    # sockets before Popen also lets another process take the selected ports.
     for _ in range(100):
         with socket.socket() as control, socket.socket() as bridge:
             control.bind(("127.0.0.1", 0))
@@ -34,16 +38,18 @@ def free_ports():
             if port >= 65535:
                 continue
             try:
-                bridge.bind(("127.0.0.1", port + 1))
-            except OSError:
+                bridge.bind(("0.0.0.0", port + 1))
+            except OSError as error:
+                if error.errno != errno.EADDRINUSE:
+                    raise
                 continue
-            return port
+            yield port, (control, bridge)
+            return
     raise AssertionError("no adjacent free ports")
 
 
 @contextmanager
 def running(tmp_path, mode):
-    port = free_ports()
     path = tmp_path / "process.log"
     env = {
         **os.environ,
@@ -54,18 +60,21 @@ def running(tmp_path, mode):
         "no_proxy": "127.0.0.1,localhost,::1",
     }
     with path.open("a", encoding="utf-8") as output:
-        proc = subprocess.Popen(
-            [
-                sys.executable,
-                str(Path(__file__).with_name("runtime_shutdown_app.py")),
-                "parent",
-                str(port),
-                mode,
-            ],
-            env=env,
-            stdout=output,
-            stderr=subprocess.STDOUT,
-        )
+        with reserved_ports() as (port, listeners):
+            proc = subprocess.Popen(
+                [
+                    sys.executable,
+                    str(Path(__file__).with_name("runtime_shutdown_app.py")),
+                    "parent",
+                    str(port),
+                    mode,
+                    *(str(listener.fileno()) for listener in listeners),
+                ],
+                pass_fds=tuple(listener.fileno() for listener in listeners),
+                env=env,
+                stdout=output,
+                stderr=subprocess.STDOUT,
+            )
         try:
             yield proc, path, port
         finally:
@@ -226,3 +235,24 @@ def test_no_runtime_server_and_standalone_runtime_keep_real_mcp_lifecycle(tmp_pa
     assert "CLOSE_MCP_DONE" in output
     assert parent.returncode == 0, output
     assert not any(error in output for error in (*TARGET_ERRORS, "cancel scope"))
+
+
+def test_regression_listeners_cannot_be_stolen_during_spawn(tmp_path, mocker):
+    popen = subprocess.Popen
+
+    def spawn(args, **kwargs):
+        for host, offset in (("127.0.0.1", 0), ("0.0.0.0", 1)):
+            with socket.socket() as competitor:
+                with pytest.raises(OSError) as caught:
+                    competitor.bind((host, int(args[3]) + offset))
+            assert caught.value.errno == errno.EADDRINUSE
+        return popen(args, **kwargs)
+
+    mocker.patch.object(subprocess, "Popen", side_effect=spawn)
+
+    with running(tmp_path, "external") as (parent, path, port):
+        wait_for(parent, path, "MCP tools live")
+        parent.send_signal(signal.SIGINT)
+        parent.wait(timeout=5)
+
+    assert parent.returncode == 0, path.read_text(encoding="utf-8")

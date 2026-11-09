@@ -1,6 +1,7 @@
 # Lint + fast hermetic tests with branch coverage on Linux and macOS.
 # Slow managed first-image/EOF and bridge shutdown regressions run on all three OSes.
-# Windows runs the full fast suite plus runtime/shutdown regressions and CAD smoke. Installation and real hardware need manual validation.
+# Fresh CLI and Make bootstrap run without manual dependency sync on all three OSes.
+# Windows runs the full fast suite plus runtime/shutdown regressions and CAD smoke. Installer scripts and real hardware need manual validation.
 name: CI
 
 on:
@@ -36,9 +37,15 @@ jobs:
           python-version: "3.12"
           enable-cache: true
 
-      - name: Sync dependencies
-        # CAD orchestration tests must run, not silently importorskip.
-        run: uv sync --locked --group dev --group cad
+      - name: Fresh CLI startup without CAD
+        env:
+          UV_PROJECT_ENVIRONMENT: ${{ runner.temp }}/physiclaw-cli-smoke
+        run: uv run --locked pytest -m slow tests/cli/test_fresh_start.py
+
+      # Start with no project venv and no manual sync, as a fresh clone would.
+      # The Make target must install both dev and CAD dependencies itself.
+      - name: Bootstrap and test with coverage
+        run: make test-cov
 
       # Inline JavaScript uses Node's built-in test runner; no npm
       # packages or Node runtime are needed by the Python application.
@@ -72,11 +79,6 @@ jobs:
           PHYSICLAW_HW_OUTPUT: ${{ runner.temp }}/hardware-smoke
         run: uv run --locked --group cad python -m hardware step fastener_10_BHCS
 
-      # Bare --cov: source + branch come from [tool.coverage.run] in
-      # pyproject, keeping one source of truth.
-      - name: Test
-        run: uv run --locked --group cad pytest --cov
-
       - name: Encoding regressions in both UTF-8 modes
         run: make test-encoding "PY=uv run --locked"
 
@@ -86,6 +88,9 @@ jobs:
           uv run --locked pytest -m slow
           tests/agent/runtime/test_managed_startup.py
           tests/cli/test_bridge_shutdown.py
+
+      - name: Real MCP runtime shutdown lifecycle
+        run: uv run --locked pytest -m integration tests/cli/test_runtime_shutdown.py
 
   windows-runtime:
     runs-on: windows-latest
@@ -101,8 +106,10 @@ jobs:
           python-version: "3.12"
           enable-cache: true
 
-      - name: Sync dependencies
-        run: uv sync --locked --group dev --group cad
+      - name: Fresh CLI startup without CAD
+        env:
+          UV_PROJECT_ENVIRONMENT: ${{ runner.temp }}/physiclaw-cli-smoke
+        run: uv run --locked pytest -m slow tests/cli/test_fresh_start.py
 
       - name: Install GNU Make
         shell: pwsh
@@ -110,6 +117,11 @@ jobs:
           if (-not (Get-Command make -ErrorAction SilentlyContinue)) {
             choco install make --yes --no-progress
           }
+
+      - name: Bootstrap and run the full fast suite on Windows
+        env:
+          PYTHONUTF8: "0"
+        run: make test
 
       - name: Type check Windows
         run: uv run --locked mypy --platform win32
@@ -126,12 +138,6 @@ jobs:
         env:
           PHYSICLAW_HW_OUTPUT: ${{ runner.temp }}/hardware-smoke
         run: make hw-build ARGS="--stems fastener_10_BHCS --bom"
-
-      - name: Full fast suite on Windows
-        # Keep file/subprocess encoding bugs visible under the native locale.
-        env:
-          PYTHONUTF8: "0"
-        run: uv run --locked --group cad pytest
 
       - name: Encoding regressions in both UTF-8 modes
         run: make test-encoding "PY=uv run --locked"

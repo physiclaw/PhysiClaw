@@ -7,6 +7,7 @@ import asyncio
 import importlib
 import logging
 import os
+import socket
 import subprocess
 import sys
 import time
@@ -67,7 +68,7 @@ def child(base: str, mode: str) -> None:
     print("CHILD_EXIT", flush=True)
 
 
-def parent(port: int, mode: str) -> None:
+def parent(port: int, mode: str, listeners: list[socket.socket]) -> None:
     import httpx
     from mcp.server.mcpserver import MCPServer
     from starlette.applications import Starlette
@@ -126,6 +127,15 @@ def parent(port: int, mode: str) -> None:
     server_mod._start_hardware_bringup = lambda *args, **kwargs: print(
         "SERVICES_STARTED", flush=True
     )
+    inherited = iter(listeners)
+
+    def open_listener(host, number):
+        listener = next(inherited)
+        assert listener.getsockname() == (host, number)
+        listener.listen()
+        return listener
+
+    server_mod._open_listener = open_listener
     real_popen = subprocess.Popen
 
     def spawn(cmd, **kwargs):
@@ -161,6 +171,8 @@ def parent(port: int, mode: str) -> None:
             no_runtime=mode == "external",
         )
     finally:
+        for listener in listeners:
+            listener.close()
         print("PARENT_EXIT", flush=True)
 
 
@@ -170,4 +182,8 @@ if __name__ == "__main__":
     if sys.argv[1] == "child":
         child(sys.argv[2], sys.argv[3])
     else:
-        parent(int(sys.argv[2]), sys.argv[3])
+        parent(
+            int(sys.argv[2]),
+            sys.argv[3],
+            [socket.socket(fileno=int(fd)) for fd in sys.argv[4:]],
+        )

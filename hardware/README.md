@@ -19,10 +19,10 @@ PDF builds and release preparation also need Chrome or Chromium. The `make`
 commands need GNU Make; Python alternatives are shown below.
 Run all commands from the repository root.
 
-Install dependencies and generate the assembly models and drawings first:
+Generate the assembly models and drawings first. The Make target installs the
+locked CAD dependencies automatically:
 
 ```sh
-uv sync --locked --group cad
 make hw-build          # Generate assembly models and drawings
 ```
 
