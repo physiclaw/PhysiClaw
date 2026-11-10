@@ -2,6 +2,7 @@
 
 import io
 import json
+import os
 import subprocess
 import sys
 from http.client import BadStatusLine, InvalidURL
@@ -138,11 +139,11 @@ def test_deploy_pins_before_hook_waits_then_audits_once(
     verification.wait.assert_called_once_with(DEPLOYMENT, TAG, 900, 15)
     directory = next((tmp_path / REPORTS).iterdir())
     verification.audit.assert_called_once_with(TAG, directory / "assets.csv")
-    assert json.loads((directory / "deployment.json").read_text()) == {
+    assert json.loads((directory / "deployment.json").read_text(encoding="utf-8")) == {
         "url": DEPLOYMENT,
         "hardware_tag": TAG,
     }
-    log = (directory / "check.log").read_text()
+    log = (directory / "check.log").read_text(encoding="utf-8")
     assert "verification passed" in log
     assert hook not in log
 
@@ -164,7 +165,7 @@ def test_failure_never_redeploys_or_claims_success(
     assert len(requests) == 1
     if stage != "audit":
         verification.audit.assert_not_called()
-    log = next((tmp_path / REPORTS).glob("*/check.log")).read_text()
+    log = next((tmp_path / REPORTS).glob("*/check.log")).read_text(encoding="utf-8")
     assert "verification passed" not in log
     assert "make check-site-assets" in log
     assert hook not in log
@@ -265,7 +266,13 @@ def test_readiness_retries_network_errors_but_not_forever(markers, clock):
 
 def run_docs_command(tmp_path, argv):
     with owned_process(
-        argv, cwd=tmp_path, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        argv,
+        cwd=tmp_path,
+        env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
     ) as owner:
         process = owner.process
         try:
@@ -293,7 +300,8 @@ def test_make_target_propagates_result_without_extra_deployments(
         "from scripts import docs_deploy\n"
         "docs_deploy.wait_for_deployment = lambda *args: None\n"
         f"docs_deploy.audit_sites = lambda *args: {audit_result}\n"
-        "sys.exit(docs_deploy.main())\n"
+        "sys.exit(docs_deploy.main())\n",
+        encoding="utf-8",
     )
     result = run_docs_command(
         tmp_path,
@@ -324,7 +332,9 @@ def test_docs_hook_missing_configuration_fails(tmp_path):
 
 
 def test_malformed_hook_does_not_disclose_secret_in_traceback(tmp_path):
-    (tmp_path / ".docs-deploy-hook").write_text("http://127.0.0.1/secret token")
+    (tmp_path / ".docs-deploy-hook").write_text(
+        "http://127.0.0.1/secret token", encoding="utf-8"
+    )
     result = run_docs_command(
         tmp_path,
         [
