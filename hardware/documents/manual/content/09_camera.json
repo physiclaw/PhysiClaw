@@ -148,7 +148,7 @@
           "zh": "把金属软管的内螺纹端拧到螺柱上，直到贴紧六角螺母。"
         },
         "classes": "note overlay sm",
-        "style": "left:140mm; top:110mm; width:60mm;"
+        "style": "left:140mm; top:105mm; width:60mm;"
       }
     ],
     "bom": {
@@ -198,7 +198,7 @@
           "zh": "将摄像头的 1/4-20 内螺纹孔对准金属软管的外螺纹螺柱，旋转摄像头，直至其抵住台肩。"
         },
         "classes": "note overlay sm",
-        "style": "left:140mm; top:110mm; width:60mm;"
+        "style": "left:140mm; top:105mm; width:60mm;"
       }
     ],
     "bom": {

@@ -306,8 +306,8 @@
           "zh": "连接"
         },
         "body": {
-          "en": "Solder each joint. Cover each joint with heat shrink tubing. If you cannot solder, twist the wires together. Wrap each joint tightly with electrical tape.",
-          "zh": "焊接每个接头，再套上热缩管。没有焊接工具时，先将两根导线拧接牢固，再用电工胶带缠紧接头。"
+          "en": "Slide on heat shrink tubing, then solder each joint. If you cannot solder, twist the wires together. Wrap each joint tightly with electrical tape.",
+          "zh": "先套上热缩管，再焊接接头。没有焊接工具时，先将两根导线拧接牢固，再用电工胶带缠紧接头。"
         },
         "classes": "note overlay sm",
         "style": "left:100mm; top:140mm; width:80mm; margin-top:0;"
@@ -389,8 +389,8 @@
           "zh": "三根线"
         },
         "body": {
-          "en": "The solenoid has three wires: positive (+), negative (−), and ground. 1. Bind the ground wire into the bundle with the + and − leads. 2. Run the bundle up to the control board holder. 3. Connect + and − to the control board's Spindle terminals.",
-          "zh": "电磁铁有三根引线：正极引线（+）、负极引线（−）和接地线。1. 把接地线和正负极引线一起缠入线束。2. 把线束引到控制板支架。3. 把正负极引线接到控制板的主轴（Spindle）端子。"
+          "en": "The bundle has two coil leads (+/−) and the added housing ground wire. 1. Bind the ground wire into the bundle with the + and − leads. 2. Run the bundle up to the control board holder. 3. Connect + and − to the control board's Spindle terminals.",
+          "zh": "线束包含两根线圈引线（+/−），以及另加的外壳接地线。1. 把接地线和正负极引线一起缠入线束。2. 把线束引到控制板支架。3. 把正负极引线接到控制板的主轴（Spindle）端子。"
         },
         "classes": "note overlay sm",
         "style": "left:130mm; top:119mm; width:150mm; max-width:150mm;"

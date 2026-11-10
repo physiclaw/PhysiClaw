@@ -41,8 +41,8 @@
           "zh": "装上 T 型螺母"
         },
         "body": {
-          "en": "Thread 2 M5 FHCS into the T-nuts. Do not fully tighten until the next step.",
-          "zh": "把 2 颗 M5 沉头螺栓拧入 T 型螺母，暂不拧紧，下一步再拧紧。"
+          "en": "Thread 2 M5 FHCS into the T-nuts.",
+          "zh": "把 2 颗 M5 沉头螺栓拧入 T 型螺母。"
         },
         "classes": "note overlay sm",
         "style": "left:160mm; top:116mm; width:80mm;"
@@ -214,8 +214,8 @@
           "zh": "装上 T 型螺母"
         },
         "body": {
-          "en": "Thread 2 M5 FHCS into the T-nuts. Do not fully tighten until the next step.",
-          "zh": "把 2 颗 M5 沉头螺栓拧入 T 型螺母，暂不拧紧，下一步再拧紧。"
+          "en": "Thread 2 M5 FHCS into the T-nuts.",
+          "zh": "把 2 颗 M5 沉头螺栓拧入 T 型螺母。"
         },
         "classes": "note overlay sm",
         "style": "left:160mm; top:120mm; width:80mm;"

@@ -361,8 +361,8 @@
           "zh": "螺纹胶加固"
         },
         "body": {
-          "en": "<p>Make sure that the pulleys and idlers are aligned. Then apply threadlocker to every set screw. A loose pulley makes the motion inaccurate. It is the most common issue users report. You can also apply the threadlocker after you install the belts.</p>",
-          "zh": "<p>先确认同步轮和惰轮已对齐，再给每颗紧定螺钉涂螺纹胶。同步轮松动会导致运动失准，是用户反馈最多的问题。也可以等装好同步带后再涂。</p>"
+          "en": "<p>Make sure that the pulleys and idlers are aligned. Then remove, apply threadlocker to the threads, and retighten one set screw at a time. A loose pulley makes the motion inaccurate. It is the most common issue users report. You can also apply the threadlocker after you install the belts.</p>",
+          "zh": "<p>先确认同步轮和惰轮已对齐，再逐颗拆下紧定螺钉，在螺纹上涂胶后装回并拧紧。同步轮松动会导致运动失准，是用户反馈最多的问题。也可以等装好同步带后再涂。</p>"
         },
         "classes": "note overlay sm",
         "style": "left:140mm; top:110mm; width:80mm;"

@@ -62,12 +62,12 @@
       },
       {
         "h3": {
-          "en": "Slide the motor to tension the belt",
-          "zh": "滑动电机张紧同步带"
+          "en": "Match the Motor B belt length",
+          "zh": "把电机 B 的同步带裁成相同长度"
         },
         "body": {
-          "en": "Keep the 2 M5 screws of Motor A snug, not tight. 1. Clamp both belt ends. 2. Slide the motor to tension the belt.",
-          "zh": "将电机 A 的 2 颗 M5 螺栓拧至零件刚好贴合，暂不拧紧。1. 夹入同步带两端。2. 滑动电机张紧同步带。"
+          "en": "Before you put the Motor A belt into its clamp, cut the Motor B belt to the same length.",
+          "zh": "把电机 A 的同步带装入夹具前，先把电机 B 的同步带裁成相同长度。"
         },
         "classes": "note overlay sm",
         "style": "left:147mm; top:134mm; width:138mm; max-width:138mm;"
@@ -123,19 +123,19 @@
           "zh": "把夹具装到 X 滑座前，确认电机 A 的同步带已卡入夹具底部的槽。"
         },
         "classes": "note overlay sm",
-        "style": "right:30mm; top:120mm; width:90mm;"
+        "style": "left:140mm; top:60mm; width:45mm;"
       },
       {
         "h3": {
-          "en": "Match the Motor B belt length",
-          "zh": "把电机 B 的同步带裁成相同长度"
+          "en": "Slide the motor to tension the belt",
+          "zh": "滑动电机张紧同步带"
         },
         "body": {
-          "en": "Before you put the Motor A belt into its clamp, cut the Motor B belt to the same length.",
-          "zh": "把电机 A 的同步带装入夹具前，先把电机 B 的同步带裁成相同长度。"
+          "en": "Keep the 2 M5 screws of Motor A snug, not tight. After fixing the clamp to the carriage, slide the motor to tension the belt.",
+          "zh": "将电机 A 的 2 颗 M5 螺栓拧至零件刚好贴合，暂不拧紧。将夹具固定到滑座后，再滑动电机张紧同步带。"
         },
         "classes": "note overlay sm",
-        "style": "left:140mm; top:60mm; width:45mm;"
+        "style": "right:30mm; top:120mm; width:90mm;"
       }
     ],
     "bom": {
@@ -193,8 +193,8 @@
           "zh": "装电机 B 的同步带"
         },
         "body": {
-          "en": "Route the Motor B belt on the upper belt plane. It must not cross the Motor A belt. Clamp both ends to the X carriage, the same way as the Motor A belt.",
-          "zh": "把电机 B 的同步带沿上层同步带平面布置，不与电机 A 的同步带交叉。两端同样夹到 X 滑座上。"
+          "en": "Route the Motor B belt on the upper belt plane. It must not cross the Motor A belt. Clamp both ends to the X carriage, using the upper clamp slots.",
+          "zh": "把电机 B 的同步带沿上层同步带平面布置，不与电机 A 的同步带交叉。两端夹入 X 滑座夹具的上层槽。"
         },
         "classes": "note overlay sm",
         "style": "left:147mm; top:18mm; width:138mm; max-width:138mm;"
@@ -205,8 +205,8 @@
           "zh": "检查同步带"
         },
         "body": {
-          "en": "After you install both belts, slide the X carriage by hand through its full travel in every direction. The carriage must slide smoothly, with even resistance throughout. That resistance comes only from the motors. Make sure that nothing sticks, interferes, twists, or makes an odd noise. Make sure that the two belts stay on their separate planes.",
-          "zh": "两条同步带装好后，在整个行程范围内沿各方向手动推动 X 滑座。滑动应顺畅、阻力均匀，且阻力仅来自电机。滑动过程中不应出现卡滞、干涉、扭转或异常噪声，两条同步带应始终保持上下分层。"
+          "en": "After you install both belts, slide the X carriage by hand through its full travel in every direction. The carriage must slide smoothly, with even resistance throughout. Make sure that nothing sticks, interferes, twists, or makes an odd noise. Make sure that the two belts stay on their separate planes.",
+          "zh": "两条同步带装好后，在整个行程范围内沿各方向手动推动 X 滑座。滑动应顺畅、阻力均匀。滑动过程中不应出现卡滞、干涉、扭转或异常噪声，两条同步带应始终保持上下分层。"
         },
         "classes": "note overlay sm",
         "style": "left:147mm; top:105mm; width:138mm; max-width:138mm;"
@@ -277,8 +277,8 @@
           "zh": "220 mm 处 75 Hz"
         },
         "body": {
-          "en": "Precise check: 1. Park the X carriage at the marked position. 2. Pluck each belt. 3. Read its frequency with a tuning app on your phone. 4. Adjust both belts to the same frequency, about 75 Hz.",
-          "zh": "精确检查：1. 把 X 滑座停在标记位置。2. 逐条拨动同步带。3. 用手机调音 App 测量频率。4. 把两条同步带调到同一频率，约 75 Hz。"
+          "en": "Precise check: 1. Slide the X carriage fully to the motor side. 2. Pluck each belt. 3. Read its frequency with a tuning app on your phone. 4. Adjust both belts to the same frequency, about 75 Hz.",
+          "zh": "精确检查：1. 把 X 滑座推到电机一侧尽头。2. 逐条拨动同步带。3. 用手机调音 App 测量频率。4. 把两条同步带调到同一频率，约 75 Hz。"
         },
         "classes": "note overlay sm",
         "style": "left:152mm; top:120mm; width:112mm;"

@@ -33,12 +33,12 @@
     "notes": [
       {
         "h3": {
-          "en": "Load the T-nuts first",
-          "zh": "先装滑块螺母"
+          "en": "Install the slide-in T-nuts",
+          "zh": "安装滑块螺母"
         },
         "body": {
-          "en": "Before you square the frame, slide every T-nut into its slot.",
-          "zh": "校正框架四角前，先把每颗滑块螺母滑入型材槽。"
+          "en": "Before assembling the frame, slide the T-nuts into the slots from the ends of the extrusions.",
+          "zh": "组装框架前，把滑块螺母从型材端部滑入槽内。"
         },
         "classes": "note overlay sm",
         "style": "right:16mm; bottom:70mm; width:80mm;"
@@ -130,8 +130,8 @@
           "zh": "沉孔朝外"
         },
         "body": {
-          "en": "Turn the counterbored ends of the long extrusions outward. Align each counterbore with the end hole of the short extrusion.",
-          "zh": "把长型材的沉孔端朝外，每个沉孔对准短型材端面螺纹孔。"
+          "en": "Turn the counterbored sides of the long extrusions outward. Align each counterbore with the end hole of the short extrusion.",
+          "zh": "把长型材的沉孔侧朝外，每个沉孔对准短型材端面螺纹孔。"
         },
         "classes": "note overlay sm",
         "style": "right:16mm; top:90mm; width:80mm;"

@@ -40,8 +40,8 @@
           "zh": "先装中间的螺栓螺母"
         },
         "body": {
-          "en": "Put the M5 square nut and the M5×10 BHCS into the middle counterbore first. The idler stacks block access to it later.",
-          "zh": "先把 M5 四方螺母和 M5×10 半圆头螺栓放进中间的沉孔，两侧惰轮装上后会挡住这个沉孔。"
+          "en": "Put the M5 square nut in the top pocket and the M5×10 BHCS through the center counterbore first, before fitting the idlers.",
+          "zh": "先把 M5 四方螺母放入顶部方槽，把 M5×10 半圆头螺栓穿入中间沉孔，再装惰轮。"
         },
         "classes": "note overlay sm",
         "style": "left:105mm; top:70mm; width:80mm;"

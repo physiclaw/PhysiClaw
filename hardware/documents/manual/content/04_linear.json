@@ -76,8 +76,8 @@
           "zh": "先预装船形螺母"
         },
         "body": {
-          "en": "1. Thread an M3×8 BHCS into every hole. 2. Thread a drop-in T-nut onto each screw tip so that it hangs. 3. Lower the rail onto the extrusion so that the T-nuts drop into the slot. 4. Tighten the screws until snug.",
-          "zh": "1. 每个孔拧入一颗 M3×8 半圆头螺栓。2. 在每颗螺栓末端预拧上一颗船形螺母。3. 把导轨放到型材上，螺母落入槽内。4. 将螺栓拧至零件刚好贴合。"
+          "en": "1. Pass an M3×8 BHCS through every hole. 2. Thread a drop-in T-nut onto each screw tip so that it hangs. 3. Lower the rail onto the extrusion so that the T-nuts drop into the slot. 4. Tighten the screws until snug.",
+          "zh": "1. 每个孔穿入一颗 M3×8 半圆头螺栓。2. 在每颗螺栓末端预拧上一颗船形螺母。3. 把导轨放到型材上，螺母落入槽内。4. 将螺栓拧至零件刚好贴合。"
         },
         "classes": "note overlay sm",
         "style": "right:16mm; top:80mm; width:74mm;"
@@ -399,8 +399,8 @@
           "zh": "X 导轨"
         },
         "body": {
-          "en": "Install this rail like the Y rails. 1. Thread the screws in so that the T-nuts hang. 2. Lower the rail onto the extrusion so that the T-nuts drop into the slot. 3. Tighten the screws.",
-          "zh": "安装方式与 Y 导轨相同。1. 拧入螺栓，在末端预拧上船形螺母。2. 把导轨放到型材上，螺母落入槽内。3. 拧紧螺栓。"
+          "en": "Install this rail like the Y rails. 1. Place the screws in the rail holes and loosely thread on the T-nuts. 2. Lower the rail onto the extrusion so that the T-nuts drop into the slot. 3. Tighten the screws.",
+          "zh": "安装方式与 Y 导轨相同。1. 放入螺栓，在末端预拧上船形螺母。2. 把导轨放到型材上，螺母落入槽内。3. 拧紧螺栓。"
         },
         "classes": "note overlay sm",
         "style": "left:150mm; top:100mm; width:80mm;"
