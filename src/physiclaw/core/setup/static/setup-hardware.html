@@ -53,8 +53,7 @@ a{color:var(--blue);text-decoration:none}
 .lang-toggle{right:64px;width:auto;min-width:38px;padding:0 12px;border-radius:19px;font-size:13px;font-weight:600;letter-spacing:.02em}
 
 /* ── Shell ─────────────────────────────────────────── */
-.shell{display:grid;grid-template-columns:312px 1fr;min-height:100vh}
-@media (max-width:860px){.shell{grid-template-columns:1fr}}
+.shell{display:grid;grid-template-columns:312px minmax(0,1fr);min-height:100vh}
 
 /* ── Sidebar ───────────────────────────────────────── */
 .side{
@@ -63,7 +62,6 @@ a{color:var(--blue);text-decoration:none}
   padding:28px 22px;display:flex;flex-direction:column;gap:26px;
   position:sticky;top:0;height:100vh;overflow:auto;
 }
-@media (max-width:860px){.side{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line)}}
 .brand{display:flex;align-items:center;gap:11px}
 .brand .logo{
   width:46px;height:38px;flex:none;display:grid;place-items:center;
@@ -98,12 +96,10 @@ a{color:var(--blue);text-decoration:none}
 .side-foot code{background:var(--card);padding:1px 6px;border-radius:5px;color:var(--muted)}
 
 /* ── Stage ─────────────────────────────────────────── */
-.stage{padding:40px;display:flex;align-items:center;justify-content:center}
-@media (max-width:860px){.stage{padding:30px 20px;align-items:flex-start}}
+.stage{min-width:0;padding:40px;display:flex;align-items:center;justify-content:center}
 /* Vertically centered, biased a little above true center (margin-bottom
    shifts the centered panel up by half its value). */
-.panel{width:100%;max-width:640px;margin-bottom:9vh;animation:rise .35s ease}
-@media (max-width:860px){.panel{margin-bottom:0}}
+.panel{width:100%;min-width:0;max-width:640px;margin-bottom:9vh;overflow-wrap:anywhere;animation:rise .35s ease}
 @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 
 /* Step header — accent kicker, title, lede. */
@@ -115,6 +111,13 @@ h1{font-size:30px;line-height:1.16;margin:0 0 13px;letter-spacing:-.025em;font-w
 .card{background:var(--card);border:1px solid var(--line);border-radius:16px;
   padding:24px;box-shadow:var(--shadow)}
 .card + .card{margin-top:16px}
+@media (max-width:860px){
+  .shell{grid-template-columns:1fr}
+  .side{display:none}
+  .stage{padding:76px 20px 30px;align-items:flex-start}
+  .panel{margin-bottom:0}
+}
+@media (max-width:480px){.stage{padding:76px 16px 24px}.card{padding:20px}}
 
 .steps-do{list-style:none;display:flex;flex-direction:column;gap:14px;margin:2px 0}
 .steps-do li{display:flex;gap:13px;align-items:flex-start;font-size:14.5px;color:var(--txt)}
@@ -174,15 +177,15 @@ h1{font-size:30px;line-height:1.16;margin:0 0 13px;letter-spacing:-.025em;font-w
 
 /* QR */
 .qrwrap{display:flex;gap:22px;align-items:center;flex-wrap:wrap}
-.qrcard{position:relative;background:#fff;padding:16px;border-radius:14px;flex:none;box-shadow:0 6px 20px rgba(0,0,0,.35)}
-.qrcard canvas{display:block;width:240px;height:240px;image-rendering:pixelated}
+.qrcard{position:relative;width:272px;max-width:100%;background:#fff;padding:16px;border-radius:14px;flex:none;box-shadow:0 6px 20px rgba(0,0,0,.35)}
+.qrcard canvas{display:block;width:100%;height:auto;aspect-ratio:1;image-rendering:pixelated}
 .qr-done{position:absolute;inset:0;border-radius:14px;display:none;flex-direction:column;
   align-items:center;justify-content:center;gap:12px;background:rgba(255,255,255,.94);backdrop-filter:blur(2px)}
 .qr-done.show{display:flex;animation:rise .25s ease}
 .qr-done .check{width:58px;height:58px;border-radius:50%;display:grid;place-items:center;font-size:30px;font-weight:800;
   color:#fff;background:linear-gradient(135deg,var(--ok),#2fa56f);box-shadow:0 8px 22px rgba(76,201,138,.45)}
 .qr-done .lbl{color:#1f2430;font-weight:700;font-size:15px}
-.qrwrap .qrtxt{flex:1;min-width:200px}
+.qrwrap .qrtxt{flex:1;min-width:min(200px,100%)}
 .url{font-family:Arial,"Helvetica Neue","PingFang SC","Microsoft YaHei","Noto Sans CJK SC","Noto Sans SC",sans-serif;
   font-size:13px;line-height:1.65;font-variant-numeric:tabular-nums;
   font-synthesis:none;-webkit-font-smoothing:auto;color:var(--accent);
@@ -190,7 +193,7 @@ h1{font-size:30px;line-height:1.16;margin:0 0 13px;letter-spacing:-.025em;font-w
 .url.alt{color:var(--faint)}
 
 .success-hero{text-align:center;padding:18px 0}
-.mcp-connect{display:flex;align-items:baseline;justify-content:center;gap:12px;
+.mcp-connect{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:center;gap:6px 12px;
   width:fit-content;max-width:100%;margin:26px auto 0;padding:16px 4px 0;
   font-size:14.5px;line-height:1.6;color:var(--muted);--mcp-color:var(--amber)}
 .mcp-connect[data-state="online"]{--mcp-color:var(--ok)}
@@ -897,7 +900,7 @@ function connectPhone(ctx) {
 
   const qrCanvas = body.querySelector("#qr");
   if (!renderQR(qrCanvas, PHONE_URL)) {
-    qrCanvas.replaceWith($(`<div style="width:240px;height:240px;display:grid;place-items:center;color:#666;font-size:13px;text-align:center;padding:12px">${t("s_phone_qroff")}</div>`));
+    qrCanvas.replaceWith($(`<div style="width:100%;aspect-ratio:1;display:grid;place-items:center;color:#666;font-size:13px;text-align:center;padding:12px">${t("s_phone_qroff")}</div>`));
   }
 
   const stateEl = body.querySelector("#connState");
