@@ -255,15 +255,15 @@ def github_release_job(tmp_path):
         if action == "view":
             if not state.exists():
                 sys.exit(1)
-            data = json.loads(state.read_text())
+            data = json.loads(state.read_text(encoding="utf-8"))
             data["assets"] = [{"name": p.name} for p in assets.iterdir()]
             print(json.dumps(data))
         elif action == "create":
             assert not state.exists()
             assert {"--draft", "--verify-tag", "--latest=false"} <= set(args)
-            state.write_text(json.dumps({"isDraft": True}))
+            state.write_text(json.dumps({"isDraft": True}), encoding="utf-8")
         elif action == "upload":
-            assert json.loads(state.read_text())["isDraft"]
+            assert json.loads(state.read_text(encoding="utf-8"))["isDraft"]
             source = Path(args[3])
             if source.name == os.environ.get("FAIL_ASSET"):
                 sys.exit(77)
@@ -276,7 +276,7 @@ def github_release_job(tmp_path):
         elif action == "edit":
             assert {"--draft=false", "--latest=false"} <= set(args)
             assert len(list(assets.iterdir())) == 3
-            state.write_text(json.dumps({"isDraft": False}))
+            state.write_text(json.dumps({"isDraft": False}), encoding="utf-8")
         else:
             raise AssertionError(args)
         """),
@@ -297,6 +297,7 @@ def github_release_job(tmp_path):
                 "FAIL_ASSET": fail_asset,
             },
             text=True,
+            encoding="utf-8",
             capture_output=True,
             timeout=30,
         )
@@ -308,11 +309,11 @@ def test_github_release_retry_resumes_partial_draft_upload(github_release_job):
     run, state, assets = github_release_job
     failed = run("physiclaw-1.2.3.tar.gz")
     assert failed.returncode == 77
-    assert json.loads(state.read_text())["isDraft"]
+    assert json.loads(state.read_text(encoding="utf-8"))["isDraft"]
     assert len(list(assets.iterdir())) == 1
     retried = run()
     assert retried.returncode == 0, retried.stdout + retried.stderr
-    assert not json.loads(state.read_text())["isDraft"]
+    assert not json.loads(state.read_text(encoding="utf-8"))["isDraft"]
     assert {p.name for p in assets.iterdir()} == check_package.filenames("1.2.3") | {
         "manifest.json"
     }
