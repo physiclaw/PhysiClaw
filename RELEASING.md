@@ -33,7 +33,7 @@ Complete this before pushing the first software release tag:
 3. Protect `main` with PR review and required CI checks. Protect `v*` tags from
    updates and deletion, and restrict their creation to release maintainers.
    Require review for `.github/workflows/`, release scripts, and build constraints.
-4. Run **Release → Run workflow** on the migration branch or `main` for a dry run.
+4. After merging the workflow into `main`, run **Release → Run workflow** for a dry run.
    `workflow_dispatch` builds and tests but never publishes, even when run on a tag.
    Inspect the package installation jobs and downloadable artifact bundle.
 5. After the first successful attested release, revoke obsolete PyPI API tokens
