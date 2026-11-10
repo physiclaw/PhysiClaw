@@ -529,6 +529,13 @@ def test_release_permissions_and_artifact_promotion_are_isolated():
     jobs = release["jobs"]
     assert release["permissions"] == {"contents": "read"}
     assert release["concurrency"]["cancel-in-progress"] is False
+    assert jobs["ci"]["needs"] == "validate"
+    validation = jobs["validate"]["steps"][-1]
+    assert validation["if"] == "github.ref_type == 'tag'"
+    assert (
+        validation["run"]
+        == "uv run --no-project python scripts/release.py validate-tag"
+    )
     assert jobs["publish"]["permissions"] == {"id-token": "write"}
     assert jobs["publish"]["environment"]["name"] == "pypi"
     assert set(jobs["publish"]["needs"]) == {"ci", "prepublish"}

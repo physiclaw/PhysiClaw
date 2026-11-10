@@ -49,7 +49,10 @@ def commands(project, mocker):
             output = "main\n"
         elif command[:3] == ("git", "rev-parse", "--verify"):
             code = 1
-        elif command == ("git", "remote", "get-url", "origin"):
+        elif command in {
+            ("git", "remote", "get-url", "origin"),
+            ("git", "remote", "get-url", "--push", "--all", "origin"),
+        }:
             output = "https://github.com/physiclaw/PhysiClaw.git\n"
         elif command[:3] == ("git", "ls-remote", "--exit-code"):
             code = 2
@@ -100,7 +103,7 @@ def test_release_tags_pushed_version_without_bump_build_or_upload(
     assert not any(args[0] == "uv" for args in calls)
     assert ("git", "push", "origin", "main") not in calls
     assert calls[-2:] == [
-        ("git", "tag", "-a", "v0.8.4", "-m", "physiclaw v0.8.4"),
+        ("git", "tag", "-a", "v0.8.4", "a" * 40, "-m", "physiclaw v0.8.4"),
         ("git", "push", "origin", "refs/tags/v0.8.4"),
     ]
     output = capsys.readouterr().out
@@ -115,7 +118,6 @@ def test_release_tags_pushed_version_without_bump_build_or_upload(
     [
         (("git", "status", "--porcelain"), " M README.md\n", 0, "Working tree dirty"),
         (("git", "rev-parse", "--abbrev-ref", "HEAD"), "feature\n", 0, "Not on main"),
-        (("git", "rev-parse", "--verify"), "abc\n", 0, "already exists"),
         (
             ("git", "rev-parse", "--verify"),
             "fatal: not a git repository\n",
@@ -143,6 +145,23 @@ def test_release_guards_leave_version_untouched(
     assert not any(args[0] == "uv" for args in invoked(commands))
     assert invoked(commands)[-1][: len(command)] == command
     assert error in capsys.readouterr().err
+
+
+def test_bump_rejects_existing_tag(project, commands, capsys):
+    original = commands.side_effect
+    before = (project / "pyproject.toml").read_bytes()
+
+    def existing_tag(args, **kwargs):
+        if args[:3] == ("git", "rev-parse", "--verify"):
+            return subprocess.CompletedProcess(args, 0, "b" * 40 + "\n")
+        return original(args, **kwargs)
+
+    commands.side_effect = existing_tag
+
+    assert release.main(["bump"]) == 1
+    assert "Tag v0.8.5 already exists" in capsys.readouterr().err
+    assert (project / "pyproject.toml").read_bytes() == before
+    assert not any(args[0] == "uv" for args in invoked(commands))
 
 
 def test_bump_override_preserves_other_fields_comments_and_crlf(
@@ -374,14 +393,30 @@ def test_release_preflight_stops_before_creating_tag(
 def test_ci_validates_tag_identity_before_checking_ancestry(
     commands, monkeypatch, repository, ref, valid
 ):
+    original = commands.side_effect
+
+    def annotated_tag(args, **kwargs):
+        if args[:3] == ("git", "rev-parse", "--verify"):
+            return subprocess.CompletedProcess(args, 0, "b" * 40 + "\n")
+        if args == ("git", "cat-file", "tag", "b" * 40):
+            return subprocess.CompletedProcess(
+                args, 0, f"object {'a' * 40}\ntype commit\n"
+            )
+        return original(args, **kwargs)
+
+    commands.side_effect = annotated_tag
     monkeypatch.setenv("GITHUB_REPOSITORY", repository)
     monkeypatch.setenv("GITHUB_REF", ref)
     assert (release.main(["validate-tag"]) == 0) is valid
     assert bool(commands.called) is valid
     if valid:
-        assert ("git", "merge-base", "--is-ancestor", "HEAD", "FETCH_HEAD") in invoked(
-            commands
-        )
+        assert (
+            "git",
+            "merge-base",
+            "--is-ancestor",
+            "a" * 40,
+            "FETCH_HEAD",
+        ) in invoked(commands)
         assert invoked(commands)[-1] == ("uv", "lock", "--check")
 
 
@@ -637,6 +672,7 @@ def test_release_approval_rejects_wrong_run(approval_api, commands, field, value
         "not-reviewer",
         "duplicate",
         "lightweight",
+        "nested",
         "moved",
         "failed",
         "running",
@@ -656,6 +692,8 @@ def test_release_approval_fails_closed(approval_api, commands, case):
         pending.append(pending[0])
     elif case == "lightweight":
         approval_api[f"{base}/git/ref/tags/v0.8.4"]["object"]["type"] = "commit"
+    elif case == "nested":
+        approval_api[f"{base}/git/tags/{'b' * 40}"]["object"]["type"] = "tag"
     elif case == "moved":
         approval_api[f"{base}/git/tags/{'b' * 40}"]["object"]["sha"] = "c" * 40
     elif case == "failed":
@@ -797,9 +835,8 @@ def test_native_make_bump_commits_version_and_lockfile(committed_project):
     assert subprocess.check_output(["git", "tag", "--list"], text=True) == ""
 
 
-def test_native_make_direct_release_pushes_version_commit_and_annotated_tag(
-    committed_project, tmp_path, monkeypatch
-):
+@pytest.fixture
+def release_remote(committed_project, tmp_path, monkeypatch):
     project = committed_project
     bare = tmp_path / "origin.git"
     transport = tmp_path / "local_ssh.py"
@@ -807,6 +844,7 @@ def test_native_make_direct_release_pushes_version_commit_and_annotated_tag(
     # to a local bare repository. No connection to GitHub is made.
     transport.write_text(
         dedent("""\
+            import os
             import shlex
             import subprocess
             import sys
@@ -815,6 +853,8 @@ def test_native_make_direct_release_pushes_version_commit_and_annotated_tag(
             assert sys.argv[-2] == "git@github.com"
             assert len(command) == 2 and command[1] == "physiclaw/PhysiClaw.git"
             assert command[0] in {"git-upload-pack", "git-receive-pack"}
+            if command[0] == "git-receive-pack" and os.environ.get("RELEASE_TEST_REJECT_PUSH"):
+                sys.exit(7)
             result = subprocess.run([
                 "git", command[0].removeprefix("git-"), sys.argv[1]
             ])
@@ -840,6 +880,11 @@ def test_native_make_direct_release_pushes_version_commit_and_annotated_tag(
     git("push", "--set-upstream", "origin", "main")
     git("switch", "main")
     git("pull", "--ff-only")
+    return project, bare, git
+
+
+def test_native_make_release_retries_failed_tag_push(release_remote, monkeypatch):
+    project, bare, git = release_remote
 
     bumped = run_make(project, "bump", "VERSION=1.2.3")
     assert bumped.returncode == 0, bumped.stdout + bumped.stderr
@@ -856,13 +901,127 @@ def test_native_make_direct_release_pushes_version_commit_and_annotated_tag(
     assert git("tag", "--list") == ""
 
     git("push", "origin", "main")
-    started = run_make(project, "release")
+    monkeypatch.setenv("RELEASE_TEST_REJECT_PUSH", "1")
+    failed = run_make(project, "release-start")
+    assert failed.returncode != 0
+    assert "Release requested" not in failed.stdout
+    tag_object = git("rev-parse", "refs/tags/v1.2.3")
+    assert git("cat-file", "-t", tag_object) == "tag"
+    assert git("--git-dir", str(bare), "tag", "--list") == ""
+    monkeypatch.delenv("RELEASE_TEST_REJECT_PUSH")
+
+    started = run_make(project, "release-start")
     assert started.returncode == 0, started.stdout + started.stderr
     assert "Release requested for physiclaw 1.2.3" in started.stdout
     assert git("--git-dir", str(bare), "rev-parse", "refs/heads/main") == head
     assert git("--git-dir", str(bare), "rev-parse", "v1.2.3^{commit}") == head
     assert git("--git-dir", str(bare), "cat-file", "-t", "v1.2.3") == "tag"
+    assert git("rev-parse", "refs/tags/v1.2.3") == tag_object
+    assert git("--git-dir", str(bare), "rev-parse", "refs/tags/v1.2.3") == tag_object
     assert git("status", "--porcelain") == ""
+
+    repeated = run_make(project, "release-start")
+    assert repeated.returncode != 0
+    assert (
+        "Remote tag v1.2.3 already exists; inspect or rerun its workflow"
+        in repeated.stderr
+    )
+
+
+@pytest.mark.parametrize("tag_kind", ["lightweight", "other-commit", "nested"])
+def test_native_make_release_rejects_unsafe_local_tag(release_remote, tag_kind):
+    project, bare, git = release_remote
+    if tag_kind == "lightweight":
+        git("tag", "v0.8.4")
+    elif tag_kind == "other-commit":
+        git("tag", "-a", "v0.8.4", "-m", "old commit")
+        git("commit", "--allow-empty", "-m", "later commit")
+        git("push", "origin", "main")
+    else:
+        git("tag", "-a", "inner", "-m", "inner tag")
+        git("tag", "-a", "v0.8.4", "inner", "-m", "nested tag")
+    tag_object = git("rev-parse", "refs/tags/v0.8.4")
+
+    result = run_make(project, "release-start")
+
+    assert result.returncode != 0
+    assert "must be an annotated tag pointing directly to HEAD" in result.stderr
+    assert git("rev-parse", "refs/tags/v0.8.4") == tag_object
+    assert git("--git-dir", str(bare), "tag", "--list") == ""
+
+
+@pytest.mark.parametrize(
+    "tag_kind", ["annotated", "lightweight", "other-commit", "nested", "missing"]
+)
+def test_ci_requires_annotated_tag_at_checked_out_commit(
+    release_remote, monkeypatch, tag_kind
+):
+    project, _, git = release_remote
+    bumped = run_make(project, "bump", "VERSION=0.8.5")
+    assert bumped.returncode == 0, bumped.stdout + bumped.stderr
+    head = git("rev-parse", "HEAD")
+    git("push", "origin", "main")
+    if tag_kind == "lightweight":
+        git("tag", "v0.8.5")
+    elif tag_kind == "nested":
+        git("tag", "-a", "inner", "-m", "inner tag")
+        git("tag", "-a", "v0.8.5", "inner", "-m", "nested tag")
+    elif tag_kind != "missing":
+        target = "HEAD~1" if tag_kind == "other-commit" else head
+        git("tag", "-a", "v0.8.5", target, "-m", "release tag")
+    # GitHub checks out the event commit with a detached HEAD.
+    git("switch", "--detach", head)
+    monkeypatch.setenv("GITHUB_REPOSITORY", release.REPOSITORY)
+    monkeypatch.setenv("GITHUB_REF", "refs/tags/v0.8.5")
+    monkeypatch.setenv("UV_OFFLINE", "1")
+    monkeypatch.setenv("UV_PYTHON", sys.executable)
+    monkeypatch.setenv("UV_CACHE_DIR", str(project / "cache"))
+
+    assert (release.main(["validate-tag"]) == 0) is (tag_kind == "annotated")
+
+
+def test_release_tags_checked_commit_if_head_moves(release_remote, mocker):
+    project, bare, git = release_remote
+    bumped = run_make(project, "bump", "VERSION=0.8.5")
+    assert bumped.returncode == 0, bumped.stdout + bumped.stderr
+    head = git("rev-parse", "HEAD")
+    git("push", "origin", "main")
+    run = subprocess.run
+
+    def move_head(args, **kwargs):
+        if args[:3] == ("git", "tag", "-a"):
+            git("commit", "--allow-empty", "-m", "concurrent work")
+        return run(args, **kwargs)
+
+    mocker.patch.object(release.subprocess, "run", side_effect=move_head)
+
+    assert release.main(["release-start"]) == 0
+    assert git("rev-parse", "HEAD") != head
+    assert git("--git-dir", str(bare), "rev-parse", "v0.8.5^{commit}") == head
+
+
+@pytest.mark.parametrize("multiple", [False, True])
+def test_release_rejects_other_push_destination(release_remote, tmp_path, multiple):
+    project, bare, git = release_remote
+    other = tmp_path / "other.git"
+    git("init", "--bare", str(other))
+    if multiple:
+        git(
+            "remote",
+            "set-url",
+            "--push",
+            "origin",
+            "git@github.com:physiclaw/PhysiClaw.git",
+        )
+    git("remote", "set-url", "--add", "--push", "origin", str(other))
+
+    result = run_make(project, "release-start")
+
+    assert result.returncode != 0
+    assert "official" in result.stderr
+    assert git("tag", "--list") == ""
+    assert git("--git-dir", str(bare), "tag", "--list") == ""
+    assert git("--git-dir", str(other), "tag", "--list") == ""
 
 
 def test_native_make_build_without_unix_utilities(project):

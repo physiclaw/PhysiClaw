@@ -11,7 +11,9 @@ make release-start
 ```
 
 `make bump` commits the version and lockfile locally. `make release-start` requires
-`main` to match `origin/main`, then pushes an annotated version tag.
+`main` to match `origin/main`, then pushes an annotated version tag for that checked
+commit. CI independently verifies the tag's type, version and target before building.
+Both fetch and push URLs for `origin` must point to the official repository.
 `make release` and `make publish` remain aliases. Pull requests are optional unless required by repository rules.
 
 Inspect progress, approve when checks pass, then follow publication:
@@ -41,6 +43,10 @@ downloads before creating the GitHub release. **Run workflow** is a non-publishi
 
 ## Recovery
 
+- If the tag push fails, rerun `make release-start` from the same clean, pushed
+  commit. It reuses the local annotated tag only when it points directly to HEAD
+  and the remote tag is absent. If the remote tag already exists, inspect or rerun
+  its workflow instead; the command never replaces published tags.
 - Use **Re-run failed jobs** on the original run to reuse its artifacts (retained
   for 30 days). Retries require matching hashes and verified attestations.
 - GitHub releases stay drafts until all assets upload; retries resume missing assets and verify existing bytes.

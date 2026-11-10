@@ -108,7 +108,11 @@ class Release:
             )
         return result
 
-    def check_tag(self, version: str) -> None:
+    def check_tag(self, version: str, *, expected_head: str | None = None) -> bool:
+        """Reject existing tags unless annotated and directly targeting expected_head.
+
+        Return False for a missing tag and True for an accepted tag.
+        """
         result = self.run(
             "git",
             "rev-parse",
@@ -118,12 +122,27 @@ class Release:
             capture=True,
             check=False,
         )
-        if result.returncode == 0:
-            raise ReleaseError(f"Tag v{version} already exists")
-        if result.returncode != 1:
+        if result.returncode == 1:
+            return False
+        if result.returncode:
             if result.stdout:
                 print(result.stdout, end="", file=sys.stderr)
             raise ReleaseError("Couldn't check release tag", result.returncode)
+        if expected_head is None:
+            raise ReleaseError(f"Tag v{version} already exists")
+        # Require a tag object directly targeting HEAD; peeling would also
+        # accept lightweight or nested tags that publication approval rejects.
+        tag = self.run(
+            "git", "cat-file", "tag", result.stdout.strip(), capture=True, check=False
+        )
+        if tag.returncode or tag.stdout.splitlines()[:2] != [
+            f"object {expected_head}",
+            "type commit",
+        ]:
+            raise ReleaseError(
+                f"Local tag v{version} must be an annotated tag pointing directly to HEAD"
+            )
+        return True
 
     def check_checkout(self, *, main: bool = False) -> None:
         if self.run("git", "status", "--porcelain", capture=True).stdout.strip():
@@ -213,15 +232,20 @@ class Release:
             )
         current = read_version()
         self.check_checkout(main=True)
-        self.check_tag(current)
-        remote = self.run(
-            "git", "remote", "get-url", "origin", capture=True
-        ).stdout.strip()
-        if remote.removesuffix(".git") not in {
+        official_urls = {
             f"https://github.com/{REPOSITORY}",
             f"git@github.com:{REPOSITORY}",
-        }:
-            raise ReleaseError(f"origin must be the official {REPOSITORY} repository")
+        }
+        for options in ((), ("--push", "--all")):
+            urls = self.run(
+                "git", "remote", "get-url", *options, "origin", capture=True
+            ).stdout.splitlines()
+            if not urls or any(
+                url.removesuffix(".git") not in official_urls for url in urls
+            ):
+                raise ReleaseError(
+                    f"origin fetch and push URLs must be the official {REPOSITORY} repository"
+                )
         self.run("git", "fetch", "--no-tags", "origin", "main")
         head = self.run("git", "rev-parse", "HEAD", capture=True).stdout.strip()
         upstream = self.run(
@@ -250,8 +274,14 @@ class Release:
             raise ReleaseError(
                 "Couldn't check remote release tag", remote_tag.returncode
             )
+        reuse_tag = self.check_tag(current, expected_head=head)
         self.stage(f"Request CI release - {current}")
-        self.run("git", "tag", "-a", f"v{current}", "-m", f"physiclaw v{current}")
+        if reuse_tag:
+            print(f"        Reusing local annotated tag v{current}", flush=True)
+        else:
+            self.run(
+                "git", "tag", "-a", f"v{current}", head, "-m", f"physiclaw v{current}"
+            )
         self.run("git", "push", "origin", tag)
         self.done(f"Pushed v{current}; CI must pass and publication must be approved")
         self.summary()
@@ -422,8 +452,11 @@ class Release:
             raise ReleaseError("Releases must run in the official repository")
         if os.environ.get("GITHUB_REF") != f"refs/tags/v{current}":
             raise ReleaseError("Release tag must match pyproject.toml version")
+        head = self.run("git", "rev-parse", "HEAD", capture=True).stdout.strip()
+        if not self.check_tag(current, expected_head=head):
+            raise ReleaseError(f"Release tag v{current} is missing from the checkout")
         self.run("git", "fetch", "--no-tags", "origin", "main")
-        self.run("git", "merge-base", "--is-ancestor", "HEAD", "FETCH_HEAD")
+        self.run("git", "merge-base", "--is-ancestor", head, "FETCH_HEAD")
         self.run("uv", "lock", "--check")
 
     def summary(self) -> None:
