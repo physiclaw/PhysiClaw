@@ -26,12 +26,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout PhysiClaw (scripts source)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           path: source
 
       - name: Checkout PhysiClaw-site (consumer)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           repository: physiclaw/PhysiClaw-site
           ref: main
