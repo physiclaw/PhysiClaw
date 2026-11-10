@@ -76,8 +76,8 @@
           "zh": "先预装船形螺母"
         },
         "body": {
-          "en": "1. Pass an M3×8 BHCS through every hole. 2. Thread a drop-in T-nut onto each screw tip so that it hangs. 3. Lower the rail onto the extrusion so that the T-nuts drop into the slot. 4. Tighten the screws until snug.",
-          "zh": "1. 每个孔穿入一颗 M3×8 半圆头螺栓。2. 在每颗螺栓末端预拧上一颗船形螺母。3. 把导轨放到型材上，螺母落入槽内。4. 将螺栓拧至零件刚好贴合。"
+          "en": "1. Place an M3×8 BHCS in every hole. 2. Thread a drop-in T-nut onto each screw tip so that it hangs. 3. Lower the rail onto the extrusion so that the T-nuts drop into the slot. 4. Tighten the screws until snug.",
+          "zh": "1. 每个孔放入一颗 M3×8 半圆头螺栓。2. 在每颗螺栓末端预拧上一颗船形螺母。3. 把导轨放到型材上，螺母落入槽内。4. 将螺栓拧至零件刚好贴合。"
         },
         "classes": "note overlay sm",
         "style": "right:16mm; top:80mm; width:74mm;"
