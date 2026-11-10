@@ -686,16 +686,30 @@ def publish(version: str) -> None:
     )
     _confirm_publication(repo, tag, commit, remote)
     buildlog.event("release_published", "Publication verified", tag=tag, commit=commit)
+    buildlog.event(
+        "docs_verification_started",
+        "Deploying docs, waiting up to 15 minutes, then checking both live sites",
+        tag=tag,
+    )
     try:
-        buildlog.event("docs_hook_output", run("make", "docs-deploy"), level="debug")
+        buildlog.event(
+            "docs_hook_output",
+            run("make", "docs-deploy", f"HW_VERSION={version}", timeout=3600),
+            level="debug",
+        )
     except (subprocess.SubprocessError, OSError) as exc:
         raise ReleaseError(
-            "Hardware release is published, but the docs hook failed. "
-            "Retry only: make docs-deploy"
+            "Hardware release is published, but docs deployment or site verification failed. "
+            "See hardware/output/site-asset-report/ for the failure. "
+            f"Retry verification only: make check-site-assets HW_VERSION={version}. "
+            f"If the hook/build failed: make docs-deploy HW_VERSION={version}. "
+            "Do not publish the release again."
         ) from exc
-    # The hook is a network round trip; reject a release changed while it ran.
+    # Reject a release changed during deployment or the live asset audit.
     _confirm_publication(repo, tag, commit, remote)
-    buildlog.event("release_deployed", "Docs build triggered", tag=tag)
+    buildlog.event(
+        "release_deployed", "Docs deployment and site assets verified", tag=tag
+    )
 
 
 @locked_main

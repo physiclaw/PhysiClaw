@@ -1097,7 +1097,7 @@ class Audit:
                 self.record(entry, str(exc))
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--report", type=Path, help="write every file/member row as CSV"
@@ -1125,7 +1125,7 @@ def main():
     verbosity.add_argument(
         "--verbose", action="store_true", help="show every file and ZIP member"
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     require(
         args.timeout > 0 and args.workers > 0, "timeout and workers must be positive"
     )

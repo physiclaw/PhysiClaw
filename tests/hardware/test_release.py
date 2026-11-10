@@ -17,6 +17,7 @@ from hardware import buildlog, scheme
 from hardware import release as rel
 
 VERSION = "1.2"
+DOCS_COMMAND = ("make", "docs-deploy", f"HW_VERSION={VERSION}")
 COMMIT = "a" * 40
 PDF = b"%PDF-1.7\nfixture\n%%EOF\n"
 STEP = b"ISO-10303-21;\nfixture\nEND-ISO-10303-21;\n"
@@ -512,7 +513,8 @@ def github(bundle, monkeypatch):
                 for asset in state["release"]["assets"]:
                     asset["download_count"] = asset.get("download_count", 0) + 1
             return ""
-        if args == ("make", "docs-deploy"):
+        if args == DOCS_COMMAND:
+            assert kwargs["timeout"] == 3600
             assert state["release"]["draft"] is False
             if state["failure"] == "docs":
                 raise subprocess.CalledProcessError(1, args)
@@ -565,7 +567,7 @@ def test_publish_uses_exact_commit_and_server_checksums_without_download(github)
     latest_reads = [
         i for i, c in enumerate(calls) if c[-1].endswith("/releases/latest")
     ]
-    hook_index = calls.index(("make", "docs-deploy"))
+    hook_index = calls.index(DOCS_COMMAND)
     assert len(latest_reads) == 2 and latest_reads[0] < hook_index < latest_reads[1]
     assert calls[-1][-3:] == (
         f"repos/physiclaw/PhysiClaw/commits/refs/tags/{rel.tag_for(VERSION)}",
@@ -578,11 +580,12 @@ def test_docs_failure_leaves_published_release_and_gives_specific_retry(github):
     state, calls = github
     state["failure"] = "docs"
     with pytest.raises(
-        rel.ReleaseError, match="published.*Retry only: make docs-deploy"
+        rel.ReleaseError,
+        match="published.*Retry verification only: make check-site-assets",
     ):
         rel.publish(VERSION)
     assert state["release"]["draft"] is False
-    assert calls[-1] == ("make", "docs-deploy")
+    assert calls[-1] == DOCS_COMMAND
 
 
 @pytest.mark.parametrize("count", [0, 3, 7])
@@ -655,7 +658,7 @@ def test_upload_failure_never_publishes_or_deletes_draft(github, failure):
     with pytest.raises((rel.ReleaseError, subprocess.CalledProcessError)):
         rel.publish(VERSION)
     assert state["release"] is None or state["release"]["draft"] is True
-    assert ("make", "docs-deploy") not in calls
+    assert DOCS_COMMAND not in calls
     assert not any(c[:3] == ("gh", "release", "delete") for c in calls)
 
 
@@ -756,7 +759,7 @@ def test_deploy_cannot_succeed_with_wrong_published_assets_or_tag(github, when, 
     state[when] = mutate
     # Exercise the actual deploy entry point and its exit status, not just a helper.
     assert rel.main.__wrapped__(["deploy", "--version", VERSION]) == 1
-    assert (("make", "docs-deploy") in calls) == (when == "after_docs")
+    assert (DOCS_COMMAND in calls) == (when == "after_docs")
 
 
 @pytest.mark.parametrize("failure", ["published-read", "tag-read"])
@@ -766,14 +769,14 @@ def test_unreadable_published_state_never_reports_success_or_triggers_docs(
     state, calls = github
     state["failure"] = failure
     assert rel.main.__wrapped__(["deploy", "--version", VERSION]) == 1
-    assert ("make", "docs-deploy") not in calls
+    assert DOCS_COMMAND not in calls
 
 
 def test_deploy_success_requires_published_assets_tag_and_docs(github):
     state, calls = github
     assert rel.main.__wrapped__(["deploy", "--version", VERSION]) == 0
     assert state["release"]["draft"] is False
-    assert calls.count(("make", "docs-deploy")) == 1
+    assert calls.count(DOCS_COMMAND) == 1
 
 
 @pytest.mark.parametrize(

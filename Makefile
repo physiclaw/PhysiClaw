@@ -1,4 +1,4 @@
-.PHONY: test test-cov test-fast test-encoding test-slow test-integration test-all testall test-studio-ui mutate lint fmt typecheck loc help firmware bump build publish release release-start release-status release-approve release-watch docs-deploy \
+.PHONY: test test-cov test-fast test-encoding test-slow test-integration test-all testall test-studio-ui mutate lint fmt typecheck loc help firmware bump build publish release release-start release-status release-approve release-watch docs-deploy check-site-assets \
         hw-help hw-parts hw-build hw-check hw-step hw-print hw-manual hw-manual-pdf hw-sourcing hw-url hw-drawing hw-rebuild hw-preflight hw-prepare hw-verify hw-publish hw-release _hw-package
 
 PY ?= uv run
@@ -139,10 +139,11 @@ hw-help:
 	@echo "    make hw-verify HW_VERSION=X.Y        Verify an existing bundle without rebuilding"
 	@echo ""
 	@echo "  Release (commit and push main first):"
-	@echo "    make hw-release HW_VERSION=X.Y       Prepare → verify → publish → trigger docs deploy"
-	@echo "    make hw-publish HW_VERSION=X.Y       Publish a prepared bundle → trigger docs deploy"
+	@echo "    make hw-release HW_VERSION=X.Y       Prepare → verify → publish → deploy and check sites"
+	@echo "    make hw-publish HW_VERSION=X.Y       Publish a prepared bundle → deploy and check sites"
 	@echo "    make hw-preflight HW_VERSION=X.Y     Check Git/GitHub readiness; no upload"
-	@echo "    make docs-deploy                     Trigger only the docs hook; use if that step failed"
+	@echo "    make docs-deploy [HW_VERSION=X.Y]    Trigger docs, wait for readiness, check both sites"
+	@echo "    make check-site-assets [HW_VERSION=X.Y]  Check both sites without deploying"
 	@echo "      DOCS_DEPLOY_SCRIPT=path overrides the driver location for external -f use"
 	@echo ""
 	@echo '  Build or edit one output (flags through ARGS="..."):'
@@ -229,3 +230,6 @@ _hw-package: hw-publish
 # trigger a deploy), so it lives in the gitignored .docs-deploy-hook, one line.
 docs-deploy:
 	@$(PYTHON) -c "import os, runpy; runpy.run_path(os.environ['DOCS_DEPLOY_SCRIPT'], run_name='__main__')"
+
+check-site-assets:
+	@$(PYTHON) -c "import os, runpy, sys; sys.argv.append('--check-only'); runpy.run_path(os.environ['DOCS_DEPLOY_SCRIPT'], run_name='__main__')"
