@@ -110,14 +110,18 @@ authenticated GitHub CLI (`gh`):
 make hw-publish HW_VERSION=X.Y
 ```
 
-Publishing deploys docs, waits for the new deployment and production release
-marker, then checks assets on both `docs.physiclaw.ai` and `physiclaw.ai` locally.
-Readiness is polled every 15 seconds for up to 15 minutes. Keep the terminal open
-until verification finishes. Release rules are in [AGENTS.md](AGENTS.md).
+Publishing deploys docs and waits for the new build and `docs.physiclaw.ai` to
+serve the expected release marker, polling every 15 seconds for up to 15 minutes.
+It then audits assets on `docs.physiclaw.ai` and `physiclaw.ai`. All asset checks
+must pass; an existing production build serving the same release assets is
+acceptable.
 
-Each run saves its log, deployment details, and completed audit CSV under
-`hardware/output/site-asset-report/`. If verification fails, the release remains
-published. Inspect Cloudflare after a readiness timeout, then retry as needed:
+Keep the terminal open until verification finishes. Release rules are in
+[AGENTS.md](AGENTS.md).
+
+Logs and audit reports are saved under `hardware/output/site-asset-report/`.
+If verification fails, the release remains published. Inspect Cloudflare after
+a readiness timeout, then retry as needed:
 
 ```sh
 make docs-deploy HW_VERSION=X.Y        # Redeploy docs, wait, and audit both sites

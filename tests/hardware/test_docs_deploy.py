@@ -18,7 +18,8 @@ from hardware.scheme import REPO_ROOT
 from scripts import docs_deploy
 
 TAG = "physiclaw-hardware-v1.2"
-DEPLOYMENT = "https://1234abcd.docs-site.pages.dev"
+DEPLOYMENT_ID = "1234abcd-5678-90ab-cdef-1234567890ab"
+DEPLOYMENT = "https://1234abcd.docs-site-3h3.pages.dev"
 REPORTS = Path("hardware/output/site-asset-report")
 
 
@@ -32,7 +33,10 @@ def docs_hook(tmp_path, monkeypatch, status):
     requests = []
     payload = {
         "success": True,
-        "result": {"url": DEPLOYMENT, "environment": "production", "is_skipped": False},
+        # Actual deploy-hook response, not the full Pages deployments API object.
+        "result": {"id": DEPLOYMENT_ID},
+        "errors": [],
+        "messages": [],
     }
 
     class Handler(BaseHTTPRequestHandler):
@@ -90,21 +94,26 @@ def test_docs_hook_posts_once_and_requires_http_success(status, docs_hook, capsy
     [
         {"success": False},
         {"result": None},
-        {"result": {"url": "https://docs-site.pages.dev"}},
-        {"result": {"url": "https://main.docs-site.pages.dev"}},
-        {"result": {"url": "https://1234abcd.docs-site.pages.dev/secret"}},
-        {"result": {"url": "https://1234abcd.docs-site.pages.dev.evil.example"}},
-        {"result": {"url": DEPLOYMENT, "environment": "preview"}},
+        {"result": {}},
+        {"result": {"id": None}},
+        {"result": {"id": 1234}},
+        {"result": {"id": "1234abcd"}},
+        {"result": {"id": "main"}},
+        {"result": {"id": DEPLOYMENT_ID + "/secret"}},
+        {"result": {"id": "evil.example/" + DEPLOYMENT_ID}},
+        {"result": {"id": DEPLOYMENT_ID, "environment": "preview"}},
         {
             "result": {
-                "url": DEPLOYMENT,
+                "id": DEPLOYMENT_ID,
                 "environment": "production",
                 "is_skipped": True,
             }
         },
     ],
 )
-def test_hook_requires_a_fresh_production_deployment(docs_hook, change):
+def test_hook_rejects_invalid_id_or_explicit_preview_or_skipped_build(
+    docs_hook, change
+):
     hook, requests, payload = docs_hook
     payload.update(change)
     with pytest.raises(docs_deploy.DeployError):
@@ -183,6 +192,31 @@ def test_check_only_needs_no_hook_and_preserves_each_report(
     assert not list((tmp_path / REPORTS).glob("*/deployment.json"))
 
 
+def test_check_only_propagates_an_asset_error_without_a_message(tmp_path, monkeypatch):
+    from scripts import check_site_assets as assets
+
+    marker = next(e for e in assets.INVENTORY.files if e.check == "release-tag")
+    monkeypatch.setattr(
+        assets,
+        "INVENTORY",
+        assets.Inventory(
+            files=(marker,), expand=(), rewrite_downloads=(), public_repositories={}
+        ),
+    )
+    downloads = Mock()
+    downloads.get.side_effect = EOFError()
+    monkeypatch.setattr(assets, "Downloads", lambda *_: downloads)
+    monkeypatch.chdir(tmp_path)
+
+    assert docs_deploy.main(["--check-only", "--hardware-tag", TAG]) == 1
+
+    directory = next((tmp_path / REPORTS).iterdir())
+    assert "FAIL,EOFError" in (directory / "assets.csv").read_text(encoding="utf-8")
+    log = (directory / "check.log").read_text(encoding="utf-8")
+    assert "Site asset verification passed" not in log
+    assert "make check-site-assets HW_VERSION=1.2" in log
+
+
 @pytest.fixture
 def clock(monkeypatch):
     class Clock:
@@ -219,6 +253,34 @@ def markers(monkeypatch, clock):
 
     monkeypatch.setattr(docs_deploy, "build_opener", lambda *_: Mock(open=open_marker))
     return configure
+
+
+@pytest.mark.parametrize("audit_result", [0, 1])
+def test_matching_release_markers_still_require_asset_verification(
+    docs_hook, monkeypatch, audit_result, tmp_path
+):
+    _, posts, _ = docs_hook
+    opener = docs_deploy.build_opener(docs_deploy.NoRedirect)
+    probes = []
+    audit = Mock(return_value=audit_result)
+
+    def open_request(request, timeout):
+        if request.get_method() == "POST":
+            return opener.open(request, timeout=timeout)
+        probes.append(request.full_url.split("/.release-version")[0])
+        response = io.BytesIO(TAG.encode())
+        response.status = 200
+        return response
+
+    monkeypatch.setattr(docs_deploy, "build_opener", lambda *_: Mock(open=open_request))
+    monkeypatch.setattr(docs_deploy, "audit_sites", audit)
+    assert docs_deploy.main([]) == audit_result
+
+    assert posts == [("POST", "/secret")]
+    assert probes == [DEPLOYMENT, docs_deploy.PRODUCTION]
+    audit.assert_called_once()
+    log = next((tmp_path / REPORTS).glob("*/check.log")).read_text(encoding="utf-8")
+    assert ("Site asset verification passed" in log) is (audit_result == 0)
 
 
 def test_same_release_redeploy_waits_for_unique_url_before_production(markers, clock):

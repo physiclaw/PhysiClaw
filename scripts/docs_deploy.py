@@ -18,6 +18,9 @@ from urllib.error import HTTPError
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 PRODUCTION = "https://docs.physiclaw.ai"
+# The Pages project hostname, including Cloudflare's collision suffix. Deploy
+# hooks return only an ID; its first eight hex digits identify the immutable URL.
+PAGES_DOMAIN = "docs-site-3h3.pages.dev"
 PREFIX = "physiclaw-hardware-v"
 WAIT_TIMEOUT = 900
 POLL_INTERVAL = 15
@@ -75,18 +78,21 @@ def trigger_hook(url):
     result = payload.get("result") if isinstance(payload, dict) else None
     if not isinstance(result, dict) or payload.get("success") is not True:
         raise DeployError("Docs hook did not return a successful deployment response")
-    url = result.get("url", "")
-    if not isinstance(url, str) or not re.fullmatch(
-        r"https://[a-f0-9]{8}\.[a-z0-9-]+\.pages\.dev/?", url
+    deployment_id = result.get("id")
+    if not isinstance(deployment_id, str) or not re.fullmatch(
+        r"[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}", deployment_id
     ):
         raise DeployError(
-            "Docs hook accepted, but no unique Pages deployment URL was returned. "
+            "Docs hook accepted, but no valid Pages deployment ID was returned. "
             "Inspect Cloudflare; do not treat the existing production site as ready."
         )
-    if result.get("environment") != "production" or result.get("is_skipped"):
+    # Hook responses may omit environment and is_skipped.
+    if result.get("environment") not in (None, "production") or result.get(
+        "is_skipped"
+    ):
         raise DeployError("Docs hook did not start a production deployment")
     print("docs-site deploy triggered")
-    return url.rstrip("/")
+    return f"https://{deployment_id[:8]}.{PAGES_DOMAIN}"
 
 
 def resolve_tag(pinned):
@@ -103,7 +109,7 @@ def resolve_tag(pinned):
 
 
 def wait_for_deployment(deployment_url, tag, timeout, interval):
-    """Probe small uncached markers, never repeatedly download the full audit."""
+    """Wait for matching release markers on the new build and production."""
     deadline = time.monotonic() + timeout
     opener = build_opener(NoRedirect)
     for origin in (deployment_url, PRODUCTION):
@@ -135,7 +141,7 @@ def wait_for_deployment(deployment_url, tag, timeout, interval):
                 f"Deployment readiness timed out after {timeout:g}s at {origin}. "
                 "Inspect Cloudflare for a failed or queued build."
             )
-    print("Deployment is available; checking both production sites")
+    print("Release markers ready; checking assets on both production sites")
 
 
 def audit_sites(tag, report):

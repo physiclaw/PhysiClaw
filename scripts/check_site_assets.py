@@ -27,6 +27,7 @@ import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, fields, replace
 from html.parser import HTMLParser
+from http.client import HTTPException
 from pathlib import Path, PurePosixPath
 from urllib.error import HTTPError
 from urllib.parse import quote, unquote, urljoin, urlsplit
@@ -365,7 +366,7 @@ class Downloads:
                 require(pending.stat().st_size > 0, f"empty response: {url}")
                 pending.replace(path)
                 return path
-            except (OSError, ValueError) as exc:
+            except (OSError, ValueError, HTTPException) as exc:
                 pending.unlink(missing_ok=True)
                 retryable = not isinstance(exc, HTTPError) or exc.code in {
                     408,
@@ -547,7 +548,7 @@ class Audit:
         try:
             operation(entry)
         except Exception as exc:
-            self.record(entry, str(exc))
+            self.record(entry, str(exc) or type(exc).__name__)
 
     def group(self, entries, operation):
         error = ""
@@ -555,7 +556,7 @@ class Audit:
         try:
             operation(entries)
         except Exception as exc:
-            error = str(exc)
+            error = str(exc) or type(exc).__name__
         recorded = {r.web_url for r in self.rows[start:] if not r.archive_member}
         for entry in entries:
             if entry.web_url not in recorded:
@@ -821,7 +822,7 @@ class Audit:
                         path = future.result()
                         self.compare(entry, archive.read(entry.member), actual=path)
                     except Exception as exc:
-                        self.record(entry, str(exc))
+                        self.record(entry, str(exc) or type(exc).__name__)
 
     def source_images(self, rule):
         recorded = set()
@@ -1094,7 +1095,7 @@ class Audit:
                             f"extra linked file outside inventory: {url}",
                         )
             except Exception as exc:
-                self.record(entry, str(exc))
+                self.record(entry, str(exc) or type(exc).__name__)
 
 
 def main(argv=None):

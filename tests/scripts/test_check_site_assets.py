@@ -4,6 +4,9 @@ import hashlib
 import io
 import zipfile
 from dataclasses import replace
+from http.client import IncompleteRead
+from unittest.mock import Mock
+from urllib.error import HTTPError
 
 import pytest
 
@@ -97,6 +100,92 @@ def test_release_marker_must_match_selected_hardware_release(tmp_path, stale):
     audit.run(entry, audit.check)
 
     assert [row.status for row in audit.rows] == ["FAIL" if stale else "PASS"]
+
+
+@pytest.mark.parametrize("stage", ["file", "manual-assets", "linked-inventory"])
+def test_empty_exception_message_cannot_pass_verification(tmp_path, monkeypatch, stage):
+    inventory = assets.INVENTORY.for_hardware("physiclaw-hardware-v1.2")
+    downloads = Downloads(tmp_path)
+    monkeypatch.setattr(downloads, "get", Mock(side_effect=EOFError()))
+    audit = assets.Audit(downloads, inventory, workers=1, quiet=True)
+
+    if stage == "file":
+        entry = next(e for e in inventory.files if e.check == "release-tag")
+        audit.run(entry, audit.check)
+    elif stage == "manual-assets":
+        rule = next(e for e in inventory.expand if e.check == "members")
+        path = tmp_path / "manual.zip"
+        with zipfile.ZipFile(path, "w") as archive:
+            archive.writestr("manual/assets/diagram.svg", b"diagram")
+        audit.release_paths[rule.release_asset_url] = path
+        audit.run(rule, audit.expanded_files)
+    else:
+        audit.linked_inventory()
+
+    assert audit.rows
+    assert all(row.status == "FAIL" and row.detail == "EOFError" for row in audit.rows)
+    assert audit.terminal.failed == len(audit.rows)
+    assert audit.terminal.passed == 0
+
+
+@pytest.mark.parametrize("recovers", [False, True])
+@pytest.mark.parametrize("error", [ConnectionResetError(), IncompleteRead(b"lost", 8)])
+def test_download_protocol_errors_retry_with_clean_partial_files(
+    tmp_path, monkeypatch, error, recovers
+):
+    sleeps = []
+    responses = []
+    directory = tmp_path / "downloads"
+    directory.mkdir()
+
+    def open_response(*args, **kwargs):
+        response = io.BytesIO(b"complete")
+        response.status = 200
+        response.headers = {"Content-Length": "8"}
+        if not recovers or not responses:
+            response.read = Mock(side_effect=[b"partial", error])
+        responses.append(response)
+        return response
+
+    monkeypatch.setattr(assets, "build_opener", lambda *_: Mock(open=open_response))
+    monkeypatch.setattr(assets.time, "sleep", sleeps.append)
+    downloads = assets.Downloads(directory, 30)
+    url = "https://example.test/file.zip"
+    if recovers:
+        path = downloads.get(url)
+        assert path.read_bytes() == b"complete"
+        assert downloads.get(url) == path
+        assert len(responses) == 2
+        assert sleeps == [1]
+    else:
+        with pytest.raises(type(error)):
+            downloads.get(url)
+        assert len(responses) == 3
+        assert sleeps == [1, 2]
+        assert not list(directory.iterdir())
+    assert all(response.closed for response in responses)
+    assert not list(directory.glob("*.part"))
+
+
+@pytest.mark.parametrize("status,attempts", [(403, 1), (404, 1), (429, 3), (503, 3)])
+def test_download_http_errors_have_bounded_retries(
+    tmp_path, monkeypatch, status, attempts
+):
+    url = "https://example.test/file.zip"
+    directory = tmp_path / "downloads"
+    directory.mkdir()
+    opener = Mock()
+    opener.open.side_effect = HTTPError(url, status, "failed", {}, None)
+    sleep = Mock()
+    monkeypatch.setattr(assets, "build_opener", lambda *_: opener)
+    monkeypatch.setattr(assets.time, "sleep", sleep)
+
+    with pytest.raises(HTTPError):
+        assets.Downloads(directory, 30).get(url)
+
+    assert opener.open.call_count == attempts
+    assert sleep.call_count == attempts - 1
+    assert not list(directory.iterdir())
 
 
 @pytest.mark.parametrize("collision", [False, True])
