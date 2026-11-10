@@ -50,6 +50,7 @@ from hardware.documents.dimensions import resolve_dimensions
 from hardware.documents.drawing.extrusion_parts import cut_list
 from hardware.documents.manual.assets import HAND_FIGURES
 from hardware.documents.manual.pages import CONTENT_DIR, load_chapter
+from hardware.documents.manual.schema import validate_page_links
 from hardware.documents.sourcing import VENDOR_FILES
 from hardware.scheme import (
     FAMILY_PRIORITY,
@@ -226,7 +227,7 @@ def check_annotations(views_by_stem):
 
 def load_content() -> tuple[list[str], dict[str, list]]:
     """Parse every ``content/*.json`` once for both content checks. Returns
-    (findings for unparseable files, pages keyed by filename)."""
+    (validation findings, pages keyed by filename)."""
     findings: list[str] = []
     pages_by_file: dict[str, list] = {}
     for path in sorted(CONTENT_DIR.glob("*.json")):
@@ -236,6 +237,10 @@ def load_content() -> tuple[list[str], dict[str, list]]:
             findings.append(f"manual: {path.name} is not valid JSON ({exc})")
         except (BuildError, OSError) as exc:
             findings.append(f"manual: {exc}")
+    try:
+        validate_page_links(pages_by_file)
+    except BuildError as exc:
+        findings.append(f"manual: {exc}")
     return findings, pages_by_file
 
 

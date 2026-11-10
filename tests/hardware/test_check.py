@@ -99,7 +99,16 @@ def write_bom(content, vendors, rows: list[dict], extrusions=EXTRUSION_ROWS) -> 
     """A BOM page of ``rows`` plus the extrusion rows (the real ones unless
     a test hands in altered ones), and a vendor file that joins to every one
     of them."""
-    rows = rows + extrusions
+    defaults = {
+        "cls": {"en": "Hardware"},
+        "component": {"en": "Part"},
+        "spec": "",
+        "qty": "1",
+        "desc": "",
+    }
+    rows = [
+        defaults | row if isinstance(row, dict) else row for row in rows + extrusions
+    ]
     (content / "11_bom.json").write_text(
         json.dumps([{"type": "bom", "page": "bom", "rows_source": "bom"}]),
         encoding="utf-8",
@@ -385,6 +394,60 @@ def test_manual_content_with_invalid_json_is_flagged(world):
 def test_malformed_manual_chapter_reports_a_finding(world):
     (world.content / "02_x.json").write_text("[null]", encoding="utf-8")
     assert_finding("manual chapter must be a JSON array of page objects")
+
+
+@pytest.mark.parametrize(
+    ("page", "reason"),
+    [
+        (
+            {"type": "solo", "page": "example", "figures": [], "figuers": []},
+            "figuers: unknown field",
+        ),
+        (
+            {
+                "type": "solo",
+                "page": "example",
+                "figures": [{"src": "part.svg", "alt": False}],
+            },
+            "figures[0].alt: expected text",
+        ),
+        ({"type": "solo", "page": "frame", "figures": []}, "duplicate page id"),
+        (
+            {
+                "type": "solo",
+                "page": "example",
+                "figures": [{"src": "part.svg", "style": "width:80"}],
+            },
+            "figures[0].style: 'width:80' has a non-zero length without a CSS unit",
+        ),
+        (
+            {
+                "type": "toc",
+                "page": "toc",
+                "rows": [{"page": "ghost", "label": "Missing"}],
+            },
+            "unknown page id 'ghost'",
+        ),
+    ],
+)
+def test_strict_manual_validation_fails_the_static_gate(world, capsys, page, reason):
+    (world.content / "02_x.json").write_text(json.dumps([page]), encoding="utf-8")
+    assert check.main(["--log-format", "json"]) == 1
+    events = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert any(
+        event["event"] == "consistency_error"
+        and "02_x.json" in event["message"]
+        and reason in event["message"]
+        for event in events
+    )
+
+
+def test_duplicate_json_keys_fail_the_static_gate(world):
+    (world.content / "02_x.json").write_text(
+        '[{"type":"solo","page":"example","figures":[],"figures":[]}]',
+        encoding="utf-8",
+    )
+    assert_finding("02_x.json: duplicate JSON field 'figures'")
 
 
 # ── sourcing ──────────────────────────────────────────────────────────────────

@@ -57,11 +57,22 @@ fresh documents in its private tree, using the validated persistent CAD cache.
 Direct Python entry points are `hardware.documents.manual.build`,
 `hardware.documents.sourcing.build`, and `hardware.documents.drawing.extrusion`.
 
-The manual loader validates page layouts and required fields before rendering.
-Errors name the chapter, page ID and field; `make hw-check` runs the same
-validation. Add new page types to both `manual/schema.py` and `manual/build.py`.
-Inline HTML and styles remain authored content, and empty translations still
-fall back to English.
+Manual builds and `make hw-check` use `manual/schema.py` to reject unknown fields,
+missing required fields and incorrect value types in pages, nested objects and
+shared BOM rows. Chapters must use valid JSON with no duplicate keys. Page IDs,
+including generated BOM continuation IDs, must be unique. TOC references must
+resolve, and the manual may contain only one consolidated BOM table.
+
+Translation objects use `en` and optional `zh` keys; `en` must be text. An omitted,
+empty or null `zh` value falls back to English. Figure sources must be SVG
+filenames without directories. Schema errors identify the chapter, page and
+field. When adding a layout or field, update both `manual/schema.py` and
+`manual/build.py`.
+
+The inline style check rejects bare non-zero numbers in common length properties,
+such as `width` and `margin`. These errors fail both the build and `make hw-check`.
+Content validation runs before existing outputs are cleared. Review generated
+pages for other CSS, markup and layout errors.
 
 The manual builder's `--browser` option accepts `chrome` (default, Chrome/Chromium)
 or `edge` (Windows only). macOS and Linux use Chrome/Chromium. The selection

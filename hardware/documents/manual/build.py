@@ -4,8 +4,8 @@
 The manual's content lives as a sequence of ``content/*.json`` files, each a
 list of *page* dicts in visual (DOM) order. This script turns those pages into
 one HTML document per language, laid out by ``styles.css`` (always inlined).
-The build warns about non-zero lengths without CSS units in inline JSON
-styles, with the page and field to fix. Warnings do not stop rendering.
+The build rejects bare non-zero numbers in common inline length properties,
+with the chapter, page and field to fix, before clearing existing outputs.
 
 Image assets (the SVG renders + the crab logo) are handled by one of two
 strategies, chosen with ``--assets`` (see ``hardware.documents.manual.assets``):
@@ -66,7 +66,6 @@ from hardware.documents.manual.assets import (
 )
 from hardware.documents.manual.pages import load_pages
 from hardware.documents.manual.paginate import assign_page_numbers, paginate_bom_pages
-from hardware.documents.manual.style_checks import inline_style_unit_warnings
 from hardware.documents.pdf import render_pdf
 from hardware.port.desktop import find_browser
 from hardware.scheme import OUTPUT_DIR as _OUTPUT_ROOT
@@ -563,18 +562,14 @@ def build(
 ) -> list[Path]:
     """Render the requested languages into ``out_dir`` and return written files.
 
-    Writes HTML and, when requested, a PDF per language. PDF requests require
-    the selected browser before any existing output is cleared.
-    The PDF is printed from the
-    just-written HTML — in external mode (default) the browser loads the figures
-    from the emitted ``assets/`` dir and embeds them into the PDF; in inline
-    mode they are already data URIs."""
+    Validate content and, for PDF requests, locate the selected browser before
+    clearing existing outputs. Write HTML and, when requested, a PDF per language.
+    PDFs are printed from the generated HTML. External assets load from the
+    emitted ``assets/`` directory; inline assets are embedded as data URIs.
+    """
     browser_path = find_browser(browser) if pdf else None
     if pdf and browser_path is None:
         raise BuildError(f"PDF requested but browser '{browser}' was not found")
-    _clear_output_dir(out_dir)  # start from a clean output dir (no stale files)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    prepare_figures()
     with _step("Load and number pages"):
         css = STYLES_CSS.read_text(encoding="utf-8")
         pages = load_pages()
@@ -584,8 +579,9 @@ def build(
         assign_page_numbers(
             pages
         )  # position-derived footer + TOC numbers (after BOM split)
-    for warning in inline_style_unit_warnings(pages):
-        buildlog.event("style_warning", warning, level="warning")
+    _clear_output_dir(out_dir)  # start from a clean output dir (no stale files)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    prepare_figures()
     assets: Assets = InlineAssets() if inline else ExternalAssets()
 
     written: list[Path] = []

@@ -11,8 +11,8 @@ import pytest
 
 from hardware import buildlog
 from hardware.documents import BuildError
-from hardware.documents.manual import assets as manual_assets
 from hardware.documents.manual import build as build_manual
+from hardware.documents.manual import pages as manual_pages
 from hardware.documents.manual.assets import InlineAssets
 
 
@@ -115,8 +115,9 @@ def test_cover_title_without_a_cover_falls_back_to_the_default():
     assert title == "PhysiClaw Assembly Manual"
 
 
-def test_build_warns_once_for_unitless_offset_and_still_writes_both_languages(
-    tmp_path, monkeypatch, capsys
+@pytest.mark.parametrize("pdf", [False, True])
+def test_build_rejects_missing_units_before_touching_outputs(
+    tmp_path, monkeypatch, pdf
 ):
     pages = [
         {
@@ -128,28 +129,43 @@ def test_build_warns_once_for_unitless_offset_and_still_writes_both_languages(
                     "h3": {"en": "Connect the wires", "zh": "连接"},
                     "body": {"en": "Connect each joint.", "zh": "连接各接头。"},
                     "classes": "note overlay sm",
-                    "style": "left:16mm; top:140; width:70mm;",
+                    "style": "left:16mm; top:140; width:70;",
                 }
             ],
         }
     ]
-    monkeypatch.setattr(build_manual, "load_pages", lambda: pages)
-    monkeypatch.setattr(manual_assets, "SVG_DIR", tmp_path / "svg")
-    monkeypatch.setattr(manual_assets, "HAND_FIGURES", {})
+    content = tmp_path / "content"
+    content.mkdir()
+    (content / "10_wiring.json").write_text(json.dumps(pages), encoding="utf-8")
+    monkeypatch.setattr(manual_pages, "CONTENT_DIR", content)
+    monkeypatch.setattr(build_manual, "find_browser", lambda _: "chrome")
+    prepare = Mock()
+    renderer = Mock()
+    monkeypatch.setattr(build_manual, "prepare_figures", prepare)
+    monkeypatch.setattr(build_manual, "render_pdf", renderer)
+    out = tmp_path / "out"
+    previous = {
+        "physiclaw_manual.html": b"previous HTML",
+        "physiclaw_manual.pdf": b"previous PDF",
+        "assets/part.svg": b"previous SVG",
+    }
+    for name, data in previous.items():
+        path = out / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
 
-    with buildlog.session(tmp_path) as log:
-        paths = build_manual.build(["en", "zh"], tmp_path / "out", inline=False)
+    with pytest.raises(BuildError) as error:
+        build_manual.build(["en", "zh"], out, inline=False, pdf=pdf)
 
-    output = capsys.readouterr()
-    assert "warning:" not in output.out + output.err
-    saved = [
-        json.loads(line) for line in log.path.read_text(encoding="utf-8").splitlines()
-    ]
-    warnings = [record for record in saved if record["event"] == "style_warning"]
-    assert len(warnings) == 1
-    warning = warnings[0]["message"]
-    assert "page 'wire_splice'.notes[0].style" in warning
-    assert "'top:140'" in warning
-    assert "browsers ignore this declaration" in warning
-    assert len(paths) == 2
-    assert all(path.exists() for path in paths)
+    message = str(error.value)
+    assert message.count("10_wiring.json: page 'wire_splice'.notes[0].style") == 2
+    assert "'top:140'" in message
+    assert "'width:70'" in message
+    assert "Add a unit such as mm or px" in message
+    assert {
+        path.relative_to(out).as_posix(): path.read_bytes()
+        for path in out.rglob("*")
+        if path.is_file()
+    } == previous
+    prepare.assert_not_called()
+    renderer.assert_not_called()

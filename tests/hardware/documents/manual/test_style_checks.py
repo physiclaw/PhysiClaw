@@ -1,18 +1,16 @@
-"""Warnings for missing length units in authored manual layout styles."""
+"""Errors for missing length units in authored manual layout styles."""
 
 from __future__ import annotations
 
 import pytest
 
 from hardware.documents.manual.pages import load_pages
-from hardware.documents.manual.style_checks import inline_style_unit_warnings
+from hardware.documents.manual.style_checks import inline_style_unit_errors
 
 
-def warnings_for(style: str) -> list[str]:
+def errors_for(style: str) -> list[str]:
     return list(
-        inline_style_unit_warnings(
-            [{"page": "wire_splice", "notes": [{"style": style}]}]
-        )
+        inline_style_unit_errors([{"page": "wire_splice", "notes": [{"style": style}]}])
     )
 
 
@@ -29,14 +27,23 @@ def warnings_for(style: str) -> list[str]:
         "gap:4!important",
         "TOP: 140 !IMPORTANT",
         "top:140 /* missing mm */",
+        "margin:calc(100% - 10mm) 8",
+        "padding:var(--gap, calc(2 * 1mm)) 8",
+        "border-radius:10px/4",
+        "border-radius:4/10px",
+        "width:1e999999999999999999999999999999",
+        "width:1e-999999999999999999999999999999",
+        "margin:0/**/8",
+        'width:var(--width, "text; top:140;"); left:8',
+        "--example:{width:80; nested:[(top:140;)]}; left:8",
     ],
 )
-def test_missing_units_warn_with_page_field_and_declaration(style):
-    warnings = warnings_for(style)
-    assert len(warnings) == 1
-    assert "page 'wire_splice'.notes[0].style" in warnings[0]
-    assert "non-zero length without a CSS unit" in warnings[0]
-    assert "mm or px" in warnings[0]
+def test_missing_units_report_page_field_and_declaration(style):
+    errors = errors_for(style)
+    assert len(errors) == 1
+    assert "page 'wire_splice'.notes[0].style" in errors[0]
+    assert "non-zero length without a CSS unit" in errors[0]
+    assert "mm or px" in errors[0]
 
 
 @pytest.mark.parametrize(
@@ -50,10 +57,27 @@ def test_missing_units_warn_with_page_field_and_declaration(style):
         "margin:calc(var(--gap) * 2) 0",
         "transform:translate(10mm, 20mm) scale(0.85)",
         "--offset:140; /* top:140; */ left:10mm",
+        '--example: "text; width:80;"; left:10mm',
+        "--example: 'text; width:80;'; left:10mm",
+        r'--example: "escaped \"; width:80;"; left:10mm',
+        'background:url("data:image/svg+xml;text; width:80;"); left:10mm',
+        "--example:{width:80; nested:[(top:140;)]}; left:10mm",
+        "border-radius:10px/4px",
+        "border-radius:10px/0",
+        "width:0e999999999999999999999999999999",
+        "width:-0.0e-999999999999999999999999999999",
+        "left:10mm; /* width:80;",
+        r"width:1\70 x",
     ],
 )
-def test_valid_lengths_and_unitless_numbers_do_not_warn(style):
-    assert warnings_for(style) == []
+def test_valid_lengths_and_unitless_numbers_are_accepted(style):
+    assert errors_for(style) == []
+
+
+def test_diagnostics_preserve_original_declarations():
+    errors = errors_for('--example:"text; width:80;"; margin:calc(2 * 1mm) 8 /* mm */')
+    assert len(errors) == 1
+    assert repr("margin:calc(2 * 1mm) 8 /* mm */") in errors[0]
 
 
 def test_all_rendered_style_fields_are_checked_recursively():
@@ -66,10 +90,10 @@ def test_all_rendered_style_fields_are_checked_recursively():
             "bom": {"style": "right:16"},
         }
     ]
-    warnings = list(inline_style_unit_warnings(pages))
-    assert len(warnings) == 4
+    errors = list(inline_style_unit_errors(pages))
+    assert len(errors) == 4
     assert all(
-        any(field in warning for warning in warnings)
+        any(field in error for error in errors)
         for field in (
             ".gridStyle",
             ".figures[0].style",
@@ -80,4 +104,4 @@ def test_all_rendered_style_fields_are_checked_recursively():
 
 
 def test_current_manual_content_has_no_missing_units():
-    assert list(inline_style_unit_warnings(load_pages())) == []
+    assert load_pages()

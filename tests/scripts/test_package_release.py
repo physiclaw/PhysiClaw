@@ -759,7 +759,10 @@ def test_native_make_enters_python_workflow(project, action, error):
 
 
 @pytest.fixture
-def committed_project(project):
+def committed_project(project, monkeypatch):
+    # Isolate Git before adding files so CRLF handling stays unchanged throughout.
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
     subprocess.run(["git", "init", "--quiet", "--initial-branch=main"], check=True)
     for key, value in (
         ("user.name", "Release Test"),
@@ -819,8 +822,6 @@ def test_native_make_direct_release_pushes_version_commit_and_annotated_tag(
             """),
         encoding="utf-8",
     )
-    monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
-    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
     monkeypatch.setenv("GIT_SSH_VARIANT", "ssh")
     monkeypatch.setenv(
         "GIT_SSH_COMMAND",

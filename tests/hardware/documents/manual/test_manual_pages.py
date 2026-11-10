@@ -23,7 +23,16 @@ def test_manual_bom_page_uses_shared_rows_without_changing_presentation(
     tmp_path, monkeypatch
 ):
     monkeypatch.setattr(bom, "BOM_FILE", tmp_path / "parts.json")
-    rows = [{"part_id": "rail-y", "qty": "2"}]
+    rows = [
+        {
+            "part_id": "rail-y",
+            "cls": {"en": "Motion"},
+            "component": {"en": "Rail"},
+            "spec": "MGN9H",
+            "qty": "2",
+            "desc": "Y axis",
+        }
+    ]
     bom.BOM_FILE.write_text(json.dumps(rows), encoding="utf-8")
     # Keep the data outside the chapter glob, as it is in the source tree.
     content = tmp_path / "content"
@@ -114,7 +123,7 @@ def test_manual_rejects_malformed_chapter_data(tmp_path, monkeypatch, chapter):
                 ]
             },
             "notes[0].icon",
-            "unknown note icon",
+            "unknown icon",
         ),
     ],
 )
@@ -122,6 +131,8 @@ def test_manual_layout_errors_identify_chapter_page_and_field(
     tmp_path, changes, field, reason
 ):
     page = {"type": "solo", "page": "install", "figures": [{"src": "part.svg"}]}
+    if changes.get("type") == "hardware-ref":
+        page.pop("figures")
     page.update(changes)
     chapter = tmp_path / "01_frame.json"
     chapter.write_text(json.dumps([page]), encoding="utf-8")
