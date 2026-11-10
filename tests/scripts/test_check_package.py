@@ -102,6 +102,53 @@ def test_record_rejects_missing_runtime_resources(bundle):
         check_package.record(bundle)
 
 
+@pytest.mark.parametrize("invalid_output", [False, True])
+def test_package_smoke_uses_utf8_and_rejects_invalid_cli_output(
+    bundle, monkeypatch, capsys, invalid_output
+):
+    monkeypatch.setenv("PYTHONUTF8", "0")
+    monkeypatch.setenv("PYTHONIOENCODING", "cp1252")
+    native_run = subprocess.run
+    help_calls = []
+
+    def run(command, **kwargs):
+        if command[-1] == "--help":
+            help_calls.append(command)
+            script = (
+                "import sys; sys.stdout.buffer.write(bytes([0x97]))"
+                if invalid_output
+                else "print('PhysiClaw \\u2014 caf\\u00e9')"
+            )
+            return native_run([sys.executable, "-c", script], **kwargs)
+        output = "1.2.3\n" if command[-1] == "--version" else ""
+        return subprocess.CompletedProcess(
+            command, 0, stdout=output if kwargs.get("text") else output.encode()
+        )
+
+    monkeypatch.setattr(check_package.subprocess, "run", run)
+    with pytest.raises(UnicodeDecodeError) if invalid_output else nullcontext():
+        check_package.smoke(bundle)
+    assert len(help_calls) == (1 if invalid_output else 2)
+    if not invalid_output:
+        assert capsys.readouterr().out.count("PhysiClaw — café") == 2
+
+
+@pytest.mark.parametrize("output", ["install failed\nretry", b"install failed\nretry"])
+def test_failed_package_command_keeps_readable_diagnostics(
+    monkeypatch, mocker, capsys, output
+):
+    monkeypatch.setattr(sys, "argv", ["check_package.py", "smoke"])
+    mocker.patch.object(
+        check_package,
+        "smoke",
+        side_effect=subprocess.CalledProcessError(7, ["uv", "pip", "install"], output),
+    )
+
+    with pytest.raises(SystemExit, match="Package check failed"):
+        check_package.main()
+    assert capsys.readouterr().err == "install failed\nretry\n"
+
+
 def test_installer_uses_built_wheel_and_runs_doctor_in_isolation(
     bundle, tmp_path, monkeypatch, mocker
 ):
@@ -111,6 +158,7 @@ def test_installer_uses_built_wheel_and_runs_doctor_in_isolation(
     for key in ("PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV"):
         monkeypatch.setenv(key, "must-not-leak")
     monkeypatch.setenv("PHYSICLAW_DRY_RUN", "1")
+    monkeypatch.setenv("PYTHONIOENCODING", "cp1252")
     server = mocker.patch.object(check_package, "smoke_server")
     calls = []
 
@@ -122,6 +170,7 @@ def test_installer_uses_built_wheel_and_runs_doctor_in_isolation(
         assert env["PHYSICLAW_VERSION"] == "1.2.3"
         assert env["PHYSICLAW_DRY_RUN"] == "0"
         assert env["PHYSICLAW_DISABLE_UPDATE_CHECK"] == "1"
+        assert env["PYTHONIOENCODING"] == "utf-8"
         assert env["UV_TOOL_DIR"] == str(cwd / "tools")
         assert env["UV_TOOL_BIN_DIR"] == str(cwd / "bin")
         assert env["PATH"].split(os.pathsep)[0] == str(cwd / "bin")
@@ -178,6 +227,7 @@ def test_installer_rejects_corrupt_wheel_before_running(bundle, mocker):
     "mode,error",
     [
         ("ready", None),
+        ("slow-page", None),
         ("exit", "exited before HTTP readiness"),
         ("hang", "did not become HTTP-ready"),
         ("bad-status", "Unexpected fresh-server status"),
@@ -212,6 +262,8 @@ def test_server_smoke_checks_http_and_always_stops(
             class Handler(http.server.BaseHTTPRequestHandler):
                 def do_GET(self):
                     print(self.path, flush=True)
+                    if mode == "slow-page" and self.path == "/setup-hardware":
+                        time.sleep(1.2)  # mDNS fallback plus page rendering.
                     if mode == "redirect" and self.path == "/api/status":
                         self.send_response(302)
                         self.send_header("Location", "/redirect-status")
@@ -288,7 +340,7 @@ def test_server_smoke_checks_http_and_always_stops(
     output = capsys.readouterr().out
     if mode != "hang":
         assert "fixture server starting" in output
-    if mode == "ready":
+    if mode in {"ready", "slow-page"}:
         assert all(
             path in output for path in ("/api/status", "/setup-hardware", "/bridge")
         )

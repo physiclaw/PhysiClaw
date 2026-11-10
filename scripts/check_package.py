@@ -112,6 +112,7 @@ def smoke(bundle: Path) -> None:
         for key, value in os.environ.items()
         if key not in {"PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV"}
     }
+    env["PYTHONIOENCODING"] = "utf-8"
     for name in sorted(manifest["files"]):
         with tempfile.TemporaryDirectory(prefix="physiclaw-package-") as temporary:
             root = Path(temporary)
@@ -126,14 +127,15 @@ def smoke(bundle: Path) -> None:
                     cwd=cwd,
                     env=env,
                     check=True,
-                    text=True,
-                    encoding="utf-8",
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     timeout=300,
                 )
-                print(result.stdout, end="", flush=True)
-                return result.stdout
+                # Decode on the calling thread: Windows pipe-reader exceptions
+                # in text mode can otherwise leave a successful return code.
+                output = result.stdout.decode("utf-8")
+                print(output, end="", flush=True)
+                return output
 
             run("uv", "--no-config", "venv", "--python", sys.executable, str(venv))
             run(
@@ -166,7 +168,8 @@ def _server_response(opener, url: str, deadline: float) -> tuple[str, bytes]:
     remaining = deadline - time.monotonic()
     if remaining <= 0:
         raise TimeoutError("Installed server did not become HTTP-ready")
-    with opener.open(url, timeout=min(1, remaining)) as response:
+    # Setup HTML can spend a full second waiting for mDNS before responding.
+    with opener.open(url, timeout=min(5, remaining)) as response:
         if response.status != 200 or response.geturl() != url:
             raise ValueError(f"Unexpected HTTP response for {url}: {response.status}")
         body = response.read(1024 * 1024)
@@ -340,6 +343,7 @@ def smoke_installer(bundle: Path) -> None:
             PATH=str(bin_dir) + os.pathsep + env.get("PATH", ""),
             NO_COLOR="1",
             PYTHONUTF8="1",
+            PYTHONIOENCODING="utf-8",
         )
         if os.name == "nt":
             # install.ps1 returns its status through LASTEXITCODE, without exiting
@@ -451,7 +455,10 @@ def main() -> None:
             }[args.action](args.bundle)
     except subprocess.CalledProcessError as error:
         if error.stdout:
-            print(error.stdout, file=sys.stderr)
+            output = error.stdout
+            if isinstance(output, bytes):
+                output = output.decode("utf-8", errors="replace")
+            print(output, file=sys.stderr)
         raise SystemExit(f"Package check failed: {error}") from error
 
 
