@@ -247,9 +247,11 @@ def test_server_smoke_checks_http_and_always_stops(
             import http.server
             import json
             import os
+            import socketserver
             import sys
             import threading
             import time
+            from unittest.mock import patch
 
             mode = os.environ["SMOKE_MODE"]
             print("fixture server starting", flush=True)
@@ -287,9 +289,16 @@ def test_server_smoke_checks_http_and_always_stops(
                     self.end_headers()
                     self.wfile.write(body.encode())
 
-            bridge = http.server.ThreadingHTTPServer(("127.0.0.1", port + 1), Handler)
-            threading.Thread(target=bridge.serve_forever, daemon=True).start()
-            http.server.ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
+            class Server(http.server.ThreadingHTTPServer):
+                def server_bind(self):
+                    # Loopback fixtures must not wait for reverse DNS.
+                    socketserver.TCPServer.server_bind(self)
+                    self.server_name, self.server_port = self.server_address
+
+            with patch("socket.getfqdn", side_effect=AssertionError("Unexpected DNS lookup")):
+                bridge = Server(("127.0.0.1", port + 1), Handler)
+                threading.Thread(target=bridge.serve_forever, daemon=True).start()
+                Server(("127.0.0.1", port), Handler).serve_forever()
             """),
         encoding="utf-8",
     )

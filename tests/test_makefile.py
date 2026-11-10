@@ -249,6 +249,10 @@ def test_make_hardware_release_passes_version_as_environment_data(make_project):
     assert records[0]["env"]["HW_VERSION"] == version
 
 
+@pytest.mark.parametrize(
+    "target, expected",
+    [("docs-deploy", []), ("check-site-assets", ["--check-only"])],
+)
 @pytest.mark.parametrize("external_makefile", [False, True])
 @pytest.mark.parametrize(
     "make_project",
@@ -256,8 +260,8 @@ def test_make_hardware_release_passes_version_as_environment_data(make_project):
     indirect=True,
     ids=["spaces", "shell-syntax"],
 )
-def test_make_docs_deploy_uses_cwd_or_explicit_driver_path(
-    make_project, external_makefile
+def test_make_docs_commands_use_cwd_or_explicit_driver_path(
+    make_project, external_makefile, target, expected
 ):
     project, invoke = make_project
     (project / "scripts").mkdir()
@@ -286,18 +290,24 @@ def test_make_docs_deploy_uses_cwd_or_explicit_driver_path(
     )
 
     result, records = invoke(
-        "docs-deploy",
+        target,
         *options,
         f'PYTHON="{Path(sys.executable).as_posix()}"',
         extra_env=extra_env,
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert [record["argv"] for record in records] == [[]]
+    assert [record["argv"] for record in records] == [expected]
 
 
+@pytest.mark.parametrize(
+    "target, expected",
+    [("docs-deploy", []), ("check-site-assets", ["--check-only"])],
+)
 @pytest.mark.parametrize("source", ["multiple-files", "include"])
-def test_make_docs_deploy_accepts_other_makefiles_from_checkout(make_project, source):
+def test_make_docs_commands_accept_other_makefiles_from_checkout(
+    make_project, source, target, expected
+):
     project, invoke = make_project
     (project / "scripts").mkdir()
     shutil.copyfile(
@@ -313,18 +323,21 @@ def test_make_docs_deploy_accepts_other_makefiles_from_checkout(make_project, so
     }[source]
 
     result, records = invoke(
-        "docs-deploy", *options, f'PYTHON="{Path(sys.executable).as_posix()}"'
+        target, *options, f'PYTHON="{Path(sys.executable).as_posix()}"'
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert [record["argv"] for record in records] == [[]]
+    assert [record["argv"] for record in records] == [expected]
 
 
-def test_make_docs_deploy_missing_driver_fails_without_running_worker(make_project):
+@pytest.mark.parametrize("target", ["docs-deploy", "check-site-assets"])
+def test_make_docs_commands_missing_driver_fails_without_running_worker(
+    make_project, target
+):
     _, invoke = make_project
 
     result, records = invoke(
-        "docs-deploy",
+        target,
         f'PYTHON="{Path(sys.executable).as_posix()}"',
         extra_env={"DOCS_DEPLOY_SCRIPT": "missing_docs.py"},
     )
@@ -360,7 +373,15 @@ def test_make_missing_required_argument_fails_before_running_anything(
 
 
 @pytest.mark.parametrize(
-    "target", ["test-encoding", "lint", "release", "hw-release", "docs-deploy"]
+    "target",
+    [
+        "test-encoding",
+        "lint",
+        "release",
+        "hw-release",
+        "docs-deploy",
+        "check-site-assets",
+    ],
 )
 def test_make_failure_stops_recipe_and_propagates_nonzero_result(make_project, target):
     _, invoke = make_project
@@ -419,6 +440,7 @@ def test_every_make_target_has_a_routing_or_help_check():
         "release-approve",
         "release-watch",
         "docs-deploy",
+        "check-site-assets",
         "lint",
         "help",
         "hw-help",
