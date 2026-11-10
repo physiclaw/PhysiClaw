@@ -181,6 +181,11 @@ elif ! uv python find 3.12 >/dev/null 2>&1; then
   uv python install 3.12 --quiet
 fi
 
+# Follow-up commands must use the same tool directory as uv's installation.
+if [[ -n "${UV_TOOL_BIN_DIR:-}" ]]; then
+  export PATH="$UV_TOOL_BIN_DIR:$PATH"
+fi
+
 SPEC_PLAIN="physiclaw${VERSION:+==$VERSION}"
 
 # Step 4: install physiclaw. No [vision] extra — conversion deps live in

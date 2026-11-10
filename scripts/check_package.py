@@ -4,6 +4,8 @@ import argparse
 import hashlib
 import json
 import os
+import signal
+import socket
 import subprocess
 import sys
 import tarfile
@@ -160,8 +162,155 @@ def smoke(bundle: Path) -> None:
             run(str(cli), "--help")
 
 
+def _server_response(opener, url: str, deadline: float) -> tuple[str, bytes]:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError("Installed server did not become HTTP-ready")
+    with opener.open(url, timeout=min(1, remaining)) as response:
+        if response.status != 200 or response.geturl() != url:
+            raise ValueError(f"Unexpected HTTP response for {url}: {response.status}")
+        body = response.read(1024 * 1024)
+        if time.monotonic() >= deadline:
+            raise TimeoutError("Installed server did not become HTTP-ready")
+        return response.headers.get_content_type(), body
+
+
+def _stop_server(process, port: int) -> None:
+    windows = os.name == "nt"
+    kill_tree = ["taskkill", "/PID", str(process.pid), "/T", "/F"]
+    was_running = process.poll() is None
+    try:
+        if was_running:
+            if windows:
+                # The Windows launcher owns a Python child. Stop the whole tree.
+                result = subprocess.run(kill_tree, check=False, timeout=15)
+                # taskkill can race with a process that has already exited.
+                if result.returncode and process.poll() is None:
+                    result.check_returncode()
+            else:
+                process.terminate()
+    finally:
+        try:
+            process.wait(timeout=15)
+        except subprocess.TimeoutExpired:
+            if windows:
+                subprocess.run(kill_tree, check=False, timeout=5)
+            process.kill()
+            process.wait(timeout=5)
+            raise
+        finally:
+            deadline = time.monotonic() + 5
+            for number in (port, port + 1):
+                while True:
+                    with socket.socket() as connection:
+                        connection.settimeout(0.2)
+                        if connection.connect_ex(("127.0.0.1", number)) != 0:
+                            break
+                    if time.monotonic() >= deadline:
+                        raise RuntimeError(
+                            f"Server listener {number} survived shutdown"
+                        )
+                    time.sleep(0.1)
+    if was_running and not windows and process.returncode not in (0, -signal.SIGTERM):
+        raise RuntimeError(f"Server failed during shutdown: {process.returncode}")
+
+
+def smoke_server(
+    cli: Path, root: Path, env: dict[str, str], *, timeout: float = 60
+) -> None:
+    """Require the installed HTTP services to respond, then stop the server."""
+    for _ in range(100):
+        with socket.socket() as control, socket.socket() as bridge:
+            control.bind(("127.0.0.1", 0))
+            port = control.getsockname()[1]
+            if port == 65535:
+                continue
+            try:
+                bridge.bind(("0.0.0.0", port + 1))
+            except OSError:
+                continue
+            break
+    else:
+        raise RuntimeError("No free adjacent ports for the server smoke test")
+
+    command = [
+        str(cli),
+        "server",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        str(port),
+        "--no-runtime",
+        "--no-setup-hardware",
+    ]
+    log = root / "server.log"
+    # Local probes must bypass any HTTP proxy inherited from the runner.
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    with log.open("w", encoding="utf-8") as output:
+        process = subprocess.Popen(
+            command, cwd=root, env=env, stdout=output, stderr=subprocess.STDOUT
+        )
+        try:
+            deadline = time.monotonic() + timeout
+            while time.monotonic() < deadline:
+                if process.poll() is not None:
+                    raise RuntimeError(
+                        f"Server exited before HTTP readiness: {process.returncode}"
+                    )
+                try:
+                    content_type, body = _server_response(
+                        opener, f"http://127.0.0.1:{port}/api/status", deadline
+                    )
+                    status = json.loads(body)
+                    if (
+                        content_type != "application/json"
+                        or not isinstance(status, dict)
+                        or any(
+                            status.get(key) is not False
+                            for key in ("ready", "arm", "camera")
+                        )
+                    ):
+                        raise ValueError(f"Unexpected fresh-server status: {status!r}")
+                    for number, path in (
+                        (port, "/setup-hardware"),
+                        (port + 1, "/bridge"),
+                    ):
+                        content_type, body = _server_response(
+                            opener, f"http://127.0.0.1:{number}{path}", deadline
+                        )
+                        if content_type != "text/html" or b"<html" not in body.lower():
+                            raise ValueError(
+                                f"Server did not serve the packaged {path} page"
+                            )
+                    if process.poll() is not None:
+                        raise RuntimeError("Server exited during HTTP readiness checks")
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError("Installed server did not become HTTP-ready")
+                    print(
+                        "Installed server status, setup page and phone bridge passed",
+                        flush=True,
+                    )
+                    break
+                except urllib.error.HTTPError:
+                    raise
+                except (urllib.error.URLError, TimeoutError, ConnectionError):
+                    time.sleep(0.1)
+            else:
+                raise TimeoutError("Installed server did not become HTTP-ready")
+        finally:
+            try:
+                _stop_server(process, port)
+            finally:
+                print(
+                    log.read_text(encoding="utf-8", errors="replace"),
+                    end="",
+                    flush=True,
+                )
+    print("Installed server stopped; both listeners closed", flush=True)
+
+
 def smoke_installer(bundle: Path) -> None:
-    """Run the public installer and doctor against this run's wheel."""
+    """Run the public installer, doctor and server against this run's wheel."""
     manifest = verify_local(bundle)
     wheel = next(path for path in distributions(bundle) if path.suffix == ".whl")
     wheel_url = wheel.resolve().as_uri()
@@ -181,6 +330,7 @@ def smoke_installer(bundle: Path) -> None:
             PHYSICLAW_HOME=str(root / "home"),
             PHYSICLAW_VERSION=manifest["version"],
             PHYSICLAW_DRY_RUN="0",
+            PHYSICLAW_DISABLE_UPDATE_CHECK="1",
             UV_TOOL_DIR=str(tool_dir),
             UV_TOOL_BIN_DIR=str(bin_dir),
             # uv splits this setting on whitespace; a URI also supports spaces.
@@ -189,6 +339,7 @@ def smoke_installer(bundle: Path) -> None:
             UV_DEFAULT_INDEX="https://pypi.org/simple",
             PATH=str(bin_dir) + os.pathsep + env.get("PATH", ""),
             NO_COLOR="1",
+            PYTHONUTF8="1",
         )
         if os.name == "nt":
             # install.ps1 returns its status through LASTEXITCODE, without exiting
@@ -222,6 +373,7 @@ def smoke_installer(bundle: Path) -> None:
             [str(cli), "doctor"],
         ):
             subprocess.run(command, cwd=root, env=env, check=True, timeout=600)
+        smoke_server(cli, root, env)
 
 
 def published_files(version: str) -> dict[str, dict]:

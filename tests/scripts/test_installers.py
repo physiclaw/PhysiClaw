@@ -11,6 +11,46 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX installer")
+def test_bash_installer_uses_the_configured_uv_tool_directory(tmp_path):
+    wrapper = tmp_path / "installer-test.sh"
+    wrapper.write_text(
+        """\
+uv() { return 0; }
+physiclaw() {
+  if [[ "${PATH%%:*}" != "$UV_TOOL_BIN_DIR" ]]; then
+    echo 'wrong tool directory' >&2
+    return 1
+  fi
+  if [[ "$1" == --version ]]; then
+    echo 'EXPECTED_INSTALLED_CLI'
+  else
+    echo 'EXPECTED_MODEL_SETUP'
+  fi
+}
+export -f uv physiclaw
+bash "$1" --version 0.11.0
+""",
+        encoding="utf-8",
+    )
+    result = subprocess.run(
+        ["bash", str(wrapper), str(REPO_ROOT / "install.sh")],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env={
+            **os.environ,
+            "UV_TOOL_BIN_DIR": str(tmp_path / "tools with spaces"),
+            "NO_COLOR": "1",
+            "PHYSICLAW_DRY_RUN": "0",
+        },
+        timeout=10,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "EXPECTED_INSTALLED_CLI" in result.stdout
+    assert "EXPECTED_MODEL_SETUP" in result.stdout
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX installer")
 @pytest.mark.parametrize(
     "args", [["--version"], ["--version="], ["--version", "--dry-run"]]
 )
@@ -50,6 +90,9 @@ function global:uv {{
     $global:LASTEXITCODE = {install_exit}
 }}
 function global:physiclaw {{
+    if (($env:PATH -split ';')[0] -ne $env:UV_TOOL_BIN_DIR) {{
+        throw 'Wrong tool directory'
+    }}
     if ($args[0] -eq '--version') {{
         Write-Output '{"VERSION_CHECK_FAILED" if version_exit else "physiclaw 0.8.4"}'
         $global:LASTEXITCODE = {version_exit}
@@ -69,7 +112,12 @@ exit $global:LASTEXITCODE
         text=True,
         encoding="utf-8",
         errors="replace",
-        env={**os.environ, "NO_COLOR": "1", "PHYSICLAW_DRY_RUN": "0"},
+        env={
+            **os.environ,
+            "UV_TOOL_BIN_DIR": str(tmp_path / "tools with spaces"),
+            "NO_COLOR": "1",
+            "PHYSICLAW_DRY_RUN": "0",
+        },
         timeout=30,
     )
 

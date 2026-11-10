@@ -187,6 +187,11 @@ stable will resume where it stopped.
         }
     }
 
+    # Follow-up commands must use the same tool directory as uv's installation.
+    if ($env:UV_TOOL_BIN_DIR) {
+        $env:PATH = "$env:UV_TOOL_BIN_DIR;$env:PATH"
+    }
+
     Info "Installing $specPlain..."
     # `--refresh` invalidates uv's cached PyPI metadata so re-runs always
     # resolve to the actual latest version, not whatever was in the cache

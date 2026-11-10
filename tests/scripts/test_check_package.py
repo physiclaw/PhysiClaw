@@ -5,13 +5,16 @@ import io
 import json
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import tarfile
 import urllib.error
 import zipfile
+from contextlib import nullcontext
 from pathlib import Path
 from textwrap import dedent
+from types import SimpleNamespace
 
 import pytest
 from ruamel.yaml import YAML
@@ -100,7 +103,7 @@ def test_record_rejects_missing_runtime_resources(bundle):
 
 
 def test_installer_uses_built_wheel_and_runs_doctor_in_isolation(
-    bundle, tmp_path, monkeypatch
+    bundle, tmp_path, monkeypatch, mocker
 ):
     temporary = tmp_path / "installer with spaces"
     temporary.mkdir()
@@ -108,6 +111,7 @@ def test_installer_uses_built_wheel_and_runs_doctor_in_isolation(
     for key in ("PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV"):
         monkeypatch.setenv(key, "must-not-leak")
     monkeypatch.setenv("PHYSICLAW_DRY_RUN", "1")
+    server = mocker.patch.object(check_package, "smoke_server")
     calls = []
 
     def run(command, *, cwd, env, check, timeout):
@@ -117,6 +121,7 @@ def test_installer_uses_built_wheel_and_runs_doctor_in_isolation(
         assert env["PHYSICLAW_HOME"] == str(cwd / "home")
         assert env["PHYSICLAW_VERSION"] == "1.2.3"
         assert env["PHYSICLAW_DRY_RUN"] == "0"
+        assert env["PHYSICLAW_DISABLE_UPDATE_CHECK"] == "1"
         assert env["UV_TOOL_DIR"] == str(cwd / "tools")
         assert env["UV_TOOL_BIN_DIR"] == str(cwd / "bin")
         assert env["PATH"].split(os.pathsep)[0] == str(cwd / "bin")
@@ -136,6 +141,11 @@ def test_installer_uses_built_wheel_and_runs_doctor_in_isolation(
     assert calls[-1][1:] == ["doctor"]
     assert Path(calls[-1][0]).is_relative_to(temporary)
     assert Path(calls[-1][0]).parent.name == "bin"
+    server.assert_called_once()
+    cli, root, env = server.call_args.args
+    assert str(cli) == calls[-1][0]
+    assert root.parent == temporary
+    assert env["PHYSICLAW_HOME"] == str(root / "home")
 
 
 @pytest.mark.parametrize("failure", ["installer", "doctor"])
@@ -162,6 +172,197 @@ def test_installer_rejects_corrupt_wheel_before_running(bundle, mocker):
     with pytest.raises(ValueError, match="checksum mismatch"):
         check_package.smoke_installer(bundle)
     run.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "mode,error",
+    [
+        ("ready", None),
+        ("exit", "exited before HTTP readiness"),
+        ("hang", "did not become HTTP-ready"),
+        ("bad-status", "Unexpected fresh-server status"),
+        ("bad-json", "Expecting value"),
+        ("http-error", "HTTP Error 503"),
+        ("redirect", "Unexpected HTTP response"),
+        ("bad-page", "did not serve the packaged /setup-hardware page"),
+        ("bad-bridge", "did not serve the packaged /bridge page"),
+    ],
+)
+def test_server_smoke_checks_http_and_always_stops(
+    tmp_path, monkeypatch, capsys, mode, error
+):
+    script = tmp_path / "server-fixture.py"
+    script.write_text(
+        dedent("""\
+            import http.server
+            import json
+            import os
+            import sys
+            import threading
+            import time
+
+            mode = os.environ["SMOKE_MODE"]
+            print("fixture server starting", flush=True)
+            if mode == "exit":
+                sys.exit(2)
+            if mode == "hang":
+                time.sleep(120)
+            port = int(sys.argv[sys.argv.index("--port") + 1])
+
+            class Handler(http.server.BaseHTTPRequestHandler):
+                def do_GET(self):
+                    print(self.path, flush=True)
+                    if mode == "redirect" and self.path == "/api/status":
+                        self.send_response(302)
+                        self.send_header("Location", "/redirect-status")
+                        self.end_headers()
+                        return
+                    self.send_response(503 if mode == "http-error" else 200)
+                    if self.path in ("/api/status", "/redirect-status"):
+                        self.send_header("Content-Type", "application/json")
+                        body = json.dumps({"ready": False, "arm": False, "camera": False})
+                        if mode == "bad-status":
+                            body = "{}"
+                        if mode == "bad-json":
+                            body = "not JSON"
+                    else:
+                        self.send_header("Content-Type", "text/html")
+                        body = "<html>packaged page</html>"
+                        if (mode == "bad-page" and self.path == "/setup-hardware") or (
+                            mode == "bad-bridge" and self.path == "/bridge"
+                        ):
+                            body = "missing page"
+                    self.end_headers()
+                    self.wfile.write(body.encode())
+
+            bridge = http.server.ThreadingHTTPServer(("127.0.0.1", port + 1), Handler)
+            threading.Thread(target=bridge.serve_forever, daemon=True).start()
+            http.server.ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
+            """),
+        encoding="utf-8",
+    )
+    # Execute a real child and real HTTP requests; replace only its application.
+    popen = subprocess.Popen
+    children = []
+
+    def spawn(command, **kwargs):
+        if command[0] == "taskkill":
+            return popen(command, **kwargs)
+        assert command[1:4] == ["server", "--host", "127.0.0.1"]
+        assert command[-2:] == ["--no-runtime", "--no-setup-hardware"]
+        child = popen([sys.executable, str(script), *command[1:]], **kwargs)
+        children.append((child, int(command[5])))
+        return child
+
+    monkeypatch.setattr(check_package.subprocess, "Popen", spawn)
+    # A runner's proxy settings must not intercept local readiness probes.
+    for key in ("HTTP_PROXY", "http_proxy"):
+        monkeypatch.setenv(key, "http://127.0.0.1:1")
+    for key in ("NO_PROXY", "no_proxy"):
+        monkeypatch.setenv(key, "")
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if key.upper() in {"PATH", "SYSTEMROOT", "TEMP", "TMP"}
+    }
+    env["SMOKE_MODE"] = mode
+    expectation = (
+        pytest.raises(
+            (RuntimeError, TimeoutError, ValueError, urllib.error.HTTPError),
+            match=error,
+        )
+        if error
+        else nullcontext()
+    )
+    with expectation:
+        check_package.smoke_server(
+            Path(sys.executable), tmp_path, env, timeout=0.2 if mode == "hang" else 10
+        )
+    assert len(children) == 1
+    child, port = children[0]
+    assert child.poll() is not None
+    for number in (port, port + 1):
+        with socket.socket() as connection:
+            connection.settimeout(0.2)
+            assert connection.connect_ex(("127.0.0.1", number)) != 0
+    output = capsys.readouterr().out
+    if mode != "hang":
+        assert "fixture server starting" in output
+    if mode == "ready":
+        assert all(
+            path in output for path in ("/api/status", "/setup-hardware", "/bridge")
+        )
+
+
+def test_http_response_cannot_pass_after_the_deadline(mocker):
+    opener = mocker.MagicMock()
+    response = opener.open.return_value.__enter__.return_value
+    response.status = 200
+    response.geturl.return_value = "http://127.0.0.1:1234/api/status"
+    mocker.patch.object(check_package.time, "monotonic", side_effect=[0.0, 2.0])
+
+    with pytest.raises(TimeoutError, match="did not become HTTP-ready"):
+        check_package._server_response(opener, response.geturl(), deadline=1.0)
+    assert opener.open.call_args.kwargs["timeout"] == 1.0
+
+
+@pytest.fixture
+def listener_connection(mocker):
+    sockets = mocker.patch.object(check_package.socket, "socket")
+    connection = sockets.return_value.__enter__.return_value
+    connection.connect_ex.return_value = 1
+    return connection
+
+
+def test_shutdown_checks_for_surviving_listeners_after_parent_exit(
+    mocker, listener_connection
+):
+    process = mocker.Mock(returncode=0)
+    process.poll.return_value = 0
+    listener_connection.connect_ex.return_value = 0
+    mocker.patch.object(check_package.time, "monotonic", side_effect=[0.0, 6.0])
+
+    with pytest.raises(RuntimeError, match="listener 1234 survived shutdown"):
+        check_package._stop_server(process, 1234)
+    process.wait.assert_called_once_with(timeout=15)
+
+
+def test_windows_shutdown_tolerates_an_already_exited_launcher(
+    mocker, monkeypatch, listener_connection
+):
+    monkeypatch.setattr(check_package, "os", SimpleNamespace(name="nt"))
+    process = mocker.Mock(pid=42, returncode=0)
+    process.poll.side_effect = [None, 0]
+    taskkill = mocker.patch.object(check_package.subprocess, "run")
+    taskkill.return_value.returncode = 128
+
+    check_package._stop_server(process, 1234)
+
+    taskkill.return_value.check_returncode.assert_not_called()
+    process.wait.assert_called_once_with(timeout=15)
+
+
+@pytest.mark.parametrize("platform", ["posix", "nt"])
+def test_shutdown_timeout_forces_cleanup_and_still_fails(
+    mocker, monkeypatch, listener_connection, platform
+):
+    monkeypatch.setattr(check_package, "os", SimpleNamespace(name=platform))
+    process = mocker.Mock(pid=42, returncode=0)
+    process.poll.return_value = None
+    process.wait.side_effect = [subprocess.TimeoutExpired("server", 15), 0]
+    taskkill = mocker.patch.object(check_package.subprocess, "run")
+    taskkill.return_value.returncode = 0
+
+    with pytest.raises(subprocess.TimeoutExpired):
+        check_package._stop_server(process, 1234)
+
+    process.kill.assert_called_once_with()
+    assert process.wait.call_count == 2
+    if platform == "nt":
+        assert taskkill.call_count == 2
+        assert all(
+            call.args[0][-2:] == ["/T", "/F"] for call in taskkill.call_args_list
+        )
 
 
 @pytest.fixture

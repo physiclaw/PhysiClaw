@@ -80,5 +80,5 @@ jobs:
           merge-multiple: true
       - name: Install and smoke-test wheel and source archive in separate clean environments
         run: uv run --no-project python scripts/check_package.py smoke
-      - name: Run platform installer and physiclaw doctor
+      - name: Run platform installer, doctor and server smoke test
         run: uv run --no-project python scripts/check_package.py smoke-installer
