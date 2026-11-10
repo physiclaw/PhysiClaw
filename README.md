@@ -63,6 +63,12 @@ physiclaw doctor                       # check your environment
 physiclaw                              # start the server — opens the hardware-setup wizard, then runs the agent
 ```
 
+## Contributing and releases
+
+Software versions are prepared in a pull request and published by GitHub Actions
+with PyPI Trusted Publishing. See [the release guide](RELEASING.md) for versioning,
+maintainer setup, artifact verification, and recovery.
+
 ## License
 
 [MIT](LICENSE) — both the CAD-as-code hardware and the agent software.

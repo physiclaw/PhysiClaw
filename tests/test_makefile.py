@@ -117,7 +117,7 @@ def make_project(tmp_path, request):
     capture = project / "capture runner.py"
     capture.write_text(
         "import json, os, sys\n"
-        "keys = ('VERSION', 'VERBOSE', 'RELEASE_FLOW', 'HW_VERSION')\n"
+        "keys = ('VERSION', 'VERBOSE', 'HW_VERSION')\n"
         "record = {'argv': sys.argv[1:], 'env': {k: os.environ.get(k) for k in keys}}\n"
         "print('MAKE_CAPTURE=' + json.dumps(record), flush=True)\n"
         "raise SystemExit(int(os.environ.get('MAKE_CAPTURE_EXIT', '0')))\n",
@@ -206,9 +206,7 @@ def test_make_release_uses_one_guarded_driver_and_environment_data(
     _, invoke = make_project
     version = "1.2.3 & literal-data"
 
-    result, records = invoke(
-        target, f"VERSION={version}", "VERBOSE=1", "RELEASE_FLOW=1"
-    )
+    result, records = invoke(target, f"VERSION={version}", "VERBOSE=1")
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert [record["argv"] for record in records] == [
@@ -217,7 +215,6 @@ def test_make_release_uses_one_guarded_driver_and_environment_data(
     assert records[0]["env"] == {
         "VERSION": version,
         "VERBOSE": "1",
-        "RELEASE_FLOW": "1",
         "HW_VERSION": "",
     }
 

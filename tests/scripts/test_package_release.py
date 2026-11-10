@@ -41,7 +41,13 @@ def commands(project, mocker):
             output = "main\n"
         elif command[:3] == ("git", "rev-parse", "--verify"):
             code = 1
-        elif command == ("uv", "build"):
+        elif command == ("git", "remote", "get-url", "origin"):
+            output = "https://github.com/physiclaw/PhysiClaw.git\n"
+        elif command[:3] == ("git", "ls-remote", "--exit-code"):
+            code = 2
+        elif command[:2] == ("git", "rev-parse"):
+            output = "a" * 40 + "\n"
+        elif command == ("uv", "build", "--no-sources"):
             for path in release.artifact_paths(release.read_version()):
                 path.parent.mkdir(exist_ok=True)
                 path.write_bytes(b"package")
@@ -76,38 +82,23 @@ def run_make(project, action, *options):
     return subprocess.run(command, env=env, capture_output=True, text=True, timeout=30)
 
 
-def test_full_release_uses_new_version_and_runs_in_order(commands, monkeypatch, capsys):
-    monkeypatch.setenv("UV_PUBLISH_TOKEN", "test-token")
-
-    assert release.main(["release"]) == 0
-
-    assert invoked(commands) == [
-        ("git", "status", "--porcelain"),
-        ("git", "rev-parse", "--abbrev-ref", "HEAD"),
-        ("git", "rev-parse", "--verify", "--quiet", "refs/tags/v0.8.5"),
-        ("uv", "lock"),
-        ("git", "add", "pyproject.toml", "uv.lock"),
-        ("git", "commit", "-m", "chore: bump version to 0.8.5"),
-        ("uv", "build"),
-        ("git", "status", "--porcelain"),
-        ("git", "rev-parse", "--abbrev-ref", "HEAD"),
-        ("git", "rev-parse", "--verify", "--quiet", "refs/tags/v0.8.5"),
-        (
-            "uv",
-            "publish",
-            "dist/physiclaw-0.8.5-py3-none-any.whl",
-            "dist/physiclaw-0.8.5.tar.gz",
-        ),
-        ("git", "tag", "-a", "v0.8.5", "-m", "physiclaw v0.8.5"),
-        ("git", "push", "origin", "main"),
-        ("git", "push", "origin", "v0.8.5"),
+@pytest.mark.parametrize("action", ["release", "publish"])
+def test_release_tags_pushed_version_without_bump_build_or_upload(
+    commands, capsys, action
+):
+    assert release.main([action]) == 0
+    assert release.read_version() == "0.8.4"
+    calls = invoked(commands)
+    assert not any(args[0] == "uv" for args in calls)
+    assert ("git", "push", "origin", "main") not in calls
+    assert calls[-2:] == [
+        ("git", "tag", "-a", "v0.8.4", "-m", "physiclaw v0.8.4"),
+        ("git", "push", "origin", "refs/tags/v0.8.4"),
     ]
     output = capsys.readouterr().out
-    assert all(f"[{stage}/4]" in output for stage in range(1, 5))
-    assert "Next:" not in output
-    assert output.count("Released physiclaw 0.8.5") == 1
-    assert "test-token" not in output
-    assert "\033" not in output
+    assert "Release requested for physiclaw 0.8.4" in output
+    assert "Released physiclaw" not in output
+    assert "actions/workflows/release.yml" in output
 
 
 @pytest.mark.parametrize(
@@ -124,7 +115,7 @@ def test_full_release_uses_new_version_and_runs_in_order(commands, monkeypatch, 
         ),
     ],
 )
-def test_bump_guards_leave_version_untouched(
+def test_release_guards_leave_version_untouched(
     project, commands, capsys, command, output, code, error
 ):
     original = commands.side_effect
@@ -159,7 +150,7 @@ def test_bump_override_preserves_other_fields_comments_and_crlf(
 
     assert path.read_bytes() == text.replace("'0.8.4'", "'1.0.0rc1'").encode("utf-8")
     assert invoked(commands)[-1][-1] == "chore: bump version to 1.0.0rc1"
-    assert "Next: make build && make publish" in capsys.readouterr().out
+    assert "review the version change in a PR" in capsys.readouterr().out
 
 
 def test_bump_rejects_version_match_inside_multiline_text(project, commands, capsys):
@@ -194,7 +185,7 @@ def test_invalid_version_never_reaches_commands(
 
 def test_non_numeric_last_component_needs_explicit_version(project, commands, capsys):
     (project / "pyproject.toml").write_text(
-        '[project]\nversion = "1.0rc1"\n', encoding="utf-8"
+        '[project]\nversion = "1.0.0rc1"\n', encoding="utf-8"
     )
 
     assert release.main(["bump"]) == 1
@@ -213,7 +204,7 @@ def test_build_removes_only_current_artifacts_before_build(project, commands):
     original = commands.side_effect
 
     def build(args, **kwargs):
-        assert args == ("uv", "build")
+        assert args == ("uv", "build", "--no-sources")
         assert not any(path.exists() for path in artifacts)
         return original(args, **kwargs)
 
@@ -230,58 +221,28 @@ def test_missing_build_artifact_stops_before_publish(commands, monkeypatch, caps
     monkeypatch.setenv("UV_PUBLISH_TOKEN", "test-token")
 
     def build(args, **kwargs):
-        if args == ("uv", "build"):
+        if args == ("uv", "build", "--no-sources"):
             return subprocess.CompletedProcess(args, 0, "")
         return original(args, **kwargs)
 
     commands.side_effect = build
 
-    assert release.main(["release"]) == 1
+    assert release.main(["build"]) == 1
 
-    assert invoked(commands)[-1] == ("uv", "build")
+    assert invoked(commands)[-1] == ("uv", "build", "--no-sources")
     assert "Expected artifact missing" in capsys.readouterr().err
-
-
-@pytest.mark.parametrize("missing", ["token", "wheel", "sdist"])
-def test_publish_checks_prerequisites_before_upload(
-    project, commands, monkeypatch, capsys, missing
-):
-    if missing != "token":
-        monkeypatch.setenv("UV_PUBLISH_TOKEN", "test-token")
-    for label, path in zip(
-        ("wheel", "sdist"), release.artifact_paths("0.8.4"), strict=True
-    ):
-        if label != missing:
-            path.parent.mkdir(exist_ok=True)
-            path.write_bytes(b"package")
-
-    assert release.main(["publish"]) == 1
-
-    assert not commands.called
-    error = capsys.readouterr().err
-    if missing == "token":
-        assert "UV_PUBLISH_TOKEN not set" in error
-    else:
-        assert "not found - run make build first" in error
 
 
 @pytest.mark.parametrize(
     "failed",
     [
         ("git", "status"),
-        ("git", "rev-parse", "--abbrev-ref"),
-        ("uv", "lock"),
-        ("git", "add"),
-        ("git", "commit"),
-        ("uv", "build"),
-        ("uv", "publish"),
+        ("git", "fetch"),
         ("git", "tag", "-a"),
-        ("git", "push", "origin", "main"),
-        ("git", "push", "origin", "v0.8.5"),
+        ("git", "push", "origin", "refs/tags/v0.8.4"),
     ],
 )
-def test_release_stops_after_failed_command(commands, monkeypatch, capsys, failed):
-    monkeypatch.setenv("UV_PUBLISH_TOKEN", "test-token")
+def test_release_stops_after_failed_command(commands, capsys, failed):
     original = commands.side_effect
 
     def fail(args, **kwargs):
@@ -290,14 +251,11 @@ def test_release_stops_after_failed_command(commands, monkeypatch, capsys, faile
         return original(args, **kwargs)
 
     commands.side_effect = fail
-
     assert release.main(["release"]) == 7
-
     assert invoked(commands)[-1][: len(failed)] == failed
     output = capsys.readouterr()
     assert "command diagnostics" in output.err
-    assert "Failed (exit 7)" in output.err
-    assert "Released physiclaw" not in output.out
+    assert "Release requested" not in output.out
 
 
 @pytest.mark.parametrize("code", [0, 128])
@@ -367,6 +325,115 @@ def test_interrupted_release_does_not_continue(commands, capsys):
     assert "Released physiclaw" not in capsys.readouterr().out
 
 
+@pytest.mark.parametrize(
+    "version",
+    ["0.8.4", "0.8.3", "0.8.4rc1", "01.0.0", "1.0", "1.0.0+local", "1.0.0.post1"],
+)
+def test_bump_rejects_non_increasing_or_unsupported_versions(
+    project, commands, monkeypatch, version
+):
+    monkeypatch.setenv("VERSION", version)
+    original = (project / "pyproject.toml").read_bytes()
+    assert release.main(["bump"]) == 1
+    assert (project / "pyproject.toml").read_bytes() == original
+    assert not any(args[0] == "uv" for args in invoked(commands))
+
+
+@pytest.mark.parametrize(
+    "current,new",
+    [("0.9.0rc1", "0.9.0rc2"), ("0.9.0rc2", "0.9.0"), ("0.9.0", "0.10.0a1")],
+)
+def test_bump_accepts_prerelease_progression_on_release_branch(
+    project, commands, monkeypatch, current, new
+):
+    (project / "pyproject.toml").write_text(
+        f'[project]\nversion = "{current}"\n', encoding="utf-8"
+    )
+    monkeypatch.setenv("VERSION", new)
+    original = commands.side_effect
+
+    def branch(args, **kwargs):
+        if args == ("git", "rev-parse", "--abbrev-ref", "HEAD"):
+            return subprocess.CompletedProcess(args, 0, "release/candidate\n")
+        return original(args, **kwargs)
+
+    commands.side_effect = branch
+    assert release.main(["bump"]) == 0
+    assert release.read_version() == new
+    assert not any(
+        args[:2] in {("git", "push"), ("git", "tag")} for args in invoked(commands)
+    )
+
+
+def test_release_rejects_inline_version_bump(commands, monkeypatch):
+    monkeypatch.setenv("VERSION", "0.9.0")
+    assert release.main(["release"]) == 1
+    assert not commands.called
+
+
+@pytest.mark.parametrize(
+    "command,code,output,error",
+    [
+        (
+            ("git", "remote", "get-url", "origin"),
+            0,
+            "https://github.com/other/fork.git",
+            "official",
+        ),
+        (("git", "rev-parse", "FETCH_HEAD"), 0, "b" * 40, "HEAD must equal"),
+        (
+            ("git", "ls-remote", "--exit-code", "--tags", "origin", "refs/tags/v0.8.4"),
+            0,
+            "existing",
+            "Remote tag",
+        ),
+        (
+            ("git", "ls-remote", "--exit-code", "--tags", "origin", "refs/tags/v0.8.4"),
+            128,
+            "network error",
+            "Couldn't check remote",
+        ),
+    ],
+)
+def test_release_preflight_stops_before_creating_tag(
+    commands, capsys, command, code, output, error
+):
+    original = commands.side_effect
+
+    def guard(args, **kwargs):
+        if args == command:
+            return subprocess.CompletedProcess(args, code, output)
+        return original(args, **kwargs)
+
+    commands.side_effect = guard
+    assert release.main(["release"]) != 0
+    assert error in capsys.readouterr().err
+    assert not any(args[:2] == ("git", "tag") for args in invoked(commands))
+
+
+@pytest.mark.parametrize(
+    "repository,ref,valid",
+    [
+        ("physiclaw/PhysiClaw", "refs/tags/v0.8.4", True),
+        ("other/fork", "refs/tags/v0.8.4", False),
+        ("physiclaw/PhysiClaw", "refs/tags/v0.8.5", False),
+        ("physiclaw/PhysiClaw", "refs/heads/main", False),
+    ],
+)
+def test_ci_validates_tag_identity_before_checking_ancestry(
+    commands, monkeypatch, repository, ref, valid
+):
+    monkeypatch.setenv("GITHUB_REPOSITORY", repository)
+    monkeypatch.setenv("GITHUB_REF", ref)
+    assert (release.main(["validate-tag"]) == 0) is valid
+    assert bool(commands.called) is valid
+    if valid:
+        assert ("git", "merge-base", "--is-ancestor", "HEAD", "FETCH_HEAD") in invoked(
+            commands
+        )
+        assert invoked(commands)[-1] == ("uv", "lock", "--check")
+
+
 @pytest.mark.parametrize("verbose", [False, True])
 def test_command_logging_and_exit_status(project, monkeypatch, capfd, verbose):
     monkeypatch.setenv("VERBOSE", "1" if verbose else "0")
@@ -390,7 +457,7 @@ def test_command_logging_and_exit_status(project, monkeypatch, capfd, verbose):
     [
         ("bump", "Working tree dirty"),
         ("release", "Working tree dirty"),
-        ("publish", "UV_PUBLISH_TOKEN not set"),
+        ("publish", "Working tree dirty"),
     ],
 )
 def test_native_make_enters_python_workflow(project, action, error):

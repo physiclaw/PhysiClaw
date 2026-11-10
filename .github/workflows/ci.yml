@@ -9,12 +9,26 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  workflow_call:
+    outputs:
+      artifact-id:
+        description: Tested Python release artifacts
+        value: ${{ jobs.package.outputs.artifact-id }}
+      version:
+        description: Tested package version
+        value: ${{ jobs.package.outputs.version }}
+
+permissions:
+  contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
 
 jobs:
+  package:
+    uses: ./.github/workflows/package.yml
+
   test:
     strategy:
       fail-fast: false
@@ -22,7 +36,9 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
 
       # OpenCV's manylinux wheel links libGL + glib; install them so `import
       # cv2` works headless (mirrors install.sh's Linux guidance).
@@ -34,6 +50,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
         with:
+          version: "0.13.7"
           python-version: "3.12"
           enable-cache: true
 
@@ -49,7 +66,7 @@ jobs:
 
       # Inline JavaScript uses Node's built-in test runner; no npm
       # packages or Node runtime are needed by the Python application.
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "22"
           package-manager-cache: false
@@ -98,11 +115,14 @@ jobs:
     env:
       PYTHONUTF8: "1"
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
 
       - name: Install uv
         uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
         with:
+          version: "0.13.7"
           python-version: "3.12"
           enable-cache: true
 

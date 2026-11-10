@@ -28,7 +28,7 @@ export HW_VERSION
 need-args = $(if $(strip $(ARGS)),,$(error usage: make $@ ARGS=$(1)))
 
 # Release options are passed as data, never interpolated into shell commands.
-export VERSION VERBOSE RELEASE_FLOW
+export VERSION VERBOSE
 
 help:
 	@echo "Targets:"
@@ -49,13 +49,12 @@ help:
 	@echo "  loc                   — Total = Code + Test + Text (NO_COLOR=1 for plain output)"
 	@echo "  firmware [ARGS=...]    — rebuild fluidnc.zip, preserve output/.cache; ARGS=--help for options"
 	@echo "  bump [VERSION=X.Y.Z]  — bump version. Defaults to incrementing the last"
-	@echo "                          component split by '.' (0.0.7 → 0.0.8). Override with"
-	@echo "                          VERSION for major/minor jumps. Commits LOCALLY."
+	@echo "                          component (0.0.7 → 0.0.8). Override for major/minor/rc."
+	@echo "                          Commits version + lockfile LOCALLY for a release PR."
 	@echo "  build                 — uv build wheel + sdist for the version in pyproject.toml"
-	@echo "  publish               — upload current wheel + sdist to PyPI, tag, push. Irreversible."
-	@echo "                          Reads version from pyproject.toml. Needs UV_PUBLISH_TOKEN."
-	@echo "  release [VERSION=X.Y.Z]"
-	@echo "                        — full release: bump + build + publish in one shot."
+	@echo "  release               — tag the current, already-pushed main commit; start release CI."
+	@echo "                          CI builds, tests, then publishes with Trusted Publishing."
+	@echo "  publish               — alias for release. No local upload or token."
 	@echo "                          VERBOSE=1 shows command logs; NO_COLOR=1 disables color."
 	@echo ""
 	@$(MAKE) --no-print-directory hw-help
@@ -115,25 +114,14 @@ firmware:
 
 # --- Release workflow ---------------------------------------------------------
 #
-# Three atoms; only the last one is irreversible:
+#   make bump VERSION=0.11.1  # on a release branch; commit version + lockfile
+#   make build                # optional local packaging check
+#   merge the release PR, update main, then:
+#   make release              # push vX.Y.Z; CI owns all PyPI uploads
 #
-#   make bump VERSION=0.0.8   # edits pyproject + uv.lock, commits LOCALLY
-#   make build                # uv build (reads version from pyproject)
-#   make publish              # uv publish, git tag vX.Y.Z, git push. Irreversible.
-#
-# Up to (and including) `build`, everything is reversible:
-#   git reset --hard HEAD~        # undo the bump commit
-#   rm dist/physiclaw-0.0.8*      # discard the build
-#
-# `publish` reads the version from pyproject.toml so you only type it once
-# (in `bump`). Tag creation happens in `publish` — that way a failed build /
-# abandoned attempt doesn't leave a stale local tag for a version that was
-# never released.
-
-# `make release [VERSION=X.Y.Z]` — bump + build + publish in one shot.
-#
-# Make reserves `-p` (print database), so a `make bump -p` style custom
-# flag isn't possible — this meta-target is the equivalent.
+# `publish` is a compatibility alias for `release`. Neither bumps the version,
+# pushes main, uploads local distributions, or uses a PyPI API token.
+# Configure Trusted Publishing and the pypi environment first; see RELEASING.md.
 #
 # The stdlib driver works with cmd.exe and POSIX shells. Skip project discovery
 # so starting a release cannot sync dependencies before checking the working tree.

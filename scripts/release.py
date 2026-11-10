@@ -1,4 +1,4 @@
-"""Portable package release workflow; invoked by make or directly with Python."""
+"""Prepare a version change or tag a merged release; CI owns PyPI uploads."""
 
 import argparse
 import os
@@ -8,6 +8,26 @@ import sys
 import time
 import tomllib
 from pathlib import Path
+
+VERSION_PATTERN = (
+    r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:(a|b|rc)(0|[1-9][0-9]*))?"
+)
+REPOSITORY = "physiclaw/PhysiClaw"
+
+
+def version_key(version: str) -> tuple[int, ...]:
+    """Our public version policy: X.Y.Z, optionally followed by aN/bN/rcN."""
+    match = re.fullmatch(VERSION_PATTERN, version)
+    if match is None:
+        raise ReleaseError(f"Invalid version: {version}; use X.Y.Z or X.Y.ZrcN")
+    major, minor, patch, stage, number = match.groups()
+    return (
+        int(major),
+        int(minor),
+        int(patch),
+        {"a": 0, "b": 1, "rc": 2, None: 3}[stage],
+        int(number or 0),
+    )
 
 
 class ReleaseError(Exception):
@@ -19,8 +39,9 @@ class ReleaseError(Exception):
 def read_version() -> str:
     with Path("pyproject.toml").open("rb") as source:
         version = tomllib.load(source).get("project", {}).get("version")
-    if not isinstance(version, str) or not re.fullmatch(r"[0-9a-zA-Z.+!_-]+", version):
+    if not isinstance(version, str):
         raise ReleaseError("Couldn't read version from pyproject.toml")
+    version_key(version)
     return version
 
 
@@ -32,8 +53,7 @@ def artifact_paths(version: str) -> tuple[Path, Path]:
 
 
 class Release:
-    def __init__(self, *, flow: bool = False):
-        self.flow = flow or bool(os.environ.get("RELEASE_FLOW"))
+    def __init__(self):
         self.verbose = os.environ.get("VERBOSE") == "1"
         self.color = (
             sys.stdout.isatty()
@@ -45,10 +65,9 @@ class Release:
     def style(self, text: str, code: int) -> str:
         return f"\033[{code}m{text}\033[0m" if self.color else text
 
-    def stage(self, number: int, text: str) -> None:
+    def stage(self, text: str) -> None:
         self.started = time.monotonic()
-        prefix = f"[{number}/4] " if self.flow else ""
-        print(f"\n  {self.style(prefix + text, 36)}", flush=True)
+        print(f"\n  {self.style(text, 36)}", flush=True)
 
     def done(self, text: str) -> None:
         elapsed = int(time.monotonic() - self.started)
@@ -92,12 +111,13 @@ class Release:
                 print(result.stdout, end="", file=sys.stderr)
             raise ReleaseError("Couldn't check release tag", result.returncode)
 
-    def check_checkout(self) -> None:
-        """Apply the same source guard to full releases and standalone publish."""
+    def check_checkout(self, *, main: bool = False) -> None:
         if self.run("git", "status", "--porcelain", capture=True).stdout.strip():
             raise ReleaseError("Working tree dirty - commit or stash first")
         branch = self.run("git", "rev-parse", "--abbrev-ref", "HEAD", capture=True)
-        if branch.stdout.strip() != "main":
+        if branch.stdout.strip() == "HEAD":
+            raise ReleaseError("Detached HEAD - switch to a branch first")
+        if main and branch.stdout.strip() != "main":
             raise ReleaseError("Not on main branch")
 
     def bump(self) -> None:
@@ -111,10 +131,10 @@ class Release:
                     f"Can't auto-bump '{current}'; use make bump VERSION=X.Y.Z"
                 )
             new = f"{prefix}{separator}{int(last) + 1}"
-        if not re.fullmatch(r"[0-9a-zA-Z.+!_-]+", new):
-            raise ReleaseError(f"Invalid version: {new}")
+        if version_key(new) <= version_key(current):
+            raise ReleaseError(f"Version must increase: {current} -> {new}")
         self.check_tag(new)
-        self.stage(1, f"Version {current} -> {new}")
+        self.stage(f"Version {current} -> {new}")
         path = Path("pyproject.toml")
         with path.open(encoding="utf-8", newline="") as source:
             text = source.read()
@@ -146,16 +166,17 @@ class Release:
         self.run("git", "add", "pyproject.toml", "uv.lock")
         self.run("git", "commit", "-m", f"chore: bump version to {new}")
         self.done("Lockfile updated; version committed locally")
-        if not self.flow:
-            print("\n  Next: make build && make publish\n")
+        print(
+            "\n  Next: review the version change in a PR and merge it; then make release on main.\n"
+        )
 
     def build(self) -> None:
         current = read_version()
         artifacts = artifact_paths(current)
-        self.stage(2, f"Build packages - {current}")
+        self.stage(f"Build packages - {current}")
         for path in artifacts:
             path.unlink(missing_ok=True)
-        self.run("uv", "build")
+        self.run("uv", "build", "--no-sources")
         for path in artifacts:
             if not path.is_file():
                 raise ReleaseError(f"Expected artifact missing: {path.as_posix()}")
@@ -167,56 +188,92 @@ class Release:
             )
             print(f"        {path.as_posix()}  {self.style(label, 2)}")
         self.done("Built wheel + source archive")
-        if not self.flow:
-            print("\n  Next: make publish\n")
+        print(
+            "\n  Local build only. CI builds and tests the distributions uploaded to PyPI.\n"
+        )
 
     def publish(self) -> None:
-        current = read_version()
-        artifacts = artifact_paths(current)
-        if not os.environ.get("UV_PUBLISH_TOKEN"):
+        if os.environ.get("VERSION"):
             raise ReleaseError(
-                "UV_PUBLISH_TOKEN not set. Create a token at "
-                "https://pypi.org/manage/account/token/ and set UV_PUBLISH_TOKEN"
+                "Release does not bump versions; use make bump VERSION=X.Y.Z in a PR first"
             )
-        for path in artifacts:
-            if not path.is_file():
-                raise ReleaseError(
-                    f"{path.as_posix()} not found - run make build first"
-                )
-        self.check_checkout()
+        current = read_version()
+        self.check_checkout(main=True)
         self.check_tag(current)
-        self.stage(3, f"Publish to PyPI - {current}")
-        self.run("uv", "publish", *(path.as_posix() for path in artifacts))
-        self.done("Uploaded 2 files to PyPI")
-        self.stage(4, "Push to GitHub")
+        remote = self.run(
+            "git", "remote", "get-url", "origin", capture=True
+        ).stdout.strip()
+        if remote.removesuffix(".git") not in {
+            f"https://github.com/{REPOSITORY}",
+            f"git@github.com:{REPOSITORY}",
+        }:
+            raise ReleaseError(f"origin must be the official {REPOSITORY} repository")
+        self.run("git", "fetch", "--no-tags", "origin", "main")
+        head = self.run("git", "rev-parse", "HEAD", capture=True).stdout.strip()
+        upstream = self.run(
+            "git", "rev-parse", "FETCH_HEAD", capture=True
+        ).stdout.strip()
+        if head != upstream:
+            raise ReleaseError(
+                "HEAD must equal origin/main; merge the release PR and update main first"
+            )
+        tag = f"refs/tags/v{current}"
+        remote_tag = self.run(
+            "git",
+            "ls-remote",
+            "--exit-code",
+            "--tags",
+            "origin",
+            tag,
+            capture=True,
+            check=False,
+        )
+        if remote_tag.returncode == 0:
+            raise ReleaseError(
+                f"Remote tag v{current} already exists; inspect or rerun its workflow"
+            )
+        if remote_tag.returncode != 2:
+            raise ReleaseError(
+                "Couldn't check remote release tag", remote_tag.returncode
+            )
+        self.stage(f"Request CI release - {current}")
         self.run("git", "tag", "-a", f"v{current}", "-m", f"physiclaw v{current}")
-        self.run("git", "push", "origin", "main")
-        self.run("git", "push", "origin", f"v{current}")
-        self.done(f"Pushed main and tag v{current}")
-        if not self.flow:
-            self.summary()
+        self.run("git", "push", "origin", tag)
+        self.done(f"Pushed v{current}; CI must pass and publication must be approved")
+        self.summary()
+
+    def validate_tag(self) -> None:
+        """Release CI checks the immutable tag before granting publishing access."""
+        current = read_version()
+        if os.environ.get("GITHUB_REPOSITORY") != REPOSITORY:
+            raise ReleaseError("Releases must run in the official repository")
+        if os.environ.get("GITHUB_REF") != f"refs/tags/v{current}":
+            raise ReleaseError("Release tag must match pyproject.toml version")
+        self.run("git", "fetch", "--no-tags", "origin", "main")
+        self.run("git", "merge-base", "--is-ancestor", "HEAD", "FETCH_HEAD")
+        self.run("uv", "lock", "--check")
 
     def summary(self) -> None:
         current = read_version()
-        print(f"\n  {self.style(f'OK Released physiclaw {current}', 32)}\n")
-        print(f"  PyPI     https://pypi.org/project/physiclaw/{current}/")
+        print(f"\n  {self.style(f'Release requested for physiclaw {current}', 32)}\n")
+        print(
+            f"  Workflow https://github.com/{REPOSITORY}/actions/workflows/release.yml"
+        )
         print(f"  Git tag  https://github.com/physiclaw/PhysiClaw/tree/v{current}\n")
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("bump", "build", "publish", "release"))
+    parser.add_argument(
+        "action", choices=("bump", "build", "publish", "release", "validate-tag")
+    )
     args = parser.parse_args(argv)
-    release = Release(flow=args.action == "release")
+    release = Release()
     try:
-        if args.action == "release":
-            print(f"\n  {release.style('PhysiClaw - release', 1)}", flush=True)
-            release.bump()
-            release.build()
-            release.publish()
-            release.summary()
-        else:
-            getattr(release, args.action)()
+        action = (
+            "publish" if args.action == "release" else args.action.replace("-", "_")
+        )
+        getattr(release, action)()
     except (ReleaseError, OSError, ValueError) as exc:
         print(f"\n  ERROR {exc}", file=sys.stderr)
         return exc.code if isinstance(exc, ReleaseError) else 1
