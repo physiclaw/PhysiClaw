@@ -80,7 +80,11 @@ async def test_serve_qr_page_uses_default_port_when_url_port_none(
 
 
 @pytest.mark.asyncio
-async def test_handle_setup_page_serves_wizard(mocker) -> None:
+@pytest.mark.parametrize("no_runtime", [False, True])
+async def test_handle_setup_page_serves_wizard(mocker, no_runtime) -> None:
+    mocker.patch.object(
+        pages.runtime_state, "read_live", return_value={"no_runtime": no_runtime}
+    )
     mocker.patch.object(
         pages,
         "bridge_base_urls",
@@ -101,3 +105,5 @@ async def test_handle_setup_page_serves_wizard(mocker) -> None:
     assert b"__PHONE_URL__" not in body
     assert b"http://device.local:8048/bridge" in body
     assert b"<iframe" not in body
+    assert b"__NO_RUNTIME__" not in body
+    assert (b"if (true)" if no_runtime else b"if (false)") in body

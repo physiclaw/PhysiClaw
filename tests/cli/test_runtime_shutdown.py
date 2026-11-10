@@ -26,6 +26,39 @@ TARGET_ERRORS = (
 )
 
 
+async def test_unconfigured_server_serves_mcp_after_hardware_ready_without_agent(
+    tmp_path,
+):
+    import httpx
+
+    from physiclaw.agent.engine.mcp_tool import McpClient
+    from physiclaw.common import runtime_state
+
+    with running(tmp_path, "unconfigured") as (parent, path, port):
+        output = wait_for(parent, path, "SERVICES_STARTED")
+        assert "No provider API key configured" in output
+        assert "Starting MCP-only" in output
+        assert runtime_state.read_live()["no_runtime"] is True
+        async with httpx.AsyncClient(base_url=f"http://127.0.0.1:{port}") as http:
+            status = await http.get("/api/status")
+            assert status.json()["ready"] is False
+            assert "MCP tools live" not in path.read_text(encoding="utf-8")
+            response = await http.post("/api/ready")
+            response.raise_for_status()
+        wait_for(parent, path, "MCP tools live")
+        async with McpClient(f"http://127.0.0.1:{port}") as client:
+            tools = await client.list_tools()
+            assert any(tool["name"] == "finish" for tool in tools)
+        parent.send_signal(signal.SIGINT)
+        parent.wait(timeout=5)
+
+    output = path.read_text(encoding="utf-8")
+    assert parent.returncode == 0, output
+    assert "CHILD_PID=" not in output
+    assert "REACT_STARTED" not in output
+    assert runtime_state.read_live() is None
+
+
 @contextmanager
 def reserved_ports():
     # Keep the actual bind addresses reserved until the child inherits them.

@@ -5,6 +5,30 @@ const {createSetup} = require('./setup_ui_fixture.cjs');
 const posts = ui => ui.requests.filter(request => request.method === 'POST');
 const calls = (ui, url) => posts(ui).filter(request => request.url === url);
 
+for (const language of ['en', 'zh']) {
+  for (const noRuntime of [false, true]) {
+    test(`setup completion shows the next step for the active mode (${language}, noRuntime=${noRuntime})`, async () => {
+      const ui = await createSetup({language, noRuntime});
+      await ui.startAuto();
+
+      assert.equal(ui.status.ready, true);
+      const text = ui.el('panel').textContent;
+      const mcp = /MCP:/;
+      const learning = language === 'en' ? /learn your chat app and keyboard layout/ : /熟悉聊天应用和键盘布局/;
+      assert.match(text, noRuntime ? mcp : learning);
+      assert.doesNotMatch(text, noRuntime ? learning : mcp);
+    });
+  }
+}
+
+test('MCP completion shows the current server address, including a custom port', async () => {
+  const ui = await createSetup({noRuntime: true, initial: {ready: true},
+    origin: 'http://[::1]:9123'});
+
+  assert.equal(ui.el('mcpAddress').textContent, 'http://[::1]:9123/mcp');
+  assert.equal(posts(ui).length, 0);
+});
+
 test('camera coverage advice appears in setup without blocking calibration', async () => {
   const ui = await createSetup();
   const issue = 'Move camera closer — phone covers only 23% of image (need ≥25%)';

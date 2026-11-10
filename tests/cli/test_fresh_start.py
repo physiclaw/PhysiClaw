@@ -20,24 +20,20 @@ finally:
 
 
 @pytest.mark.parametrize(
-    "model,expected",
-    [
-        (None, "no model configured"),
-        ("openai/gpt-5", "physiclaw setup local-vision-model"),
-    ],
-    ids=["missing-model", "missing-vision-model"],
+    "model", [None, "openai/gpt-5"], ids=["missing-model", "selected-model"]
 )
-def test_fresh_cli_reports_required_setup_without_traceback(
-    physiclaw_home, model, expected
+@pytest.mark.parametrize("argv", [[], ["mcp"]], ids=["default", "explicit-mcp"])
+def test_fresh_cli_only_requires_vision_setup_without_traceback(
+    physiclaw_home, model, argv
 ):
     env = {
-        **os.environ,
+        **{k: v for k, v in os.environ.items() if not k.endswith("_API_KEY")},
         "PHYSICLAW_HOME": str(physiclaw_home),
         "PHYSICLAW_MODEL": model or "",
     }
 
     result = subprocess.run(
-        [sys.executable, "-c", ENTRYPOINT],
+        [sys.executable, "-c", ENTRYPOINT, *argv],
         env=env,
         capture_output=True,
         text=True,
@@ -47,6 +43,9 @@ def test_fresh_cli_reports_required_setup_without_traceback(
     )
 
     assert result.returncode == 1, result.stdout + result.stderr
-    assert expected in result.stderr
+    assert ("No provider API key configured" in result.stderr) is (not argv)
+    assert ("Starting MCP-only" in result.stderr) is (not argv)
+    assert "physiclaw setup local-vision-model" in result.stderr
+    assert "Cannot start PhysiClaw: no model configured" not in result.stderr
     assert "Traceback" not in result.stdout + result.stderr
     assert not (physiclaw_home / "run" / "server.json").exists()

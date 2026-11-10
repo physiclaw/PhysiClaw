@@ -35,6 +35,10 @@ _NO_MODEL_MSG = (
 )
 
 
+class ModelNotConfiguredError(RuntimeError):
+    """No model was selected; distinct from an invalid explicit selection."""
+
+
 def model_ref() -> str:
     """Resolve effective model ref: PHYSICLAW_MODEL > [agent] model > raise.
 
@@ -57,7 +61,7 @@ def model_ref_with_source() -> tuple[str, str]:
         return ref, f"{MODEL_ENV_VAR} env"
     if config.CONFIG.agent.model:
         return config.CONFIG.agent.model, "config.toml [agent] model"
-    raise RuntimeError(_NO_MODEL_MSG)
+    raise ModelNotConfiguredError(_NO_MODEL_MSG)
 
 
 def parse_model_ref(ref: str) -> tuple[str, str]:

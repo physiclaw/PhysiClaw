@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import importlib
 import logging
+import os
 import socket
 import subprocess
 import threading
@@ -160,7 +161,7 @@ def _patch_server_runtime_deps(
     *,
     primary: str = "http://device.local:8048",
     fallback: str = "http://127.0.0.1:8048",
-    resolve_raises: bool = False,
+    missing_model: bool = False,
 ):
     """Stub out everything heavy `server()` touches once it starts up."""
     mocker.patch.object(server_mod, "_spawn_runtime", return_value=MagicMock())
@@ -205,13 +206,16 @@ def _patch_server_runtime_deps(
 
     mocker.patch.object(server_mod.socket, "create_server", side_effect=create_listener)
     fake_launcher = MagicMock()
-    if resolve_raises:
-        from physiclaw.common.model_ref import _NO_MODEL_MSG
+    if missing_model:
+        from physiclaw.common.model_ref import ModelNotConfiguredError
 
-        fake_launcher.resolve.side_effect = RuntimeError(_NO_MODEL_MSG)
+        fake_launcher.resolve.side_effect = ModelNotConfiguredError()
     else:
         fake_launcher.resolve.return_value = ("openai/gpt-5", "config")
     fake_launcher.engine_label.return_value = "engine=openai"
+    key_status = mocker.patch(
+        "physiclaw.provider.provider_key_status", return_value=("********", "config")
+    )
     bridge_lan = importlib.import_module("physiclaw.core.bridge.lan")
     fake_bridge = MagicMock()
     fake_bridge.bridge_base_urls.return_value = (primary, fallback)
@@ -255,6 +259,7 @@ def _patch_server_runtime_deps(
         "shutdown": fake_shutdown,
         "state": fake_state,
         "launcher": fake_launcher,
+        "key_status": key_status,
         "bridge": fake_bridge,
         "warm_start": fake_warm,
         "serve": fake_serve,
@@ -371,10 +376,9 @@ def test_connection_notice_keeps_the_default_view_short(mocker, caplog, no_runti
         server_mod._log_endpoints("127.0.0.1", 8048, no_runtime=no_runtime)
     visible = [r for r in caplog.records if ConsoleFilter(verbose=False).filter(r)]
     logs = visible[-1]
-    normal = "\n".join(
-        TaggedFormatter("physiclaw", False, verbose=False).format(record)
-        for record in visible
-    )
+    formatter = TaggedFormatter("physiclaw", False, verbose=False)
+    normal_messages = [formatter.format(record) for record in visible]
+    normal = "\n".join(normal_messages)
     diagnostic = "\n".join(
         TaggedFormatter("physiclaw", False, verbose=True).format(record)
         for record in caplog.records
@@ -389,8 +393,9 @@ def test_connection_notice_keeps_the_default_view_short(mocker, caplog, no_runti
     assert "QR code" in diagnostic and "Fallback" in diagnostic
     assert logs.getMessage().startswith("Logs: ")
     assert normal.splitlines()[-1].endswith("[physiclaw] " + logs.getMessage())
-    assert len(visible) == (3 if no_runtime else 2)
-    assert all("[physiclaw] " in line for line in normal.splitlines())
+    assert len(visible) == (4 if no_runtime else 2)
+    assert ("Keep this terminal open" in normal) is no_runtime
+    assert all("[physiclaw] " in message.splitlines()[0] for message in normal_messages)
     assert normal.count("Phone:") == diagnostic.count("Phone:") == 1
     assert normal.count("Logs:") == diagnostic.count("Logs:") == 1
 
@@ -491,44 +496,127 @@ def test_server_save_flags_set_env_vars(
 
 
 @pytest.mark.parametrize("argv", [["mcp"], ["server", "--no-runtime"]])
-def test_server_external_mode_skips_model_resolution(mocker, argv) -> None:
+def test_server_external_mode_skips_model_resolution(mocker, caplog, argv) -> None:
     from physiclaw.cli import app
 
-    deps = _patch_server_runtime_deps(mocker, resolve_raises=True)
+    deps = _patch_server_runtime_deps(mocker, missing_model=True)
 
     result = runner.invoke(app, [*argv, "--host", "127.0.0.1", "--port", "8048"])
 
     assert result.exit_code == 0, result.output
     deps["launcher"].resolve.assert_not_called()
+    deps["key_status"].assert_not_called()
+    assert "provider API key" not in caplog.text
+    assert "provider API key" not in result.output
     deps["state"].write.assert_called_once_with("127.0.0.1", 8048, no_runtime=True)
     deps["serve"].assert_called_once()
 
 
 @pytest.mark.parametrize("argv", [[], ["server"]])
-def test_server_exits_before_startup_when_no_model_configured(mocker, argv) -> None:
-    """Missing model settings stop startup with actionable setup instructions."""
+@pytest.mark.parametrize("missing_model", [True, False])
+def test_server_without_provider_key_starts_mcp_and_hardware_setup(
+    mocker, caplog, argv, missing_model
+) -> None:
+    """Fresh installs and model-only configs can calibrate without an agent."""
     from physiclaw.cli import app
 
-    deps = _patch_server_runtime_deps(mocker, resolve_raises=True)
+    deps = _patch_server_runtime_deps(mocker, missing_model=missing_model)
+    deps["key_status"].return_value = (None, None)
     maintenance = mocker.patch.object(server_mod, "_run_startup_maintenance")
+    wizard = mocker.patch.object(server_mod, "_open_hardware_wizard")
 
     result = runner.invoke(app, argv)
 
-    assert result.exit_code == 1
-    assert "Cannot start PhysiClaw: no model configured." in result.stderr
-    assert "physiclaw models key <provider>" in result.stderr
-    assert "physiclaw models use <provider>/<model>" in result.stderr
+    assert result.exit_code == 0, result.output
+    assert "No provider API key configured" in caplog.text
+    warning = next(
+        r for r in caplog.records if "No provider API key configured" in r.getMessage()
+    )
+    assert warning.levelno == logging.WARNING
+    assert warning.console is True
+    assert "Starting MCP-only" in caplog.text
+    assert "You can complete hardware setup" in caplog.text
+    assert "built-in agent is off" in caplog.text
     assert "Traceback" not in result.output
-    assert "starting hardware" not in result.output
-    maintenance.assert_not_called()
-    server_mod._require_vision_model.assert_not_called()
-    server_mod.socket.create_server.assert_not_called()
+    maintenance.assert_called_once_with(sync_skills=False)
+    server_mod._require_vision_model.assert_called_once()
     server_mod._spawn_runtime.assert_not_called()
-    server_mod.threading.Thread.assert_not_called()
-    deps["core_server"].build_apps.assert_not_called()
-    deps["state"].write.assert_not_called()
-    deps["state"].clear.assert_not_called()
-    deps["serve"].assert_not_called()
+    wizard.assert_called_once_with("127.0.0.1", 8048)
+    deps["core_server"].build_apps.assert_called_once()
+    deps["state"].write.assert_called_once_with("127.0.0.1", 8048, no_runtime=True)
+    deps["serve"].assert_called_once()
+    assert deps["serve"].call_args.kwargs["announce_ready"] is True
+    assert deps["serve"].call_args.kwargs["runtime"] is None
+
+
+def test_server_with_key_but_no_model_starts_mcp_only(mocker, caplog):
+    deps = _patch_server_runtime_deps(mocker, missing_model=True)
+
+    server_mod.server()
+
+    assert "No model configured." in caplog.text
+    assert "No provider API key" not in caplog.text
+    deps["state"].write.assert_called_once_with("127.0.0.1", 8048, no_runtime=True)
+    server_mod._spawn_runtime.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "model,config_key,env,expected_ref",
+    [
+        ("", "", {}, None),
+        ("openai/test", "", {}, None),
+        ("openai/test", "", {"ANTHROPIC_API_KEY": "synthetic-unrelated"}, None),
+        ("openai/test", "synthetic-config", {}, "openai/test"),
+        ("openai/test", "", {"OPENAI_API_KEY": "synthetic-env"}, "openai/test"),
+        ("", "", {"OPENAI_API_KEY": "synthetic-env"}, None),
+        (
+            "openai/test",
+            "synthetic-config",
+            {"PHYSICLAW_MODEL": "anthropic/test"},
+            None,
+        ),
+        (
+            "",
+            "",
+            {"PHYSICLAW_MODEL": "qwen/test", "DASHSCOPE_API_KEY": "synthetic-alias"},
+            "qwen/test",
+        ),
+    ],
+)
+def test_runtime_selection_requires_the_selected_providers_key(
+    monkeypatch, model, config_key, env, expected_ref
+):
+    from physiclaw.common import config
+
+    for name in os.environ:
+        if name.endswith("_API_KEY") or name == "PHYSICLAW_MODEL":
+            monkeypatch.delenv(name)
+    settings = config.Config()
+    settings.agent.model = model
+    settings.provider.openai_api_key = config_key
+    monkeypatch.setattr(config, "CONFIG", settings)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+
+    ref, source, label = server_mod._resolve_runtime_model(no_runtime=False)
+
+    assert ref == expected_ref
+    if expected_ref is None:
+        assert source is None
+        assert label == "external MCP client"
+    else:
+        assert source
+        assert "engine=physiclaw" in label
+
+
+@pytest.mark.parametrize("ref", ["invalid", "unknown/model"])
+def test_invalid_explicit_model_is_not_silently_replaced_with_mcp(monkeypatch, ref):
+    monkeypatch.setenv("PHYSICLAW_MODEL", ref)
+
+    with pytest.raises(typer.Exit) as error:
+        server_mod._resolve_runtime_model(no_runtime=False)
+
+    assert error.value.exit_code == 1
 
 
 def test_server_keyboard_interrupt_is_swallowed(mocker) -> None:

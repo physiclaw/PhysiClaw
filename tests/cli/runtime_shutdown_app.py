@@ -82,10 +82,17 @@ def parent(port: int, mode: str, listeners: list[socket.socket]) -> None:
     server_mod = importlib.import_module("physiclaw.cli.server")
 
     mcp = MCPServer("shutdown-test")
+    ready = mode not in {"not-ready", "unconfigured"}
 
     @mcp.custom_route("/api/status", methods=["GET"])
     async def status(request):
-        return JSONResponse({"ready": mode != "not-ready"})
+        return JSONResponse({"ready": ready})
+
+    @mcp.custom_route("/api/ready", methods=["POST"])
+    async def complete_setup(request):
+        nonlocal ready
+        ready = True
+        return JSONResponse({"ok": True})
 
     @mcp.tool()
     async def finish() -> str:
@@ -178,7 +185,13 @@ def parent(port: int, mode: str, listeners: list[socket.socket]) -> None:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    os.environ["PHYSICLAW_MODEL"] = "openai/test"
+    if sys.argv[3] == "unconfigured":
+        for name in list(os.environ):
+            if name.endswith("_API_KEY") or name == "PHYSICLAW_MODEL":
+                os.environ.pop(name)
+    else:
+        os.environ["PHYSICLAW_MODEL"] = "openai/test"
+        os.environ["OPENAI_API_KEY"] = "synthetic-test-key"
     if sys.argv[1] == "child":
         child(sys.argv[2], sys.argv[3])
     else:

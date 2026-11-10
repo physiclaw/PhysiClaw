@@ -137,10 +137,10 @@ def server(
 ) -> None:
     """Run the PhysiClaw MCP server.
 
-    Validate the model, then reserve both listeners before recording state or
-    starting hardware and the runtime. One scope owns the server lock,
-    listeners, state and child process; returning or failing releases them
-    in reverse order.
+    Start MCP-only when the model or its provider key is missing. Reserve both
+    listeners before recording state or starting hardware and the runtime.
+    One scope owns the server lock, listeners, state and child process;
+    returning or failing releases them in reverse order.
     """
     from physiclaw import __version__
     from physiclaw.cli._format import exit_error
@@ -184,6 +184,7 @@ def server(
     model_ref, model_source, runtime_label = _resolve_runtime_model(
         no_runtime=no_runtime
     )
+    no_runtime = model_ref is None
     log = logging.getLogger(__name__)
     log.info(
         "PhysiClaw %s",
@@ -590,7 +591,11 @@ def _refuse_if_already_running(host: str, port: int) -> None:
 
 
 def _resolve_runtime_model(*, no_runtime: bool) -> tuple[str | None, str | None, str]:
-    """Validate the model before startup; external MCP mode needs no model."""
+    """Enable the agent only with a selected model and its provider's key.
+
+    Missing settings leave hardware setup and MCP available. An invalid
+    explicit model remains an error; credentials are checked locally only.
+    """
     from physiclaw.cli._format import exit_error
 
     if no_runtime:
@@ -598,14 +603,43 @@ def _resolve_runtime_model(*, no_runtime: bool) -> tuple[str | None, str | None,
 
     from physiclaw.agent.runtime.launcher import engine_label
     from physiclaw.agent.runtime.launcher import resolve as _resolve_model
+    from physiclaw.common.model_ref import ModelNotConfiguredError
+    from physiclaw.provider import chat_provider_ids, provider_key_status
 
     try:
         model_ref, model_source = _resolve_model()
         runtime_label = engine_label(model_ref)
+    except ModelNotConfiguredError:
+        has_key = any(provider_key_status(pid)[0] for pid in chat_provider_ids())
+        reason = (
+            "No model configured." if has_key else "No provider API key configured."
+        )
+        commands = "physiclaw models use <provider>/<model>"
+        if not has_key:
+            commands = "physiclaw models key <provider>\n  " + commands
     except RuntimeError as e:
         exit_error(f"Cannot start PhysiClaw: {e}")
+    else:
+        provider_id = model_ref.split("/", 1)[0]
+        if provider_key_status(provider_id)[0]:
+            return model_ref, model_source, runtime_label
+        reason = f"No provider API key configured for {provider_id}."
+        commands = f"physiclaw models key {provider_id}"
 
-    return model_ref, model_source, runtime_label
+    log = logging.getLogger(__name__)
+    log.warning(
+        "%s Starting MCP-only.\n"
+        "You can complete hardware setup and connect an external AI app. "
+        "The built-in agent is off.",
+        reason,
+        extra={"console": True},
+    )
+    log.info(
+        "Optional: enable the built-in agent later:\n  %s\n"
+        "Then stop this server with Ctrl+C and run `physiclaw` again.",
+        commands,
+    )
+    return None, None, "external MCP client"
 
 
 def _log_endpoints(host: str, port: int, *, no_runtime: bool) -> None:
@@ -630,7 +664,12 @@ def _log_endpoints(host: str, port: int, *, no_runtime: bool) -> None:
         log.info("Tip: set a stable LocalHostName for <name>.local URLs.")
     if no_runtime:
         log.info(
-            "External agent: connect your MCP client, e.g. Claude Code:\n"
+            "After hardware setup, connect your AI app to the MCP address above.\n"
+            "Keep this terminal open while using PhysiClaw. Press Ctrl+C to stop.",
+            extra={"console": True},
+        )
+        log.info(
+            "For example, in another terminal with Claude Code installed:\n"
             "  claude mcp add --transport http physiclaw %s/mcp",
             base,
         )

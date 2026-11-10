@@ -37,9 +37,10 @@ Object.defineProperties(prototype, {
   },
 });
 
-async function createSetup({saved = true, language = 'en', initial = {}, responses = {}} = {}) {
+async function createSetup({saved = true, language = 'en', initial = {}, responses = {}, noRuntime = false,
+  origin = 'http://127.0.0.1:8048'} = {}) {
   const filename = path.join(__dirname, '../../src/physiclaw/core/setup/static/setup-hardware.html');
-  const html = fs.readFileSync(filename, 'utf8');
+  const html = fs.readFileSync(filename, 'utf8').replace('__NO_RUNTIME__', String(noRuntime));
   const document = documentFrom(html);
   document.body = document.querySelector('body');
   document.documentElement = document.querySelector('html');
@@ -75,7 +76,7 @@ async function createSetup({saved = true, language = 'en', initial = {}, respons
   ]);
   let now = Date.now();
   const context = vm.createContext({
-    document, window: {}, navigator: {language}, console, AbortController,
+    document, window: {location: {origin}}, navigator: {language}, console, AbortController,
     localStorage: {getItem: () => null, setItem() {}},
     Date: class extends Date {static now() { return now; }},
     setTimeout: (callback, delay = 0) => {

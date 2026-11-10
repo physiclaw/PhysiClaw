@@ -190,6 +190,14 @@ h1{font-size:30px;line-height:1.16;margin:0 0 13px;letter-spacing:-.025em;font-w
 .url.alt{color:var(--faint)}
 
 .success-hero{text-align:center;padding:18px 0}
+.mcp-connect{display:flex;align-items:baseline;justify-content:center;gap:12px;
+  width:fit-content;max-width:100%;margin:26px auto 0;padding:16px 4px 0;
+  font-size:14.5px;line-height:1.6;color:var(--muted)}
+.mcp-label{position:relative;flex:none;padding-inline-start:14px}
+.mcp-label::before{content:"";position:absolute;inset-inline-start:0;top:50%;transform:translateY(-50%);
+  width:6px;height:6px;border-radius:50%;background:var(--ok)}
+#mcpAddress{min-width:0;overflow-wrap:anywhere;text-align:left;color:var(--txt);
+  -webkit-user-select:all;user-select:all}
 .success-hero .big{width:80px;height:80px;border-radius:50%;margin:0 auto 18px;display:grid;place-items:center;
   font-size:40px;background:linear-gradient(135deg,var(--accent-lt),var(--accent-d));color:var(--accent-ink);
   box-shadow:0 12px 40px rgba(212,81,26,.4)}
@@ -523,7 +531,7 @@ const STR = {
     en: "On the first run, PhysiClaw needs a few minutes to learn your chat app and keyboard layout. Put your chat app in the Dock at the bottom of your iPhone's Home Screen so it's easy to find.",
     zh: "首次使用时，PhysiClaw 还需要几分钟来熟悉聊天应用和键盘布局。请把聊天应用放在 iPhone 主屏幕底部的 Dock 栏，方便后续打开。",
   },
-  s_finish_close: { en: "You can now close this setup tab on your computer.", zh: "现在可以关闭这个标签页了。" },
+  s_finish_close: { en: "You can close this tab now.", zh: "现在可以关闭这个标签页了。" },
 };
 const normLang = (l) => (l === "zh" ? "zh" : "en");
 let LANG = "en";
@@ -1088,9 +1096,12 @@ function finish(ctx) {
     hero.innerHTML = `<div class="big">✓</div>
       <h1 style="margin:0">${t("s_finish_readyTitle")}</h1>
       <p class="lede" style="margin:10px auto 0;max-width:42ch">${t("s_finish_readyLede", when)}</p>`;
-    // The first-run learning note only applies before the layout is learned;
-    // on a recalibration (already learned) it's stale, so skip it.
-    if (!STATUS.layout_learned)
+    // Only the built-in runtime automatically learns the screen layout.
+    if (__NO_RUNTIME__) {
+      const connect = $(`<p class="mcp-connect"><span class="mcp-label">MCP:</span> <span id="mcpAddress"></span></p>`);
+      connect.querySelector("#mcpAddress").textContent = window.location.origin + "/mcp";
+      hero.appendChild(connect);
+    } else if (!STATUS.layout_learned)
       hero.appendChild($(`<div class="note info center">${t("s_finish_learning")}</div>`));
     // Housekeeping line — kept faint so it doesn't compete with the info note.
     hero.appendChild($(`<p style="text-align:center;color:var(--faint);font-size:12.5px;margin:14px 0 0">${t("s_finish_close")}</p>`));

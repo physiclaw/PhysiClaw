@@ -5,6 +5,7 @@ from pathlib import Path
 from starlette.requests import Request
 from starlette.responses import HTMLResponse
 
+from physiclaw.common import runtime_state
 from physiclaw.common.text import read_text
 from physiclaw.core.bridge.lan import bridge_base_urls
 
@@ -39,7 +40,10 @@ async def serve_qr_page(request: Request) -> HTMLResponse:
 
 async def handle_setup_page(request: Request) -> HTMLResponse:
     """Serve the wizard driving the same server endpoints as the CLI."""
+    state = runtime_state.read_live() or {}
     return HTMLResponse(
-        render_phone_page_html("setup-hardware.html", request.url.port or 8048),
+        render_phone_page_html("setup-hardware.html", request.url.port or 8048).replace(
+            "__NO_RUNTIME__", "true" if state.get("no_runtime") else "false"
+        ),
         headers={"Cache-Control": "no-store"},
     )
