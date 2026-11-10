@@ -192,10 +192,19 @@ h1{font-size:30px;line-height:1.16;margin:0 0 13px;letter-spacing:-.025em;font-w
 .success-hero{text-align:center;padding:18px 0}
 .mcp-connect{display:flex;align-items:baseline;justify-content:center;gap:12px;
   width:fit-content;max-width:100%;margin:26px auto 0;padding:16px 4px 0;
-  font-size:14.5px;line-height:1.6;color:var(--muted)}
+  font-size:14.5px;line-height:1.6;color:var(--muted);--mcp-color:var(--amber)}
+.mcp-connect[data-state="online"]{--mcp-color:var(--ok)}
+.mcp-connect[data-state="offline"]{--mcp-color:var(--red)}
 .mcp-label{position:relative;flex:none;padding-inline-start:14px}
 .mcp-label::before{content:"";position:absolute;inset-inline-start:0;top:50%;transform:translateY(-50%);
-  width:6px;height:6px;border-radius:50%;background:var(--ok)}
+  width:6px;height:6px;border-radius:50%;background:var(--mcp-color);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--mcp-color) 15%,transparent);
+  transition:background .2s,box-shadow .2s}
+.mcp-connect[data-state="checking"] .mcp-label::before,
+.mcp-connect[data-state="waiting"] .mcp-label::before{animation:pulse 1.4s infinite}
+@media (prefers-reduced-motion:reduce){.mcp-label::before{animation:none!important;transition:none}}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
+  clip-path:inset(50%);white-space:nowrap;border:0}
 #mcpAddress{min-width:0;overflow-wrap:anywhere;text-align:left;color:var(--txt);
   -webkit-user-select:all;user-select:all}
 .success-hero .big{width:80px;height:80px;border-radius:50%;margin:0 auto 18px;display:grid;place-items:center;
@@ -532,6 +541,10 @@ const STR = {
     zh: "首次使用时，PhysiClaw 还需要几分钟来熟悉聊天应用和键盘布局。请把聊天应用放在 iPhone 主屏幕底部的 Dock 栏，方便后续打开。",
   },
   s_finish_close: { en: "You can close this tab now.", zh: "现在可以关闭这个标签页了。" },
+  s_finish_mcp_checking: { en: "Checking…", zh: "检查中…" },
+  s_finish_mcp_online: { en: "Online", zh: "在线" },
+  s_finish_mcp_offline: { en: "Offline", zh: "离线" },
+  s_finish_mcp_waiting: { en: "Setup required", zh: "待设置" },
 };
 const normLang = (l) => (l === "zh" ? "zh" : "en");
 let LANG = "en";
@@ -601,6 +614,7 @@ async function api(method, path, body, timeoutMs = 60000) {
   try {
     const r = await fetch(path, {
       method,
+      cache: "no-store",
       headers: body ? { "Content-Type": "application/json" } : {},
       body: body ? JSON.stringify(body) : (method === "POST" ? "" : undefined),
       signal: ctl.signal,
@@ -1098,9 +1112,27 @@ function finish(ctx) {
       <p class="lede" style="margin:10px auto 0;max-width:42ch">${t("s_finish_readyLede", when)}</p>`;
     // Only the built-in runtime automatically learns the screen layout.
     if (__NO_RUNTIME__) {
-      const connect = $(`<p class="mcp-connect"><span class="mcp-label">MCP:</span> <span id="mcpAddress"></span></p>`);
+      const connect = $(`<p class="mcp-connect"><span class="mcp-label">MCP:<span class="sr-only" id="mcpStatus" role="status"></span></span> <span id="mcpAddress"></span></p>`);
       connect.querySelector("#mcpAddress").textContent = window.location.origin + "/mcp";
       hero.appendChild(connect);
+      const status = connect.querySelector("#mcpStatus");
+      function setState(state) {
+        if (connect.dataset.state === state) return;
+        connect.dataset.state = state;
+        status.textContent = t("s_finish_mcp_" + state);
+      }
+      let timer;
+      _stopHooks.push(() => clearTimeout(timer));
+      setState("checking");
+      (async function checkConnection() {
+        if (!ctx.active()) return;
+        // Use a fresh response; refreshStatus keeps old data after a disconnect.
+        const r = await api("GET", "/api/status", null, 2000);
+        if (!ctx.active()) return;
+        if (!r.ok || typeof r.body?.ready !== "boolean") setState("offline");
+        else setState(r.body.ready ? "online" : "waiting");
+        timer = setTimeout(checkConnection, 3000);
+      })();
     } else if (!STATUS.layout_learned)
       hero.appendChild($(`<div class="note info center">${t("s_finish_learning")}</div>`));
     // Housekeeping line — kept faint so it doesn't compete with the info note.

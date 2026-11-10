@@ -84,7 +84,8 @@ async function createSetup({saved = true, language = 'en', initial = {}, respons
     },
     clearTimeout: id => timers.delete(id),
     fetch: async (url, options = {}) => {
-      const request = {url, method: options.method || 'GET', body: options.body ? JSON.parse(options.body) : null};
+      const request = {url, method: options.method || 'GET', body: options.body ? JSON.parse(options.body) : null,
+        cache: options.cache};
       requests.push(request);
       const route = overrides.get(url) || routes.get(url);
       if (!route) throw new Error('Unexpected setup request: ' + url);
@@ -126,6 +127,8 @@ async function createSetup({saved = true, language = 'en', initial = {}, respons
     async drain() {
       for (let i = 0; i < 200; i++) {
         await flush();
+        // Completion keeps a connection monitor running after setup settles.
+        if (vm.runInContext('CURRENT === STEPS.length - 1 && STATUS.ready && !WORKING', context)) return;
         const next = [...timers].sort((a, b) => a[1].at - b[1].at)[0];
         if (!next || next[1].at - now > 5000) return;
         now = next[1].at;

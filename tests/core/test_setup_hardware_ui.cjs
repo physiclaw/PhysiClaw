@@ -29,6 +29,98 @@ test('MCP completion shows the current server address, including a custom port',
   assert.equal(posts(ui).length, 0);
 });
 
+test('MCP indicator waits for a live response before showing connected', async () => {
+  const pending = Promise.withResolvers();
+  let probes = 0;
+  const ui = await createSetup({noRuntime: true, responses: {
+    '/api/status': () => ++probes === 1 ? {ready: true} : pending.promise,
+  }});
+  const indicator = ui.el('mcpStatus').closest('.mcp-connect');
+
+  assert.equal(indicator.dataset.state, 'checking');
+  assert.equal(ui.el('mcpStatus').textContent, 'Checking…');
+  pending.resolve({ready: true});
+  await ui.flush();
+
+  assert.equal(indicator.dataset.state, 'online');
+  assert.equal(ui.el('mcpStatus').textContent, 'Online');
+  assert.ok(!indicator.title);
+  assert.ok(!indicator.querySelector('.mcp-label').title);
+  assert.ok(!ui.el('mcpAddress').title);
+  assert.ok(ui.requests.every(request => request.cache === 'no-store'));
+  assert.equal(posts(ui).length, 0);
+});
+
+for (const [failure, response] of [
+  ['network error', () => { throw new TypeError('Failed to fetch'); }],
+  ['HTTP error', () => ({error: 'Service unavailable'})],
+  ['unexpected response', () => ({message: 'A different service'})],
+]) {
+  test(`MCP indicator recovers after ${failure}, including a server awaiting setup`, async () => {
+    const ui = await createSetup({noRuntime: true, initial: {ready: true}, language: 'zh'});
+    const indicator = ui.el('mcpStatus').closest('.mcp-connect');
+    ui.overrides.set('/api/status', response);
+
+    await ui.advance(3000);
+    assert.equal(indicator.dataset.state, 'offline');
+    assert.equal(ui.el('mcpStatus').textContent, '离线');
+
+    ui.overrides.delete('/api/status');
+    ui.status.ready = false;
+    await ui.advance(3000);
+    assert.equal(indicator.dataset.state, 'waiting');
+    assert.equal(ui.el('mcpStatus').textContent, '待设置');
+
+    ui.status.ready = true;
+    await ui.advance(3000);
+    assert.equal(indicator.dataset.state, 'online');
+    assert.equal(posts(ui).length, 0);
+  });
+}
+
+test('a stalled MCP probe times out without overlapping requests and then recovers', async () => {
+  const ui = await createSetup({noRuntime: true, initial: {ready: true}});
+  const indicator = ui.el('mcpStatus').closest('.mcp-connect');
+  ui.overrides.set('/api/status', () => new Promise(() => {}));
+
+  await ui.advance(3000);
+  const count = ui.requests.length;
+  await ui.advance(1999);
+  assert.equal(ui.requests.length, count);
+  assert.equal(indicator.dataset.state, 'online');
+  await ui.advance(1);
+  assert.equal(indicator.dataset.state, 'offline');
+
+  ui.overrides.delete('/api/status');
+  await ui.advance(3000);
+  assert.equal(indicator.dataset.state, 'online');
+});
+
+test('MCP polling ignores stale responses after a language change and stops when leaving Finish', async () => {
+  const ui = await createSetup({noRuntime: true, initial: {ready: true}});
+  const oldStatus = ui.el('mcpStatus');
+  const pending = Promise.withResolvers();
+  ui.overrides.set('/api/status', () => pending.promise);
+  await ui.advance(3000);
+
+  ui.overrides.delete('/api/status');
+  ui.click('langToggle');
+  await ui.flush();
+  pending.resolve({ready: false});
+  await ui.flush();
+  assert.equal(oldStatus.textContent, 'Online');
+  assert.equal(ui.el('mcpStatus').textContent, '在线');
+  const count = ui.requests.length;
+  await ui.advance(3000);
+  assert.equal(ui.requests.length, count + 1);
+
+  await ui.el('stepList').children[1].onclick();
+  const afterLeaving = ui.requests.length;
+  await ui.advance(10000);
+  assert.equal(ui.requests.length, afterLeaving);
+  assert.equal(posts(ui).length, 0);
+});
+
 test('camera coverage advice appears in setup without blocking calibration', async () => {
   const ui = await createSetup();
   const issue = 'Move camera closer — phone covers only 23% of image (need ≥25%)';
