@@ -99,6 +99,71 @@ def test_record_rejects_missing_runtime_resources(bundle):
         check_package.record(bundle)
 
 
+def test_installer_uses_built_wheel_and_runs_doctor_in_isolation(
+    bundle, tmp_path, monkeypatch
+):
+    temporary = tmp_path / "installer with spaces"
+    temporary.mkdir()
+    monkeypatch.setattr(check_package.tempfile, "tempdir", str(temporary))
+    for key in ("PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV"):
+        monkeypatch.setenv(key, "must-not-leak")
+    monkeypatch.setenv("PHYSICLAW_DRY_RUN", "1")
+    calls = []
+
+    def run(command, *, cwd, env, check, timeout):
+        assert check
+        assert cwd.parent == temporary
+        assert not {"PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV"} & env.keys()
+        assert env["PHYSICLAW_HOME"] == str(cwd / "home")
+        assert env["PHYSICLAW_VERSION"] == "1.2.3"
+        assert env["PHYSICLAW_DRY_RUN"] == "0"
+        assert env["UV_TOOL_DIR"] == str(cwd / "tools")
+        assert env["UV_TOOL_BIN_DIR"] == str(cwd / "bin")
+        assert env["PATH"].split(os.pathsep)[0] == str(cwd / "bin")
+        constraints = cwd / "constraints.txt"
+        assert env["UV_CONSTRAINT"] == constraints.as_uri()
+        wheel = bundle / "dist" / "physiclaw-1.2.3-py3-none-any.whl"
+        assert constraints.read_text(encoding="utf-8") == (
+            f"physiclaw @ {wheel.as_uri()}\n"
+        )
+        calls.append(command)
+
+    monkeypatch.setattr(check_package.subprocess, "run", run)
+    check_package.smoke_installer(bundle)
+    repository = Path(__file__).resolve().parents[2]
+    script = repository / ("install.ps1" if os.name == "nt" else "install.sh")
+    assert calls[0][-1] == str(script)
+    assert calls[-1][1:] == ["doctor"]
+    assert Path(calls[-1][0]).is_relative_to(temporary)
+    assert Path(calls[-1][0]).parent.name == "bin"
+
+
+@pytest.mark.parametrize("failure", ["installer", "doctor"])
+def test_installer_smoke_propagates_failures(bundle, mocker, failure):
+    commands = []
+
+    def run(command, **kwargs):
+        commands.append(command)
+        if failure == "installer" or command[-1] == "doctor":
+            raise subprocess.CalledProcessError(1, command)
+
+    mocker.patch.object(check_package.subprocess, "run", side_effect=run)
+    with pytest.raises(subprocess.CalledProcessError):
+        check_package.smoke_installer(bundle)
+    if failure == "installer":
+        assert len(commands) == 1
+    else:
+        assert commands[-1][-1] == "doctor"
+
+
+def test_installer_rejects_corrupt_wheel_before_running(bundle, mocker):
+    (bundle / "dist" / "physiclaw-1.2.3-py3-none-any.whl").write_bytes(b"corrupt")
+    run = mocker.patch.object(check_package.subprocess, "run")
+    with pytest.raises(ValueError, match="checksum mismatch"):
+        check_package.smoke_installer(bundle)
+    run.assert_not_called()
+
+
 @pytest.fixture
 def pypi(bundle, monkeypatch, mocker):
     data = {p.name: p.read_bytes() for p in (bundle / "dist").iterdir()}

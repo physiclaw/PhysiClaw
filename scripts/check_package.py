@@ -160,6 +160,70 @@ def smoke(bundle: Path) -> None:
             run(str(cli), "--help")
 
 
+def smoke_installer(bundle: Path) -> None:
+    """Run the public installer and doctor against this run's wheel."""
+    manifest = verify_local(bundle)
+    wheel = next(path for path in distributions(bundle) if path.suffix == ".whl")
+    wheel_url = wheel.resolve().as_uri()
+    repository = Path(__file__).resolve().parents[1]
+    with tempfile.TemporaryDirectory(prefix="physiclaw-installer-") as temporary:
+        root = Path(temporary)
+        bin_dir = root / "bin"
+        tool_dir = root / "tools"
+        constraints = root / "constraints.txt"
+        constraints.write_text(f"physiclaw @ {wheel_url}\n", encoding="utf-8")
+        env = {
+            key: value
+            for key, value in os.environ.items()
+            if key not in {"PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV"}
+        }
+        env.update(
+            PHYSICLAW_HOME=str(root / "home"),
+            PHYSICLAW_VERSION=manifest["version"],
+            PHYSICLAW_DRY_RUN="0",
+            UV_TOOL_DIR=str(tool_dir),
+            UV_TOOL_BIN_DIR=str(bin_dir),
+            # uv splits this setting on whitespace; a URI also supports spaces.
+            UV_CONSTRAINT=constraints.as_uri(),
+            UV_NO_CONFIG="1",
+            UV_DEFAULT_INDEX="https://pypi.org/simple",
+            PATH=str(bin_dir) + os.pathsep + env.get("PATH", ""),
+            NO_COLOR="1",
+        )
+        if os.name == "nt":
+            # install.ps1 returns its status through LASTEXITCODE, without exiting
+            # the user's shell. Propagate that status to the CI process.
+            wrapper = root / "install.ps1"
+            wrapper.write_text("& $args[0]\nexit $LASTEXITCODE\n", encoding="utf-8-sig")
+            installer = [
+                "powershell",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(wrapper),
+                str(repository / "install.ps1"),
+            ]
+        else:
+            installer = ["bash", str(repository / "install.sh")]
+        venv = tool_dir / "physiclaw"
+        python = venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+        cli = bin_dir / ("physiclaw.exe" if os.name == "nt" else "physiclaw")
+        probe = (
+            "import importlib.metadata as m, json, sys; "
+            "d = m.distribution('physiclaw'); "
+            "assert d.version == sys.argv[1]; "
+            "assert json.loads(d.read_text('direct_url.json'))['url'] == sys.argv[2]"
+        )
+        for command in (
+            installer,
+            [str(python), "-I", "-c", probe, manifest["version"], wheel_url],
+            ["uv", "--no-config", "pip", "check", "--python", str(python)],
+            [str(cli), "doctor"],
+        ):
+            subprocess.run(command, cwd=root, env=env, check=True, timeout=600)
+
+
 def published_files(version: str) -> dict[str, dict]:
     try:
         with urllib.request.urlopen(
@@ -217,7 +281,9 @@ def verify_pypi(bundle: Path, *, allow_missing: bool = False) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("record", "check", "smoke", "verify-pypi"))
+    parser.add_argument(
+        "action", choices=("record", "check", "smoke", "smoke-installer", "verify-pypi")
+    )
     parser.add_argument("--bundle", type=Path, default=Path("release-bundle"))
     parser.add_argument("--allow-missing", action="store_true")
     args = parser.parse_args()
@@ -225,9 +291,12 @@ def main() -> None:
         if args.action == "verify-pypi":
             verify_pypi(args.bundle, allow_missing=args.allow_missing)
         else:
-            {"record": record, "check": verify_local, "smoke": smoke}[args.action](
-                args.bundle
-            )
+            {
+                "record": record,
+                "check": verify_local,
+                "smoke": smoke,
+                "smoke-installer": smoke_installer,
+            }[args.action](args.bundle)
     except subprocess.CalledProcessError as error:
         if error.stdout:
             print(error.stdout, file=sys.stderr)

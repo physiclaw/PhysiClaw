@@ -1,7 +1,8 @@
 # Lint + fast hermetic tests with branch coverage on Linux and macOS.
 # Slow managed first-image/EOF and bridge shutdown regressions run on all three OSes.
 # Fresh CLI and Make bootstrap run without manual dependency sync on all three OSes.
-# Windows runs the full fast suite plus runtime/shutdown regressions and CAD smoke. Installer scripts and real hardware need manual validation.
+# Windows runs the full fast suite plus runtime/shutdown regressions and CAD smoke.
+# Package jobs run the platform installers and doctor; real hardware needs manual validation.
 name: CI
 
 on:
