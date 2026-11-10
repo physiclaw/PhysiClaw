@@ -1512,6 +1512,9 @@ dependencies = [
 ]
 
 [package.dev-dependencies]
+build = [
+    { name = "hatchling" },
+]
 cad = [
     { name = "build123d", marker = "python_full_version < '3.15'" },
     { name = "shapely", marker = "python_full_version < '3.15'" },
@@ -1559,6 +1562,7 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
+build = [{ name = "hatchling", specifier = ">=1.32.4,<2" }]
 cad = [
     { name = "build123d", marker = "python_full_version >= '3.12' and python_full_version < '3.15'", specifier = "==0.13.0" },
     { name = "shapely", marker = "python_full_version >= '3.12' and python_full_version < '3.15'", specifier = ">=2.1.2,<3" },

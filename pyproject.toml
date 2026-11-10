@@ -76,13 +76,14 @@ Repository = "https://github.com/physiclaw/PhysiClaw"
 Issues = "https://github.com/physiclaw/PhysiClaw/issues"
 
 [dependency-groups]
+build = ["hatchling>=1.32.4,<2"]
 cad = [
     "build123d==0.13.0",
     "shapely>=2.1.2,<3",
 ]
 dev = [
     # Exercise the real package backend in offline packaging regression tests.
-    "hatchling>=1.32.4,<2",
+    {include-group = "build"},
     "ruff>=0.15.9",
     "pytest>=8",
     "pytest-cov>=5",

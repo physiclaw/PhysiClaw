@@ -117,7 +117,7 @@ def make_project(tmp_path, request):
     capture = project / "capture runner.py"
     capture.write_text(
         "import json, os, sys\n"
-        "keys = ('VERSION', 'VERBOSE', 'RELEASE_FLOW', 'HW_VERSION')\n"
+        "keys = ('VERSION', 'VERBOSE', 'HW_VERSION', 'RUN_ID', 'JSON')\n"
         "record = {'argv': sys.argv[1:], 'env': {k: os.environ.get(k) for k in keys}}\n"
         "print('MAKE_CAPTURE=' + json.dumps(record), flush=True)\n"
         "raise SystemExit(int(os.environ.get('MAKE_CAPTURE_EXIT', '0')))\n",
@@ -135,6 +135,8 @@ def make_project(tmp_path, request):
             "MAKEFILES",
             "VERSION",
             "VERBOSE",
+            "RUN_ID",
+            "JSON",
             "RELEASE_FLOW",
             "HW_VERSION",
             "UV_PUBLISH_TOKEN",
@@ -199,15 +201,28 @@ def test_removed_hardware_targets_are_rejected(make_project, target):
     assert records == []
 
 
-@pytest.mark.parametrize("target", ["bump", "build", "publish", "release"])
+@pytest.mark.parametrize(
+    "target",
+    [
+        "bump",
+        "build",
+        "publish",
+        "release",
+        "release-start",
+        "release-status",
+        "release-approve",
+        "release-watch",
+    ],
+)
 def test_make_release_uses_one_guarded_driver_and_environment_data(
     make_project, target
 ):
     _, invoke = make_project
     version = "1.2.3 & literal-data"
 
+    run_id = "123 & literal-data"
     result, records = invoke(
-        target, f"VERSION={version}", "VERBOSE=1", "RELEASE_FLOW=1"
+        target, f"VERSION={version}", "VERBOSE=1", f"RUN_ID={run_id}", "JSON=1"
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
@@ -217,8 +232,9 @@ def test_make_release_uses_one_guarded_driver_and_environment_data(
     assert records[0]["env"] == {
         "VERSION": version,
         "VERBOSE": "1",
-        "RELEASE_FLOW": "1",
         "HW_VERSION": "",
+        "RUN_ID": run_id,
+        "JSON": "1",
     }
 
 
@@ -398,6 +414,10 @@ def test_every_make_target_has_a_routing_or_help_check():
         "build",
         "publish",
         "release",
+        "release-start",
+        "release-status",
+        "release-approve",
+        "release-watch",
         "docs-deploy",
         "lint",
         "help",

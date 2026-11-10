@@ -1,4 +1,4 @@
-.PHONY: test test-cov test-fast test-encoding test-slow test-integration test-all testall test-studio-ui mutate lint fmt typecheck loc help firmware bump build publish release docs-deploy \
+.PHONY: test test-cov test-fast test-encoding test-slow test-integration test-all testall test-studio-ui mutate lint fmt typecheck loc help firmware bump build publish release release-start release-status release-approve release-watch docs-deploy \
         hw-help hw-parts hw-build hw-check hw-step hw-print hw-manual hw-manual-pdf hw-sourcing hw-url hw-drawing hw-rebuild hw-preflight hw-prepare hw-verify hw-publish hw-release _hw-package
 
 PY ?= uv run
@@ -28,7 +28,7 @@ export HW_VERSION
 need-args = $(if $(strip $(ARGS)),,$(error usage: make $@ ARGS=$(1)))
 
 # Release options are passed as data, never interpolated into shell commands.
-export VERSION VERBOSE RELEASE_FLOW
+export VERSION VERBOSE RUN_ID JSON
 
 help:
 	@echo "Targets:"
@@ -48,14 +48,17 @@ help:
 	@echo "  typecheck             — mypy on application and hardware port (scope in [tool.mypy])"
 	@echo "  loc                   — Total = Code + Test + Text (NO_COLOR=1 for plain output)"
 	@echo "  firmware [ARGS=...]    — rebuild fluidnc.zip, preserve output/.cache; ARGS=--help for options"
-	@echo "  bump [VERSION=X.Y.Z]  — bump version. Defaults to incrementing the last"
-	@echo "                          component split by '.' (0.0.7 → 0.0.8). Override with"
-	@echo "                          VERSION for major/minor jumps. Commits LOCALLY."
+	@echo "  bump [VERSION=X.Y.Z]   — increment a stable version's patch number by default."
+	@echo "                          Set VERSION explicitly for major/minor/prereleases."
+	@echo "                          Commits version + lockfile locally; push main before release."
 	@echo "  build                 — uv build wheel + sdist for the version in pyproject.toml"
-	@echo "  publish               — upload current wheel + sdist to PyPI, tag, push. Irreversible."
-	@echo "                          Reads version from pyproject.toml. Needs UV_PUBLISH_TOKEN."
-	@echo "  release [VERSION=X.Y.Z]"
-	@echo "                        — full release: bump + build + publish in one shot."
+	@echo "  release-start         — push the version tag and start release CI."
+	@echo "  release-status        — show release progress and the next action (read-only)."
+	@echo "  release-approve       — approve PyPI publication after release checks pass."
+	@echo "  release-watch         — follow CI to completion (read-only)."
+	@echo "                          Uses this version + commit; RUN_ID=ID selects a specific run."
+	@echo "                          Status/approval/watch require gh; JSON=1 for status/approval."
+	@echo "  release, publish      — compatibility aliases for release-start."
 	@echo "                          VERBOSE=1 shows command logs; NO_COLOR=1 disables color."
 	@echo ""
 	@$(MAKE) --no-print-directory hw-help
@@ -114,31 +117,10 @@ firmware:
 	@$(PY) firmware/firmware.py $(ARGS)
 
 # --- Release workflow ---------------------------------------------------------
-#
-# Three atoms; only the last one is irreversible:
-#
-#   make bump VERSION=0.0.8   # edits pyproject + uv.lock, commits LOCALLY
-#   make build                # uv build (reads version from pyproject)
-#   make publish              # uv publish, git tag vX.Y.Z, git push. Irreversible.
-#
-# Up to (and including) `build`, everything is reversible:
-#   git reset --hard HEAD~        # undo the bump commit
-#   rm dist/physiclaw-0.0.8*      # discard the build
-#
-# `publish` reads the version from pyproject.toml so you only type it once
-# (in `bump`). Tag creation happens in `publish` — that way a failed build /
-# abandoned attempt doesn't leave a stale local tag for a version that was
-# never released.
-
-# `make release [VERSION=X.Y.Z]` — bump + build + publish in one shot.
-#
-# Make reserves `-p` (print database), so a `make bump -p` style custom
-# flag isn't possible — this meta-target is the equivalent.
-#
-# The stdlib driver works with cmd.exe and POSIX shells. Skip project discovery
-# so starting a release cannot sync dependencies before checking the working tree.
-# One process keeps the full release sequential even under make -j.
-bump build publish release:
+# See RELEASING.md for commands and Trusted Publisher configuration.
+# One cross-platform driver keeps each action sequential under make -j.
+# --no-project avoids syncing dependencies before checking the working tree.
+bump build publish release release-start release-status release-approve release-watch:
 	@$(PY) --no-project python scripts/release.py $@
 
 # --- Hardware CAD pipeline ----------------------------------------------------
