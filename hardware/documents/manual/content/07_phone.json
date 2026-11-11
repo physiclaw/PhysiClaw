@@ -230,8 +230,8 @@
           "zh": "让屏幕保持水平"
         },
         "body": {
-          "en": "The rear camera bump lifts one corner, so the phone does not lie flat. Put a piece of thin card or a few sheets of paper under the low edge. Add more until the screen is level. Make sure that the phone cannot rock or shift when the stylus taps. Any tilt or wobble causes missed taps.",
-          "zh": "后置摄像头的凸起会顶起手机一角，手机无法放平。在较低的一边垫几张纸或一片薄卡纸，垫到屏幕水平为止。确认触控笔点击时手机不晃动、不移位。稍有倾斜或松动，点击就会失准。"
+          "en": "The rear camera bump lifts one corner, so the phone does not lie flat. Put a piece of thin card or a few sheets of paper under the low edge. Add more until the screen is level. Make sure that the phone cannot rock or shift when the stylus taps.",
+          "zh": "后置摄像头的凸起会顶起手机一角，手机无法放平。在较低的一边垫几张纸或一片薄卡纸，垫到屏幕水平为止。确认触控笔点击时手机不晃动、不移位。"
         },
         "classes": "note overlay sm",
         "style": "right:30mm; top:135mm; width:90mm; display:flex; gap:4mm; align-items:flex-start;",
