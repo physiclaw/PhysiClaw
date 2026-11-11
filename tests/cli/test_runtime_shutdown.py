@@ -277,7 +277,14 @@ def test_server_first_negative_control_detects_wrong_order(tmp_path):
         wait_for(proc, path, "REACT_DONE")
         interrupt(proc)
         output = finished(proc, path, port)
-    assert all(error in output for error in TARGET_ERRORS), output
+    assert output.index("Control service stopping") < output.index(
+        "Requesting runtime exit"
+    ), output
+    # Forced termination on Windows can prevent the child from logging its
+    # session error. Require failure evidence without depending on that race.
+    assert any(error in output for error in (*TARGET_ERRORS, "Runtime exit forced")), (
+        output
+    )
 
 
 def test_no_runtime_server_and_standalone_runtime_keep_real_mcp_lifecycle(tmp_path):
