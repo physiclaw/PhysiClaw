@@ -1,4 +1,4 @@
-.PHONY: test-bootstrap test test-cov test-fast test-encoding test-encoding-0 test-encoding-1 test-slow test-integration test-all testall test-studio-ui mutate lint fmt typecheck loc help firmware bump build publish release release-start release-status release-approve release-watch docs-deploy check-site-assets \
+.PHONY: test-bootstrap test test-cov test-all-cov test-fast test-encoding test-encoding-0 test-encoding-1 test-slow test-integration test-all testall test-studio-ui mutate lint fmt typecheck loc help firmware bump build publish release release-start release-status release-approve release-watch docs-deploy check-site-assets \
         hw-help hw-parts hw-build hw-check hw-step hw-print hw-manual hw-manual-pdf hw-sourcing hw-url hw-drawing hw-rebuild hw-preflight hw-prepare hw-verify hw-publish hw-release _hw-package
 
 PY ?= uv run
@@ -7,6 +7,8 @@ PYTHON ?= $(PY) python
 # The suites collect CAD modules as well as application tests. Select both
 # groups so uv updates stale optional dependencies instead of retaining them.
 PYTEST = $(PY) --locked --group dev --group cad pytest
+# Keep the source in pyproject.toml so relative paths merge across OS checkouts.
+COVERAGE = --cov --cov-report=term-missing --cov-report=html --cov-branch
 
 # Like the other targets, docs-deploy runs from the checkout by default.
 # External -f callers can set this path explicitly; the hook stays relative to
@@ -36,6 +38,7 @@ help:
 	@echo "  test-bootstrap        — prepare the locked dev + CAD test environment"
 	@echo "  test                  — fast unit suite (excludes slow + integration)"
 	@echo "  test-cov              — fast suite with coverage report (term + html)"
+	@echo "  test-all-cov          — all suites with subprocess and branch coverage"
 	@echo "  test-fast             — alias for test"
 	@echo "  test-encoding         — strict encoding regressions with UTF-8 mode off and on"
 	@echo "  test-slow             — only @pytest.mark.slow"
@@ -71,7 +74,10 @@ test:
 	$(PYTEST)
 
 test-cov:
-	$(PYTEST) --cov=src/physiclaw --cov-report=term-missing --cov-report=html --cov-branch
+	$(PYTEST) $(COVERAGE)
+
+test-all-cov:
+	$(PYTEST) -m "" $(COVERAGE)
 
 test-fast: test
 

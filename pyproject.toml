@@ -79,6 +79,7 @@ Issues = "https://github.com/physiclaw/PhysiClaw/issues"
 
 [dependency-groups]
 build = ["hatchling>=1.32.4,<2"]
+coverage = ["coverage>=7.13.5,<8"]
 cad = [
     "build123d==0.13.0",
     "shapely>=2.1.2,<3",
@@ -86,9 +87,10 @@ cad = [
 dev = [
     # Exercise the real package backend in offline packaging regression tests.
     {include-group = "build"},
+    {include-group = "coverage"},
     "ruff>=0.15.9",
     "pytest>=8",
-    "pytest-cov>=5",
+    "pytest-cov>=7.1,<8",
     "pytest-mock>=3.14",
     "pytest-asyncio>=0.23",
     # Exercise real Windows console input through ConPTY in terminal tests.
@@ -198,12 +200,16 @@ asyncio_mode = "auto"
 [tool.coverage.run]
 branch = true
 source = ["src/physiclaw"]
+relative_files = true
+patch = ["subprocess"]
 omit = [
-    "src/physiclaw/agent/runtime/__main__.py",
+    # Child processes can start outside the checkout; keep the same scope.
+    "*/physiclaw/agent/runtime/__main__.py",
 ]
 
 [tool.coverage.report]
-fail_under = 90
+fail_under = 97
+precision = 2
 show_missing = true
 skip_covered = false
 exclude_also = [

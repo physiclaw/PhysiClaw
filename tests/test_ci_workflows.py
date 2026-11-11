@@ -1,9 +1,13 @@
 """CI coverage contracts: native parity, independent failures and diagnostics."""
 
+import os
 import shlex
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
+from coverage import CoverageData
 from ruamel.yaml import YAML
 
 WORKFLOWS = Path(__file__).resolve().parents[1] / ".github" / "workflows"
@@ -44,6 +48,9 @@ def test_required_checks_run_after_test_failures_but_require_setup(native_job):
             "uv run --locked mypy",
             "uv run --locked python -m hardware check",
             'make hw-build ARGS="--stems fastener_10_BHCS --bom"',
+            "uv run --locked coverage combine --keep .test-results",
+            "uv run --locked coverage report",
+            "uv run --locked coverage html",
         }
         if ready == "bootstrap"
         else {
@@ -79,7 +86,7 @@ def test_each_pytest_suite_keeps_its_own_report_and_temporary_logs():
         options = step.get("env", {}).get("PYTEST_ADDOPTS")
         if not options:
             continue
-        args = dict(arg[2:].split("=", 1) for arg in shlex.split(options))
+        args = dict(arg[2:].split("=", 1) for arg in shlex.split(options) if "=" in arg)
         report, tmp = Path(args["junitxml"]), Path(args["basetemp"])
         assert report.parent == tmp.parent == Path(".test-results")
         assert report not in reports and tmp not in temporary
@@ -91,6 +98,7 @@ def test_each_pytest_suite_keeps_its_own_report_and_temporary_logs():
         s
         for s in job["steps"]
         if s.get("uses", "").startswith("actions/upload-artifact@")
+        and s["with"]["name"].startswith("tests-")
     )
     assert upload["if"] == "${{ always() }}"
     assert upload["with"]["include-hidden-files"] is True
@@ -105,3 +113,69 @@ def test_each_pytest_suite_keeps_its_own_report_and_temporary_logs():
     assert job["steps"].index(collect) < job["steps"].index(upload)
     assert "${{ matrix.os }}" in upload["with"]["name"]
     assert "${{ matrix.python }}" in upload["with"]["name"]
+
+
+def test_coverage_keeps_suite_and_platform_data_separate_until_combining():
+    jobs = YAML(typ="safe").load(WORKFLOWS / "ci.yml")["jobs"]
+    suites = {
+        step["run"]: step["env"]
+        for step in jobs["test"]["steps"]
+        if "COVERAGE_FILE" in step.get("env", {})
+    }
+    assert set(suites) == {"make test-cov", "make test-slow", "make test-integration"}
+    assert len({env["COVERAGE_FILE"] for env in suites.values()}) == 3
+    for command in ("make test-slow", "make test-integration"):
+        assert "--cov" in shlex.split(suites[command]["PYTEST_ADDOPTS"])
+    combined = jobs["coverage"]
+    assert combined["needs"] == "test"
+    download = next(
+        step
+        for step in combined["steps"]
+        if step.get("uses", "").startswith("actions/download-artifact@")
+    )
+    assert not download["with"].get("merge-multiple", False)
+    assert download["with"]["pattern"] == "coverage-*-${{ github.run_attempt }}"
+
+
+@pytest.mark.slow
+def test_coverage_combination_reads_every_downloaded_platform_file(tmp_path):
+    jobs = YAML(typ="safe").load(WORKFLOWS / "ci.yml")["jobs"]
+    command = next(
+        step["run"]
+        for step in jobs["coverage"]["steps"]
+        if "coverage combine" in step.get("run", "")
+    )
+    linux = tmp_path / "coverage-data" / "coverage-linux" / ".coverage"
+    windows = tmp_path / "coverage-data" / "coverage-windows" / ".coverage"
+    linux.parent.mkdir(parents=True)
+    windows.parent.mkdir(parents=True)
+    first, second = CoverageData(basename=linux), CoverageData(basename=windows)
+    first.add_arcs({"src/physiclaw/example.py": [(1, 2)]})
+    second.add_arcs({"src/physiclaw/example.py": [(1, 3)]})
+    first.write()
+    second.write()
+    args = shlex.split(command)
+    args = args[args.index("combine") :]
+    # Expand the Linux job's glob without requiring a shell on Windows.
+    inputs = sorted(tmp_path.glob(args.pop()))
+    # The synthetic merge must not overwrite an enclosing pytest-cov report.
+    environment = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith("COVERAGE_")
+    }
+
+    result = subprocess.run(
+        [sys.executable, "-m", "coverage", *args, *map(str, inputs)],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    combined = CoverageData(basename=tmp_path / ".coverage")
+    combined.read()
+    assert combined.arcs("src/physiclaw/example.py") == [(1, 2), (1, 3)]
+    assert linux.exists() and windows.exists()

@@ -83,15 +83,18 @@ function, class, or module entrypoint, write tests in this priority order:
 
 ## Coverage gates
 
-- Minimum **90% line coverage** and **85% branch coverage** for new code.
-- Existing modules below the gate are listed in `pyproject.toml` under
-  `[tool.coverage.report] exclude_also`. Do not lower the gate to pass CI.
-- Coverage is necessary but not sufficient. A file at 100% coverage with
-  no assertions is still untested.
+- `pyproject.toml` requires **97% combined statement and branch coverage** for
+  `src/physiclaw`. CI checks each runner's fast suite and the merged reports.
+- Prioritize action authorization, provider validation, recovery and I/O errors.
+  Assertions must verify behavior; 100% coverage is not required.
+- Do not lower the gate or add exclusions to pass CI. Existing exclusions cover
+  abstract methods, typing-only code and entry-point scaffolding.
+- Python subprocess coverage is enabled. Native code, JavaScript, hardware
+  tooling and Python processes started with `-S` are outside this report.
 
 ## Performance
 
-- A single test runs in <100ms. A full suite runs in <60s on a laptop.
+- Aim for under 100ms per unit test.
 - Mark slow tests with `@pytest.mark.slow` and exclude from the default run.
 - Mark integration tests with `@pytest.mark.integration`.
 
@@ -102,7 +105,7 @@ function, class, or module entrypoint, write tests in this priority order:
 3. Run existing tests for that module — note what's already covered.
 4. Generate a `coverage.py` report scoped to the file: identify uncovered lines.
 5. Write tests in the priority order above. Run after each new test.
-6. After the file hits the coverage gate, run
+6. After focused tests pass, run
    `mutmut run --paths-to-mutate src/<file>` and add tests until the
    surviving-mutant rate is <10%.
 7. Commit tests in small, reviewable batches (one source file per commit).
@@ -114,7 +117,8 @@ collecting tests. Plain `uv run pytest` selects only the default groups, so CAD
 tests can be skipped or fail against a stale CAD installation after an upgrade.
 
 - Run all tests, including slow and integration: `make test-all` (alias: `make testall`)
-- Run with coverage: `make test-cov`
+- Run fast tests with coverage: `make test-cov`
+- Run all suites with coverage: `make test-all-cov`
 - Run one file: `uv run --locked --group dev --group cad pytest tests/test_package_init.py -v`
 - Run one test: `uv run --locked --group dev --group cad pytest tests/test_package_init.py::test_package_version_matches_installed_distribution -v`
 - Run only fast: `make test`
@@ -127,8 +131,17 @@ tests can be skipped or fail against a stale CAD installation after an upgrade.
 on Linux, macOS and Windows with Python 3.12, 3.13 and 3.14. Native-only tests
 declare their platform requirements through pytest skips. Independent checks
 continue after a test failure, while setup failures stop dependent checks.
-JUnit reports, test timings, coverage HTML and subprocess logs support diagnosis;
-report and log artifacts are retained for seven days.
+
+CI merges fast, slow and integration coverage per runner, then across the matrix.
+The aggregation job uses the `coverage` dependency group. Keep `source` in
+`pyproject.toml` and use bare `--cov` so data can merge across checkouts. Slow and
+integration coverage is checked after merging. Per-runner reports retain
+platform-specific gaps.
+
+JUnit reports, subprocess logs, raw coverage data, HTML reports and combined XML
+are retained for seven days. Test job limits are 45 minutes on Windows and 30 on
+Linux/macOS. Step limits are 30 minutes for fast tests and five each for slow
+and integration tests.
 
 The reusable `package.yml` workflow checks the same OS/Python matrix, including
 fresh installs and upgrades. Both run `doctor`, HTTP readiness and graceful
@@ -185,8 +198,9 @@ For each module in the approved plan, in order:
 
 1. Re-read the source file in full.
 2. Write tests in the priority order from "What to test".
-3. Run `pytest <test_file> --cov=<source_file> --cov-report=term-missing`.
-   Iterate until the coverage gate is met.
+3. Run `uv run --locked --group dev --group cad pytest <test_file> --cov --cov-report=term-missing --cov-fail-under=0`.
+   Inspect the target module's missing branches. Check the coverage gate with
+   `make test-cov` or `make test-all-cov`.
 4. Run `mutmut run --paths-to-mutate <source_file>` and report surviving
    mutants. Add tests to kill the meaningful ones. Document any survivors
    you intentionally accept (e.g., logging-only branches) inline in the
@@ -202,7 +216,7 @@ For each module in the approved plan, in order:
 - Add a `tests/README.md` summarizing the conventions (point to this file
   as source of truth).
 - Final report: total tests, coverage, mutation score, slow/integration
-  test counts, and any modules still below gate with reasons.
+  test counts, and remaining coverage gaps with reasons.
 
 ### Hard rules for the whole job
 

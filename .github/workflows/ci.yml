@@ -1,5 +1,5 @@
-# Shared lint, UI tests and fast Python tests with branch coverage on all three OSes.
-# All slow and integration tests run on all three OSes.
+# Shared lint, UI tests and Python tests on all three OSes.
+# Fast, slow and integration suites record branch and subprocess coverage.
 # Fresh CLI and Make bootstrap run without manual dependency sync on all three OSes.
 # Platform-specific tests declare their requirements with pytest skips.
 # Package jobs check fresh installs and upgrades, doctor and server interrupts.
@@ -56,7 +56,7 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python: ["3.12", "3.13", "3.14"]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: ${{ matrix.os == 'windows-latest' && 45 || 30 }}
     env:
       PYTHONUTF8: "1"
     steps:
@@ -105,10 +105,12 @@ jobs:
         run: uv run --locked pytest -m slow tests/cli/test_fresh_start.py
 
       - name: Test with coverage
+        timeout-minutes: 30
         if: *test_ready
         # Keep native-encoding coverage, especially Windows' legacy code page.
         env:
           PYTHONUTF8: "0"
+          COVERAGE_FILE: .test-results/.coverage.fast
           PYTEST_ADDOPTS: --junitxml=.test-results/fast.xml --basetemp=.test-results/tmp-fast --durations=25
         run: make test-cov
 
@@ -164,16 +166,42 @@ jobs:
         run: make test-encoding-1 "PY=uv run --locked"
 
       - name: Slow regressions
+        timeout-minutes: 5
         if: *test_ready
         env:
-          PYTEST_ADDOPTS: --junitxml=.test-results/slow.xml --basetemp=.test-results/tmp-slow --durations=25
+          COVERAGE_FILE: .test-results/.coverage.slow
+          PYTEST_ADDOPTS: --junitxml=.test-results/slow.xml --basetemp=.test-results/tmp-slow --durations=25 --cov --cov-report= --cov-fail-under=0
         run: make test-slow
 
       - name: Integration regressions
+        timeout-minutes: 5
         if: *test_ready
         env:
-          PYTEST_ADDOPTS: --junitxml=.test-results/integration.xml --basetemp=.test-results/tmp-integration --durations=25
+          COVERAGE_FILE: .test-results/.coverage.integration
+          PYTEST_ADDOPTS: --junitxml=.test-results/integration.xml --basetemp=.test-results/tmp-integration --durations=25 --cov --cov-report= --cov-fail-under=0
         run: make test-integration
+
+      - name: Combine suite coverage
+        if: *test_ready
+        run: uv run --locked coverage combine --keep .test-results
+
+      - name: Check combined coverage
+        if: *test_ready
+        run: uv run --locked coverage report
+
+      - name: Render combined coverage
+        if: *test_ready
+        run: uv run --locked coverage html
+
+      - name: Upload coverage data
+        if: *test_ready
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-${{ matrix.os }}-py${{ matrix.python }}-${{ github.run_attempt }}
+          path: .coverage
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Collect subprocess logs without following test symlinks
         if: ${{ always() }}
@@ -190,4 +218,39 @@ jobs:
             htmlcov/
           include-hidden-files: true
           if-no-files-found: ignore
+          retention-days: 7
+
+  coverage:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - *checkout
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          version: "0.13.7"
+          python-version: "3.12"
+          enable-cache: true
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: coverage-*-${{ github.run_attempt }}
+          path: coverage-data
+      # Keep artifact directories separate to avoid overwriting .coverage files.
+      - name: Combine all platforms and Python versions
+        run: uv run --locked --only-group coverage coverage combine --keep coverage-data/*/.coverage
+      - name: Check total coverage
+        run: uv run --locked --only-group coverage coverage report
+      - name: Render coverage HTML
+        run: uv run --locked --only-group coverage coverage html
+      - name: Render coverage XML
+        run: uv run --locked --only-group coverage coverage xml
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-combined-${{ github.run_attempt }}
+          path: |
+            .coverage
+            htmlcov/
+            coverage.xml
+          include-hidden-files: true
+          if-no-files-found: error
           retention-days: 7

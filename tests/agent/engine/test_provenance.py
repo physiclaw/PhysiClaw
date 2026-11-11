@@ -572,3 +572,112 @@ async def test_declining_plugin_latency_is_not_charged_to_main_llm(mocker):
     assert response["elapsed_ms"] == 500
     assert response["arbitration_elapsed_ms"] == 2500
     assert run.rlog.write_response.call_args.kwargs["elapsed_ms"] == 500
+
+
+@pytest.mark.parametrize(
+    "name,grants,executed,producers",
+    [
+        ("public", frozenset(), ["public"], ["optional", "physiclaw.llm"]),
+        (
+            "owner/leg",
+            frozenset({"owner/leg"}),
+            ["owner/leg"],
+            ["optional", "physiclaw.llm"],
+        ),
+        ("owner/leg", frozenset(), [], ["physiclaw.llm"]),
+    ],
+    ids=["public-macro", "granted-private-macro", "foreign-private-macro"],
+)
+async def test_bound_macro_proposal_requires_its_own_grant_before_winning_arbitration(
+    mocker, observation_blocks, name, grants, executed, producers
+):
+    from physiclaw.agent.engine.builtin_tool import LocalTool
+
+    session = Session()
+    session.facts.observe(observation_blocks(), tool="peek")
+    source = plugin(mocker)
+    source.advance.side_effect = [
+        ProposedTurn(
+            _asst(tool_calls=[_tc("run_macro", {"name": name})]),
+            observation_id=session.facts.observation.id,
+        ),
+        None,
+    ]
+    handler = mocker.AsyncMock(return_value="macro completed")
+    registry = _registry()
+    registry["run_macro"] = LocalTool(
+        "run_macro",
+        "run a macro",
+        {
+            "type": "object",
+            "properties": {"name": {"type": "string"}},
+            "required": ["name"],
+        },
+        handler,
+    )
+    provider = FakeProvider([_reply(None, {"end_session": {"status": DONE}})])
+    run = _mk_run(
+        provider,
+        session=session,
+        local_registry=registry,
+        tool_schemas=_schemas(registry),
+    )
+    run.plugins = (
+        PluginBinding("optional", source, "Optional", private_macros=grants),
+        *run.plugins,
+    )
+
+    await drive(run, session)
+
+    assert [call.args[1]["name"] for call in handler.await_args_list] == executed
+    assert [
+        event["producer"]["plugin_id"] for event in events(run.tr, "response")
+    ] == producers
+    assert session.sentinel_status == DONE
+    assert session.active_plugin is None
+
+
+async def test_optional_producer_configuration_error_preserves_llm_fallback(mocker):
+    from physiclaw.common.provider_errors import ProviderConfigurationError
+
+    session = Session()
+    source = plugin(mocker)
+    source.advance.side_effect = ProviderConfigurationError("missing optional API key")
+    provider = FakeProvider([_reply(None, {"end_session": {"status": DONE}})])
+    registry = _registry()
+    run = _mk_run(
+        provider,
+        session=session,
+        local_registry=registry,
+        tool_schemas=_schemas(registry),
+    )
+    run.plugins = (PluginBinding("optional", source, "Optional"), *run.plugins)
+
+    await drive(run, session)
+
+    assert session.sentinel_status == DONE
+    assert len(provider.calls) == 1
+    assert [event["producer"]["plugin_id"] for event in events(run.tr, "response")] == [
+        "physiclaw.llm"
+    ]
+    assert run.mcp.tool_calls == []
+
+
+@pytest.mark.parametrize("proposal", [None, ProposedTurn(object())])
+async def test_no_usable_proposal_stops_without_dispatch_or_consuming_turn_budget(
+    mocker, proposal
+):
+    session = Session()
+    source = plugin(mocker)
+    source.advance.return_value = proposal
+    run = _mk_run()
+    run.plugins = (PluginBinding("optional", source, "Optional"),)
+
+    await drive(run, session)
+
+    assert session.sentinel_status == STUCK
+    assert session.sentinel_recap == "no producer supplied an executable turn"
+    source.advance.assert_awaited_once()
+    assert run.mcp.tool_calls == []
+    assert events(run.tr, "response") == []
+    assert session.active_plugin is None

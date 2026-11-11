@@ -3,7 +3,10 @@ tiers, scoring, and the open-set decision."""
 
 from __future__ import annotations
 
+import pytest
 from conductor_fakes import make_learned, make_print, make_screen
+from hypothesis import given
+from hypothesis import strategies as st
 
 from physiclaw.common.bbox import BANDS
 from physiclaw.common.listing import LISTING_HEADER, Screen
@@ -105,6 +108,36 @@ def test_score_scrollable_page_votes_shared_dy() -> None:
 
     assert s.passes
     assert abs(s.dy + 0.2) < 0.03
+
+
+@pytest.mark.parametrize("hidden_y,visible_y", [(0.1, 0.2), (0.9, 0.8)])
+def test_match_screen_scrolled_off_anchor_does_not_force_recovery(hidden_y, visible_y):
+    page = _print(
+        anchors=[AnchorDecl("标题"), AnchorDecl("详情")],
+        learned_anchors=[_learned("标题", 0.2, hidden_y), _learned("详情", 0.2, 0.5)],
+        scrollable=True,
+    )
+    screen = make_screen(("详情", 0.2, visible_y))
+
+    verdict = m.match_screen(screen, [page])
+
+    assert verdict.matches("app.page")
+    assert verdict.dy == pytest.approx(visible_y - 0.5)
+
+
+@given(offset=st.floats(min_value=-0.2, max_value=0.2, allow_nan=False))
+def test_match_screen_uniform_scroll_preserves_page_identity(offset):
+    page = _print(
+        anchors=[AnchorDecl("商品"), AnchorDecl("详情")],
+        learned_anchors=[_learned("商品", 0.2, 0.3), _learned("详情", 0.2, 0.6)],
+        scrollable=True,
+    )
+    screen = make_screen(("商品", 0.2, 0.3 + offset), ("详情", 0.2, 0.6 + offset))
+
+    verdict = m.match_screen(screen, [page])
+
+    assert verdict.matches("app.page")
+    assert verdict.dy == pytest.approx(offset, abs=0.001)
 
 
 def test_match_screen_keeps_pinned_missing_anchors_fixed_under_an_overlay() -> None:
@@ -297,6 +330,66 @@ def test_overlay_band_is_padded_around_the_missing_anchors() -> None:
     v = m.match_screen(screen, [pp])
 
     assert v.kind == "occluded" and v.page_id == "app.thread"
+
+
+def test_match_screen_widely_missing_anchors_cannot_be_explained_by_one_overlay():
+    page = _print(
+        anchors=[AnchorDecl("商品"), AnchorDecl("搜索"), AnchorDecl("结算")],
+        learned_anchors=[
+            _learned("商品", 0.5, 0.5),
+            _learned("搜索", 0.5, 0.1),
+            _learned("结算", 0.5, 0.9),
+        ],
+    )
+    screen = make_screen(
+        ("商品", 0.5, 0.5), ("陌生页", 0.2, 0.4), ("返回", 0.5, 0.6), ("关闭", 0.8, 0.7)
+    )
+
+    verdict = m.match_screen(screen, [page])
+
+    assert verdict.kind == m.Reading.UNKNOWN
+    assert verdict.page_id is None
+    assert verdict.gaps["app.page"] == "missing 搜索, 结算"
+
+
+def test_match_screen_uncalibrated_missing_anchor_cannot_invent_overlay_geometry():
+    page = _print(
+        anchors=[AnchorDecl("商品"), AnchorDecl("结算")],
+        learned_anchors=[_learned("商品", 0.5, 0.1)],
+    )
+    screen = make_screen(
+        ("商品", 0.5, 0.1),
+        ("qwerty", 0.2, 0.8),
+        ("asdfgh", 0.5, 0.85),
+        ("zxcvbn", 0.8, 0.9),
+    )
+
+    verdict = m.match_screen(screen, [page])
+
+    assert verdict.kind == m.Reading.UNKNOWN
+    assert verdict.page_id is None
+
+
+@pytest.mark.parametrize(
+    "last_label,expected", [("", m.Reading.UNKNOWN), ("zxcvbn", m.Reading.OCCLUDED)]
+)
+def test_match_screen_overlay_requires_text_evidence_instead_of_unlabelled_icons(
+    last_label, expected
+):
+    page = _print(
+        anchors=[AnchorDecl("商品"), AnchorDecl("结算")],
+        learned_anchors=[_learned("商品", 0.5, 0.1), _learned("结算", 0.5, 0.85)],
+    )
+    screen = make_screen(
+        ("商品", 0.5, 0.1),
+        ("qwerty", 0.2, 0.8),
+        ("asdfgh", 0.5, 0.85),
+        (last_label, 0.8, 0.9),
+    )
+
+    verdict = m.match_screen(screen, [page])
+
+    assert verdict.kind == expected
 
 
 # ---------- the cover, which has no page ----------

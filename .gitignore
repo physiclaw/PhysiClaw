@@ -49,6 +49,8 @@ log/
 /.mypy_cache/
 /.ruff_cache/
 .coverage
+.coverage.*
+coverage.xml
 .mutmut-cache
 htmlcov/
 

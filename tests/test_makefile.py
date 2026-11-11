@@ -38,23 +38,13 @@ ENCODING_COMMANDS = [
 CAD = ["--locked", "--group", "cad", "python", "-m", "hardware"]
 DOC = ["--locked", "python", "-m", "hardware"]
 PYTEST = ["--locked", "--group", "dev", "--group", "cad", "pytest"]
+COVERAGE = ["--cov", "--cov-report=term-missing", "--cov-report=html", "--cov-branch"]
 ROUTES = [
     ("test-bootstrap", [], [[*PYTEST, "--version"]]),
     ("test", [], [PYTEST]),
     ("test-fast", [], [PYTEST]),
-    (
-        "test-cov",
-        [],
-        [
-            [
-                *PYTEST,
-                "--cov=src/physiclaw",
-                "--cov-report=term-missing",
-                "--cov-report=html",
-                "--cov-branch",
-            ]
-        ],
-    ),
+    ("test-cov", [], [[*PYTEST, *COVERAGE]]),
+    ("test-all-cov", [], [[*PYTEST, "-m", "", *COVERAGE]]),
     ("test-slow", [], [[*PYTEST, "-m", "slow"]]),
     ("test-integration", [], [[*PYTEST, "-m", "integration"]]),
     ("test-all", [], [[*PYTEST, "-m", ""]]),
