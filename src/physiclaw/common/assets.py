@@ -1,5 +1,10 @@
-"""Shared bundled assets; HTTP adapters choose how to serve the same files."""
+"""Bundled browser assets, resolved relative to the installed package.
+
+Pages live in feature directories under ``physiclaw/static``; shared libraries
+and their licenses live in ``static/vendor``. HTTP adapters own their routes.
+"""
 
 from pathlib import Path
 
-QR_CODE_JS = Path(__file__).with_name("static") / "vendor" / "qrcode-1.4.4.min.js"
+STATIC_DIR = Path(__file__).resolve().parents[1] / "static"
+QR_CODE_JS = STATIC_DIR / "vendor" / "qrcode-1.4.4.min.js"

@@ -12,17 +12,16 @@ import time
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from ipaddress import IPv4Address
-from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 from physiclaw import port as platform
-from physiclaw.common.assets import QR_CODE_JS
+from physiclaw.common.assets import QR_CODE_JS, STATIC_DIR
 
 PAGE_PATH = "/test-assistive-touch"
 API_PATH = "/api/test-assistive-touch"
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 MAX_JSON_BYTES = 64 * 1024
-PAGE_FILE = Path(__file__).with_name("static") / "test-assistive-touch.html"
+PAGE_FILE = STATIC_DIR / "assistive-touch" / "test-assistive-touch.html"
 QR_FILE = QR_CODE_JS
 
 

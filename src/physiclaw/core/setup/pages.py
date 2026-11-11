@@ -1,15 +1,13 @@
 """Setup-owned desktop and phone pages, including bridge URL substitution."""
 
-from pathlib import Path
-
 from starlette.requests import Request
 from starlette.responses import HTMLResponse
 
-from physiclaw.common import runtime_state
+from physiclaw.common import assets, runtime_state
 from physiclaw.common.text import read_text
 from physiclaw.core.bridge.lan import bridge_base_urls
 
-STATIC_DIR = Path(__file__).with_name("static")
+STATIC_DIR = assets.STATIC_DIR / "setup"
 
 
 def render_phone_page_html(filename: str, port: int) -> str:

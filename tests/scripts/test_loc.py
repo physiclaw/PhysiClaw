@@ -49,7 +49,7 @@ def write(root, name, content):
         ("Makefile", "Code"),
         ("Dockerfile", "Code"),
         ("CMakeLists.txt", "Code"),
-        ("src/physiclaw/cli/static/test-assistive-touch.html", "Code"),
+        ("src/physiclaw/static/assistive-touch/test-assistive-touch.html", "Code"),
         ("src/physiclaw/cli/testdrive.py", "Code"),
         ("tests/conftest.py", "Test"),
         ("tests/ui_fixture.cjs", "Test"),

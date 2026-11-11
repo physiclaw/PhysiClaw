@@ -15,6 +15,11 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 def test_sdist_skips_local_artifacts_and_rebuilds_wheel(tmp_path, monkeypatch):
     project = tmp_path / "package checkout"
     project.mkdir()
+    static_files = tuple(
+        path.relative_to(REPO_ROOT).as_posix()
+        for path in sorted((REPO_ROOT / "src/physiclaw/static").rglob("*"))
+        if path.is_file()
+    )
     source_files = (
         "pyproject.toml",
         ".gitignore",
@@ -24,6 +29,7 @@ def test_sdist_skips_local_artifacts_and_rebuilds_wheel(tmp_path, monkeypatch):
         "licenses/GPL-3.0.txt",
         "src/physiclaw/__init__.py",
         "src/physiclaw/agent/context/AGENT.md",
+        *static_files,
     )
     for name in source_files:
         target = project / name
@@ -84,6 +90,11 @@ def test_sdist_skips_local_artifacts_and_rebuilds_wheel(tmp_path, monkeypatch):
         members = set(archive.namelist())
         assert "physiclaw/__init__.py" in members
         assert "physiclaw/agent/context/AGENT.md" in members
+        for name in static_files:
+            assert (
+                archive.read(name.removeprefix("src/"))
+                == (REPO_ROOT / name).read_bytes()
+            )
         metadata_root = f"physiclaw-{version}.dist-info"
         assert f"{metadata_root}/licenses/LICENSE" in members
         metadata = BytesParser().parsebytes(archive.read(f"{metadata_root}/METADATA"))

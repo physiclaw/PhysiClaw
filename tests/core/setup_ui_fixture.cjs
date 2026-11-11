@@ -39,7 +39,7 @@ Object.defineProperties(prototype, {
 
 async function createSetup({saved = true, language = 'en', initial = {}, responses = {}, noRuntime = false,
   origin = 'http://127.0.0.1:8048'} = {}) {
-  const filename = path.join(__dirname, '../../src/physiclaw/core/setup/static/setup-hardware.html');
+  const filename = path.join(__dirname, '../../src/physiclaw/static/setup/setup-hardware.html');
   const html = fs.readFileSync(filename, 'utf8').replace('__NO_RUNTIME__', String(noRuntime));
   const document = documentFrom(html);
   document.body = document.querySelector('body');

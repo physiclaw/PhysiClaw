@@ -22,12 +22,14 @@ REPOSITORY = "https://github.com/physiclaw/PhysiClaw"
 RESOURCES = (
     "agent/context/AGENT.md",
     "agent/context/PHYSICLAW.md",
-    "agent/trace/viewer.html",
-    "studio/studio.html",
-    "core/setup/static/setup-hardware.html",
-    "core/setup/static/bridge.html",
-    "cli/static/test-assistive-touch.html",
-    "common/static/vendor/qrcode-1.4.4.min.js",
+    "static/trace/viewer.html",
+    "static/studio/studio.html",
+    "static/setup/setup-hardware.html",
+    "static/setup/bridge.html",
+    "static/setup/qr.html",
+    "static/assistive-touch/test-assistive-touch.html",
+    "static/vendor/qrcode-1.4.4.min.js",
+    "static/vendor/qrcode-LICENSE.txt",
 )
 
 

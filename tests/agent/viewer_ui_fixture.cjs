@@ -5,7 +5,7 @@ const vm = require('node:vm');
 const {documentFrom} = require('../studio/ui_fixture.cjs');
 
 function createViewer(records, overrides = {}) {
-  const filename = path.join(__dirname, '../../src/physiclaw/agent/trace/viewer.html');
+  const filename = path.join(__dirname, '../../src/physiclaw/static/trace/viewer.html');
   const html = fs.readFileSync(filename, 'utf8');
   const model = {
     sid: 'fixture-session', generated_at: '2026-10-14T12:00:00',

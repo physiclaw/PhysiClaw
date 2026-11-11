@@ -44,7 +44,7 @@ from starlette.routing import Route
 
 from physiclaw.agent.trace import viewer
 from physiclaw.agent.trace.store import recent_sessions, resolve_session
-from physiclaw.common import gesture_vocab, paths
+from physiclaw.common import assets, gesture_vocab, paths
 from physiclaw.common.control_gate import ControlGate
 from physiclaw.common.logger.session_artifacts import mime_for, resolve_image
 from physiclaw.common.ready import START_HINT
@@ -57,7 +57,7 @@ from physiclaw.studio.session import Session, view_reply
 
 log = logging.getLogger(__name__)
 
-STATIC_DIR = Path(__file__).parent
+STATIC_DIR = assets.STATIC_DIR / "studio"
 REVIEW_PATH = "/review/"
 
 BUSY_MSG = "a call is already in flight — one rig"

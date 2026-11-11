@@ -102,7 +102,7 @@ function documentFrom(html) {
 }
 
 async function createUI() {
-  const filename = path.join(__dirname, '../../src/physiclaw/studio/studio.html');
+  const filename = path.join(__dirname, '../../src/physiclaw/static/studio/studio.html');
   const html = fs.readFileSync(filename, 'utf8');
   const catalog = JSON.parse(fs.readFileSync(path.join(__dirname, '../data/studio_ui.json'), 'utf8'));
   const document = documentFrom(html), timers = new Map(), requests = [], responses = new Map();

@@ -5,7 +5,7 @@ const vm = require('node:vm');
 const {test} = require('node:test');
 
 function focusRenderer(width, height) {
-  const html = fs.readFileSync(path.join(__dirname, '../../src/physiclaw/core/setup/static/bridge.html'), 'utf8');
+  const html = fs.readFileSync(path.join(__dirname, '../../src/physiclaw/static/setup/bridge.html'), 'utf8');
   const start = html.indexOf('function renderCalibrate(data)');
   const end = html.indexOf('function fitTextSize()', start);
   class Element {

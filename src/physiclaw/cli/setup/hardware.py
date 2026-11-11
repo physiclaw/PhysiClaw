@@ -317,7 +317,7 @@ def _step_calibrate_camera(auto: bool, cam: int) -> None:
     # Interactive only: aiming with the OS camera app releases the device, so
     # reopen it afterwards. In auto mode the camera stays connected from step 4
     # — mirror the browser wizard, which calibrates the still-connected camera
-    # with no reopen (calibrateCamera in core/setup/static/setup-hardware.html).
+    # with no reopen (calibrateCamera in static/setup/setup-hardware.html).
     if not auto:
         _camera_aim_adjust("Adjust the camera angle/distance if needed")
         r_conn = api("POST", "/api/connect-camera", {"index": cam})
@@ -456,7 +456,7 @@ def _step_finish(t0: float) -> None:
 
 def run(auto: bool = False, trace: bool = False) -> None:
     # Step names + wording mirror the browser wizard
-    # (core/setup/static/setup-hardware.html) so the two surfaces stay consistent.
+    # (static/setup/setup-hardware.html) so the two surfaces stay consistent.
     t0 = time.time()
 
     status = api("GET", STATUS_PATH)

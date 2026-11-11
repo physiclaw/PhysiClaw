@@ -35,12 +35,13 @@ from physiclaw.agent.trace.format import (
 )
 from physiclaw.agent.trace.store import recent_sessions
 from physiclaw.agent.trace.trace import WARNING_EVENTS, WARNING_WORDS
+from physiclaw.common.assets import STATIC_DIR
 from physiclaw.common.logger.session_artifacts import iso_now
 from physiclaw.common.text import json_object, json_span, read_text, write_text_atomic
 from physiclaw.contract.wire import image_ref, leaf_blocks, reply_gist
 
 VIEWER_FILE = "session.html"
-_TEMPLATE = Path(__file__).with_name("viewer.html")
+_TEMPLATE = STATIC_DIR / "trace" / "viewer.html"
 _TURN_LINE = re.compile(r"\bturn (\d+)\b")
 _NARRATIVE = ("notes.md", "runtime.log", "server.log", "summary.json")
 

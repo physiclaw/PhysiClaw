@@ -5,10 +5,10 @@ const path = require('node:path');
 const vm = require('node:vm');
 const {setImmediate} = require('node:timers/promises');
 const {documentFrom} = require('../studio/ui_fixture.cjs');
-const qrcode = require('../../src/physiclaw/common/static/vendor/qrcode-1.4.4.min.js');
+const qrcode = require('../../src/physiclaw/static/vendor/qrcode-1.4.4.min.js');
 
 async function createTestPage(initialSequence = 0, sharedState = null, reducedMotion = false, phonePage = false) {
-  const filename = path.join(__dirname, '../../src/physiclaw/cli/static/test-assistive-touch.html');
+  const filename = path.join(__dirname, '../../src/physiclaw/static/assistive-touch/test-assistive-touch.html');
   const html = fs.readFileSync(filename, 'utf8');
   const document = documentFrom(html), timers = new Map(), events = new Map();
   document.body = document.querySelector('body');
