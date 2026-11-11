@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tarfile
 import urllib.error
+import urllib.parse
 import zipfile
 from contextlib import nullcontext
 from pathlib import Path
@@ -236,6 +237,10 @@ def test_installer_rejects_corrupt_wheel_before_running(bundle, mocker):
         ("redirect", "Unexpected HTTP response"),
         ("bad-page", "did not serve the packaged /setup-hardware page"),
         ("bad-bridge", "did not serve the packaged /bridge page"),
+        ("control-collision", None),
+        ("bridge-collision", None),
+        ("collision-exhausted", "after 3 port collisions"),
+        ("permission", "exited before HTTP readiness"),
     ],
 )
 def test_server_smoke_checks_http_and_always_stops(
@@ -251,6 +256,7 @@ def test_server_smoke_checks_http_and_always_stops(
             import sys
             import threading
             import time
+            from pathlib import Path
             from unittest.mock import patch
 
             mode = os.environ["SMOKE_MODE"]
@@ -260,6 +266,9 @@ def test_server_smoke_checks_http_and_always_stops(
             if mode == "hang":
                 time.sleep(120)
             port = int(sys.argv[sys.argv.index("--port") + 1])
+            if mode == "permission":
+                print(f"cannot listen on 0.0.0.0:{port + 1}: [Errno 10013] Access denied", flush=True)
+                sys.exit(1)
 
             class Handler(http.server.BaseHTTPRequestHandler):
                 def do_GET(self):
@@ -290,27 +299,55 @@ def test_server_smoke_checks_http_and_always_stops(
                     self.wfile.write(body.encode())
 
             class Server(http.server.ThreadingHTTPServer):
+                allow_reuse_address = False
+
                 def server_bind(self):
                     # Loopback fixtures must not wait for reverse DNS.
                     socketserver.TCPServer.server_bind(self)
                     self.server_name, self.server_port = self.server_address
 
+            def listen(host, number):
+                try:
+                    return Server((host, number), Handler)
+                except OSError as error:
+                    print(f"cannot listen on {host}:{number}: {error}", flush=True)
+                    sys.exit(1)
+
             with patch("socket.getfqdn", side_effect=AssertionError("Unexpected DNS lookup")):
-                bridge = Server(("127.0.0.1", port + 1), Handler)
+                control = listen("127.0.0.1", port)
+                bridge = listen("0.0.0.0", port + 1)
+                state = Path(os.environ["PHYSICLAW_HOME"]) / "run" / "server.json"
+                state.parent.mkdir(parents=True, exist_ok=True)
+                state.write_text(json.dumps({"pid": os.getpid(), "host": "127.0.0.1", "port": port}), encoding="utf-8")
                 threading.Thread(target=bridge.serve_forever, daemon=True).start()
-                Server(("127.0.0.1", port), Handler).serve_forever()
+                control.serve_forever()
             """),
         encoding="utf-8",
     )
     # Execute a real child and real HTTP requests; replace only its application.
     popen = subprocess.Popen
     children = []
+    collisions = {}
+    response = check_package._server_response
+
+    def probe(opener, url, deadline):
+        assert urllib.parse.urlsplit(url).port not in collisions
+        return response(opener, url, deadline)
+
+    monkeypatch.setattr(check_package, "_server_response", probe)
 
     def spawn(command, **kwargs):
         if command[0] == "taskkill":
             return popen(command, **kwargs)
         assert command[1:4] == ["server", "--host", "127.0.0.1"]
         assert command[-2:] == ["--no-runtime", "--no-setup-hardware"]
+        if mode == "collision-exhausted" or (
+            mode in {"control-collision", "bridge-collision"} and not children
+        ):
+            number = int(command[5]) + (mode != "control-collision")
+            # Claim the port after selection, before the child binds. This
+            # listener belongs to another process and must survive cleanup.
+            collisions[number] = socket.create_server(("127.0.0.1", number))
         child = popen([sys.executable, str(script), *command[1:]], **kwargs)
         children.append((child, int(command[5])))
         return child
@@ -327,6 +364,7 @@ def test_server_smoke_checks_http_and_always_stops(
         if key.upper() in {"PATH", "SYSTEMROOT", "TEMP", "TMP"}
     }
     env["SMOKE_MODE"] = mode
+    env["PHYSICLAW_HOME"] = str(tmp_path / "home")
     expectation = (
         pytest.raises(
             (RuntimeError, TimeoutError, ValueError, urllib.error.HTTPError),
@@ -335,24 +373,73 @@ def test_server_smoke_checks_http_and_always_stops(
         if error
         else nullcontext()
     )
-    with expectation:
-        check_package.smoke_server(
-            Path(sys.executable), tmp_path, env, timeout=0.2 if mode == "hang" else 10
+    try:
+        with expectation:
+            check_package.smoke_server(
+                Path(sys.executable),
+                tmp_path,
+                env,
+                timeout=0.2 if mode == "hang" else 10,
+            )
+        expected_attempts = (
+            3 if mode == "collision-exhausted" else 2 if collisions else 1
         )
-    assert len(children) == 1
-    child, port = children[0]
-    assert child.poll() is not None
-    for number in (port, port + 1):
-        with socket.socket() as connection:
-            connection.settimeout(0.2)
-            assert connection.connect_ex(("127.0.0.1", number)) != 0
+        assert len(children) == expected_attempts
+        assert len({port for _, port in children}) == expected_attempts
+        for attempt, (child, port) in enumerate(children, 1):
+            assert child.poll() is not None
+            assert (tmp_path / f"server-{attempt}.log").is_file()
+            for number in (port, port + 1):
+                with socket.socket() as connection:
+                    connection.settimeout(0.2)
+                    listening = connection.connect_ex(("127.0.0.1", number)) == 0
+                    assert listening == (number in collisions)
+    finally:
+        for listener in collisions.values():
+            listener.close()
     output = capsys.readouterr().out
     if mode != "hang":
         assert "fixture server starting" in output
-    if mode in {"ready", "slow-page"}:
+    if mode in {"ready", "slow-page", "control-collision", "bridge-collision"}:
         assert all(
             path in output for path in ("/api/status", "/setup-hardware", "/bridge")
         )
+
+
+@pytest.mark.parametrize(
+    "message,expected",
+    [
+        ("cannot listen on 127.0.0.1:20000: [Errno 48] Address in use", 20000),
+        ("cannot listen on 0.0.0.0:20001: [Errno 98] Address in use", 20001),
+        ("cannot listen on 0.0.0.0:20001: [Errno 10048] Localized OS text", 20001),
+        ("cannot listen on 0.0.0.0:20001: [WinError 10048] Localized OS text", 20001),
+        ("port 20001 is already accepting connections on 127.0.0.1", 20001),
+        ("cannot listen on 0.0.0.0:20001: [Errno 10013] Access denied", None),
+        ("cannot listen on 0.0.0.0:20001: [Errno 13] Access denied", None),
+        ("cannot listen on 0.0.0.0:30001: [Errno 10048] Address in use", None),
+        ("unrelated failure: [Errno 10048]", None),
+    ],
+)
+def test_bind_conflict_requires_a_known_collision_on_the_selected_pair(
+    message, expected
+):
+    assert check_package._bind_conflict(message, 20000) == expected
+
+
+def test_port_retry_keeps_the_original_startup_deadline(tmp_path, mocker):
+    mocker.patch.object(check_package.time, "monotonic", side_effect=[0.0, 0.0, 1.0])
+    select = mocker.patch.object(check_package, "_smoke_port", return_value=20000)
+    attempt = mocker.patch.object(
+        check_package, "_smoke_server_attempt", return_value=False
+    )
+
+    with pytest.raises(TimeoutError, match="did not become HTTP-ready"):
+        check_package.smoke_server(Path("physiclaw"), tmp_path, {}, timeout=0.5)
+
+    select.assert_called_once()
+    attempt.assert_called_once_with(
+        Path("physiclaw"), tmp_path, {}, port=20000, deadline=0.5, attempt=1
+    )
 
 
 def test_http_response_cannot_pass_after_the_deadline(mocker):
@@ -384,7 +471,7 @@ def test_shutdown_checks_for_surviving_listeners_after_parent_exit(
     mocker.patch.object(check_package.time, "monotonic", side_effect=[0.0, 6.0])
 
     with pytest.raises(RuntimeError, match="listener 1234 survived shutdown"):
-        check_package._stop_server(process, 1234)
+        check_package._stop_server(process, (1234, 1235))
     process.wait.assert_called_once_with(timeout=15)
 
 
@@ -397,7 +484,7 @@ def test_windows_shutdown_tolerates_an_already_exited_launcher(
     taskkill = mocker.patch.object(check_package.subprocess, "run")
     taskkill.return_value.returncode = 128
 
-    check_package._stop_server(process, 1234)
+    check_package._stop_server(process, (1234, 1235))
 
     taskkill.return_value.check_returncode.assert_not_called()
     process.wait.assert_called_once_with(timeout=15)
@@ -415,7 +502,7 @@ def test_shutdown_timeout_forces_cleanup_and_still_fails(
     taskkill.return_value.returncode = 0
 
     with pytest.raises(subprocess.TimeoutExpired):
-        check_package._stop_server(process, 1234)
+        check_package._stop_server(process, (1234, 1235))
 
     process.kill.assert_called_once_with()
     assert process.wait.call_count == 2

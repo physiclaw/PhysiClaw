@@ -4,6 +4,8 @@ import argparse
 import hashlib
 import json
 import os
+import random
+import re
 import signal
 import socket
 import subprocess
@@ -180,7 +182,7 @@ def _server_response(opener, url: str, deadline: float) -> tuple[str, bytes]:
         return response.headers.get_content_type(), body
 
 
-def _stop_server(process, port: int) -> None:
+def _stop_server(process, ports: tuple[int, ...]) -> None:
     windows = os.name == "nt"
     kill_tree = ["taskkill", "/PID", str(process.pid), "/T", "/F"]
     was_running = process.poll() is None
@@ -205,7 +207,7 @@ def _stop_server(process, port: int) -> None:
             raise
         finally:
             deadline = time.monotonic() + 5
-            for number in (port, port + 1):
+            for number in ports:
                 while True:
                     with socket.socket() as connection:
                         connection.settimeout(0.2)
@@ -220,23 +222,47 @@ def _stop_server(process, port: int) -> None:
         raise RuntimeError(f"Server failed during shutdown: {process.returncode}")
 
 
-def smoke_server(
-    cli: Path, root: Path, env: dict[str, str], *, timeout: float = 60
-) -> None:
-    """Require the installed HTTP services to respond, then stop the server."""
-    for _ in range(100):
+def _smoke_port(used: set[int]) -> int:
+    # Stay below the default client ephemeral ranges, so readiness connections
+    # cannot take the bridge port while the installed CLI is still starting.
+    # Disjoint pairs avoid reusing either port from an earlier attempt.
+    for port in random.sample(range(20000, 30000, 2), 100):
+        if port in used:
+            continue
         with socket.socket() as control, socket.socket() as bridge:
-            control.bind(("127.0.0.1", 0))
-            port = control.getsockname()[1]
-            if port == 65535:
-                continue
             try:
+                control.bind(("127.0.0.1", port))
                 bridge.bind(("0.0.0.0", port + 1))
             except OSError:
                 continue
-            break
-    else:
-        raise RuntimeError("No free adjacent ports for the server smoke test")
+            return port
+    raise RuntimeError("No free adjacent ports for the server smoke test")
+
+
+def _bind_conflict(log: str, port: int) -> int | None:
+    """Recognize only the CLI's address-in-use diagnostics for this port pair."""
+    for host, number in (("127.0.0.1", port), ("0.0.0.0", port + 1)):
+        # macOS, Linux and Windows use different EADDRINUSE numbers. Match the
+        # number rather than localized OS text; permission errors must fail.
+        if re.search(
+            rf"cannot listen on {re.escape(host)}:{number}: "
+            r"\[(?:Errno|WinError) (?:48|98|10048)\]",
+            log,
+        ) or (f"port {number} is already accepting connections on 127.0.0.1" in log):
+            return number
+    return None
+
+
+def _smoke_server_attempt(
+    cli: Path,
+    root: Path,
+    env: dict[str, str],
+    *,
+    port: int,
+    deadline: float,
+    attempt: int,
+) -> bool:
+    """Check one child; return False only when startup lost its port reservation."""
 
     command = [
         str(cli),
@@ -248,20 +274,40 @@ def smoke_server(
         "--no-runtime",
         "--no-setup-hardware",
     ]
-    log = root / "server.log"
+    log = root / f"server-{attempt}.log"
+    state_file = Path(env["PHYSICLAW_HOME"]) / "run" / "server.json"
     # Local probes must bypass any HTTP proxy inherited from the runner.
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     with log.open("w", encoding="utf-8") as output:
         process = subprocess.Popen(
             command, cwd=root, env=env, stdout=output, stderr=subprocess.STDOUT
         )
+        conflict = None
         try:
-            deadline = time.monotonic() + timeout
             while time.monotonic() < deadline:
                 if process.poll() is not None:
+                    if process.returncode:
+                        conflict = _bind_conflict(
+                            log.read_text(encoding="utf-8", errors="replace"), port
+                        )
+                        if conflict is not None:
+                            return False
                     raise RuntimeError(
                         f"Server exited before HTTP readiness: {process.returncode}"
                     )
+                try:
+                    state = json.loads(state_file.read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    state = None
+                # The CLI writes this private state only after binding both
+                # listeners. Until then, an HTTP reply could be another server's.
+                if (
+                    not isinstance(state, dict)
+                    or state.get("host") != "127.0.0.1"
+                    or state.get("port") != port
+                ):
+                    time.sleep(0.1)
+                    continue
                 try:
                     content_type, body = _server_response(
                         opener, f"http://127.0.0.1:{port}/api/status", deadline
@@ -295,23 +341,52 @@ def smoke_server(
                         "Installed server status, setup page and phone bridge passed",
                         flush=True,
                     )
-                    break
+                    return True
                 except urllib.error.HTTPError:
                     raise
                 except (urllib.error.URLError, TimeoutError, ConnectionError):
                     time.sleep(0.1)
-            else:
-                raise TimeoutError("Installed server did not become HTTP-ready")
+            raise TimeoutError("Installed server did not become HTTP-ready")
         finally:
             try:
-                _stop_server(process, port)
+                # A confirmed collision belongs to another process, not this
+                # child's cleanup. Still check the other listener for leaks.
+                _stop_server(
+                    process, tuple(p for p in (port, port + 1) if p != conflict)
+                )
             finally:
                 print(
                     log.read_text(encoding="utf-8", errors="replace"),
                     end="",
                     flush=True,
                 )
-    print("Installed server stopped; both listeners closed", flush=True)
+
+
+def smoke_server(
+    cli: Path, root: Path, env: dict[str, str], *, timeout: float = 60
+) -> None:
+    """Require real HTTP responses; retry only port collisions within one budget."""
+    deadline = time.monotonic() + timeout
+    used: set[int] = set()
+    for attempt in range(1, 4):
+        if time.monotonic() >= deadline:
+            raise TimeoutError("Installed server did not become HTTP-ready")
+        port = _smoke_port(used)
+        used.add(port)
+        print(
+            f"Installed server attempt {attempt}/3: ports {port}, {port + 1}",
+            flush=True,
+        )
+        if _smoke_server_attempt(
+            cli, root, env, port=port, deadline=deadline, attempt=attempt
+        ):
+            print("Installed server stopped; both listeners closed", flush=True)
+            return
+        print(
+            f"Installed server startup hit a port collision on attempt {attempt}",
+            flush=True,
+        )
+    raise RuntimeError("Installed server could not start after 3 port collisions")
 
 
 def smoke_installer(bundle: Path) -> None:
