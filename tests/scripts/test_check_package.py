@@ -436,6 +436,8 @@ def test_server_smoke_checks_http_and_always_stops(
             if os.name == "nt":
                 signal.signal(signal.SIGBREAK, signal.default_int_handler)
             print("fixture server starting", flush=True)
+            print("café 校准", flush=True)
+            print("café 校准", file=sys.stderr, flush=True)
             if mode == "exit":
                 sys.exit(2)
             if mode == "hang":
@@ -555,6 +557,8 @@ def test_server_smoke_checks_http_and_always_stops(
     }
     env["SMOKE_MODE"] = mode
     env["PHYSICLAW_HOME"] = str(tmp_path / "home")
+    # Redirected children must write UTF-8 even with an inherited legacy encoding.
+    env["PYTHONIOENCODING"] = "cp1252"
     expectation = (
         pytest.raises(
             (RuntimeError, TimeoutError, ValueError, urllib.error.HTTPError),
@@ -579,6 +583,8 @@ def test_server_smoke_checks_http_and_always_stops(
         for attempt, (child, port) in enumerate(children, 1):
             assert child.poll() is not None
             log = (tmp_path / f"server-{attempt}.log").read_text(encoding="utf-8")
+            if mode != "hang":
+                assert log.count("café 校准") == 2
             for number in (port, port + 1):
                 if number in collisions:
                     host = collisions[number].getsockname()[0]
@@ -591,6 +597,7 @@ def test_server_smoke_checks_http_and_always_stops(
     finally:
         for listener in collisions.values():
             listener.close()
+    assert env["PYTHONIOENCODING"] == "cp1252"
     output = capsys.readouterr().out
     if mode != "hang":
         assert "fixture server starting" in output

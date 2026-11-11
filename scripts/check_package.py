@@ -357,7 +357,9 @@ def _smoke_server_attempt(
         process = subprocess.Popen(
             command,
             cwd=root,
-            env=env,
+            # The child writes directly to the file descriptor, bypassing the
+            # text wrapper above. Set its encoding to match the UTF-8 log readers.
+            env={**env, "PYTHONIOENCODING": "utf-8"},
             stdout=output,
             stderr=subprocess.STDOUT,
             # Target the installed Windows launcher and its Python child together.
