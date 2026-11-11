@@ -47,6 +47,9 @@ def bundle(tmp_path, monkeypatch):
     monkeypatch.setattr(
         check_package.subprocess, "check_output", lambda *a, **kw: "a" * 40
     )
+    monkeypatch.setattr(
+        check_package, "select_upgrade_baseline", lambda version: "1.2.2"
+    )
     check_package.record(bundle)
     return bundle
 
@@ -54,8 +57,72 @@ def bundle(tmp_path, monkeypatch):
 def test_manifest_records_both_files_version_and_commit(bundle):
     manifest = check_package.verify_local(bundle)
     assert manifest["version"] == "1.2.3"
+    assert manifest["upgrade_from"] == "1.2.2"
     assert manifest["commit"] == "a" * 40
     assert set(manifest["files"]) == check_package.filenames("1.2.3")
+
+
+@pytest.mark.parametrize(
+    "candidate,versions,expected",
+    [
+        ("1.11.0", {"1.9.0": [False], "1.11.0": [False], "1.10.0": [False]}, "1.10.0"),
+        ("1.2.3rc1", {"1.2.2": [False], "1.2.3": [False], "1.2.3b1": [False]}, "1.2.2"),
+        (
+            "1.2.4",
+            {"1.2.0": [False], "1.2.1": [True], "1.2.2": [""], "1.2.3": ["withdrawn"]},
+            "1.2.0",
+        ),
+        ("1.2.3", {"1.2.1": [False], "1.2.2": [True, False]}, "1.2.2"),
+        ("1.2.3", {"1.2.0": [False], "1.2.1.post1": [False], "1.2.2": []}, "1.2.0"),
+        ("1.2.3", {"1.2.2": [True], "1.2.3": [False], "1.2.4": [False]}, None),
+        ("1.2.3", {}, None),
+    ],
+)
+def test_upgrade_baseline_selects_latest_available_older_stable_release(
+    monkeypatch, candidate, versions, expected
+):
+    index = {
+        "versions": list(versions),
+        "files": [
+            {"filename": name, "yanked": yanked}
+            for version, statuses in versions.items()
+            for name, yanked in zip(
+                sorted(check_package.filenames(version)), statuses, strict=False
+            )
+        ],
+    }
+
+    def fetch(request, *, timeout):
+        assert request.full_url == "https://pypi.org/simple/physiclaw/"
+        assert request.get_header("Accept") == "application/vnd.pypi.simple.v1+json"
+        assert timeout == 30
+        return io.BytesIO(json.dumps(index).encode())
+
+    monkeypatch.setattr(check_package.urllib.request, "urlopen", fetch)
+    if expected is None:
+        with pytest.raises(ValueError, match="No published stable upgrade baseline"):
+            check_package.select_upgrade_baseline(candidate)
+    else:
+        assert check_package.select_upgrade_baseline(candidate) == expected
+
+
+def test_upgrade_baseline_does_not_hide_index_failures(mocker):
+    mocker.patch.object(
+        check_package.urllib.request,
+        "urlopen",
+        side_effect=urllib.error.URLError("offline"),
+    )
+    with pytest.raises(urllib.error.URLError, match="offline"):
+        check_package.select_upgrade_baseline("1.2.3")
+
+
+@pytest.mark.parametrize("action", ["record", "check", "smoke", "verify-pypi"])
+def test_upgrade_flag_cannot_silently_skip_upgrade_checks(monkeypatch, capsys, action):
+    monkeypatch.setattr(sys, "argv", ["check_package.py", action, "--upgrade"])
+    with pytest.raises(SystemExit) as error:
+        check_package.main()
+    assert error.value.code == 2
+    assert "--upgrade requires smoke-installer" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize("change", ["commit", "version"])
@@ -227,6 +294,103 @@ def test_installer_rejects_corrupt_wheel_before_running(bundle, mocker):
     with pytest.raises(ValueError, match="checksum mismatch"):
         check_package.smoke_installer(bundle)
     run.assert_not_called()
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize(
+    "damaged,phase",
+    [
+        (None, "installer"),
+        *((name, "installer") for name in check_package.UPGRADE_FILES),
+        ("log/sessions/upgrade-canary/events.jsonl", "reload"),
+    ],
+)
+def test_upgrade_checks_real_state_and_rejects_data_loss(
+    bundle, tmp_path, monkeypatch, damaged, phase
+):
+    monkeypatch.setattr(
+        check_package,
+        "select_upgrade_baseline",
+        lambda *_: pytest.fail("Install jobs must reuse the recorded baseline"),
+    )
+    native_run = subprocess.run
+    calls = []
+    scripts = []
+
+    def run(command, **kwargs):
+        calls.append((command, kwargs["env"].copy()))
+        home = Path(kwargs["env"]["PHYSICLAW_HOME"])
+        result = subprocess.CompletedProcess(command, 0)
+        current_phase = None
+        if len(command) == 4 and command[2] == "-c":
+            # Execute state creation and validation against real application
+            # APIs. Only the external package installation is substituted.
+            scripts.append(command[3])
+            result = native_run([sys.executable, *command[1:]], **kwargs)
+            if (
+                command[3] == check_package.UPGRADE_CHECK
+                and "UV_CONSTRAINT" in kwargs["env"]
+            ):
+                current_phase = "reload"
+        elif command[0] in {"bash", "powershell"}:
+            assert all((home / name).is_file() for name in check_package.UPGRADE_FILES)
+            current_phase = "installer"
+        if damaged and current_phase == phase:
+            path = home / damaged
+            # Still parseable: detect changed bytes even if reload succeeds.
+            path.write_bytes(path.read_bytes() + b"\n")
+        return result
+
+    def server(cli, root, env):
+        (root / "server-1.log").write_text("server stopped cleanly\n", encoding="utf-8")
+
+    monkeypatch.setattr(check_package.subprocess, "run", run)
+    monkeypatch.setattr(check_package, "smoke_server", server)
+    logs = tmp_path / "retained logs"
+    with (
+        pytest.raises(ValueError, match="Upgrade changed user data")
+        if damaged
+        else nullcontext()
+    ):
+        check_package.smoke_installer(bundle, upgrade=True, log_dir=logs)
+    command, env = calls[0]
+    assert command[:5] == ["uv", "--no-config", "tool", "install", "physiclaw==1.2.2"]
+    assert "UV_CONSTRAINT" not in env
+    assert calls[1][0][-1] == "1.2.2"  # Verify the recorded baseline before seeding.
+    assert scripts == [
+        check_package.UPGRADE_SEED,
+        check_package.UPGRADE_CHECK,
+        check_package.UPGRADE_CHECK,
+    ]
+    assert (logs / "server-1.log").read_text(
+        encoding="utf-8"
+    ) == "server stopped cleanly\n"
+
+
+@pytest.mark.parametrize("baseline", [None, "1.2.3", "1.2.4", "1.2.3rc1"])
+def test_upgrade_rejects_missing_or_ineligible_baseline(bundle, mocker, baseline):
+    manifest = bundle / "manifest.json"
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    data["upgrade_from"] = baseline
+    manifest.write_text(json.dumps(data), encoding="utf-8")
+    run = mocker.patch.object(check_package.subprocess, "run")
+    with pytest.raises(ValueError, match="upgrade baseline|baseline must be"):
+        check_package.smoke_installer(bundle, upgrade=True)
+    run.assert_not_called()
+
+
+def test_installer_preserves_logs_when_interrupt_check_fails(bundle, tmp_path, mocker):
+    mocker.patch.object(check_package.subprocess, "run")
+    logs = tmp_path / "logs"
+
+    def fail(cli, root, env):
+        (root / "server-1.log").write_text("interrupt failed", encoding="utf-8")
+        raise RuntimeError("interrupt failed")
+
+    mocker.patch.object(check_package, "smoke_server", side_effect=fail)
+    with pytest.raises(RuntimeError, match="interrupt failed"):
+        check_package.smoke_installer(bundle, log_dir=logs)
+    assert (logs / "server-1.log").read_text(encoding="utf-8") == "interrupt failed"
 
 
 @pytest.mark.parametrize(
@@ -644,7 +808,6 @@ def test_release_permissions_and_artifact_promotion_are_isolated():
     yaml = YAML(typ="safe")
     release = yaml.load(workflows / "release.yml")
     ci = yaml.load(workflows / "ci.yml")
-    package = yaml.load(workflows / "package.yml")
     jobs = release["jobs"]
     assert release["permissions"] == {"contents": "read"}
     assert release["concurrency"]["cancel-in-progress"] is False
@@ -661,11 +824,6 @@ def test_release_permissions_and_artifact_promotion_are_isolated():
     assert "github.event_name == 'push'" in jobs["prepublish"]["if"]
     assert "workflow_call" in ci["on"]
     assert ci["jobs"]["package"]["uses"] == "./.github/workflows/package.yml"
-    assert set(package["jobs"]["install"]["strategy"]["matrix"]["os"]) == {
-        "ubuntu-latest",
-        "macos-latest",
-        "windows-latest",
-    }
     # The privileged job cannot run project code or install dependencies.
     steps = jobs["publish"]["steps"]
     assert len(steps) == 2

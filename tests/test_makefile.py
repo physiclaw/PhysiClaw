@@ -21,10 +21,25 @@ ENCODING_TESTS = [
     "tests/cli/test_session_debug.py",
     "tests/hardware/documents/sourcing/test_urls.py",
 ]
+ENCODING_COMMANDS = [
+    [
+        "-X",
+        f"utf8={mode}",
+        "-X",
+        "warn_default_encoding",
+        "-W",
+        "error::EncodingWarning",
+        "-m",
+        "pytest",
+        *ENCODING_TESTS,
+    ]
+    for mode in (0, 1)
+]
 CAD = ["--locked", "--group", "cad", "python", "-m", "hardware"]
 DOC = ["--locked", "python", "-m", "hardware"]
 PYTEST = ["--locked", "--group", "dev", "--group", "cad", "pytest"]
 ROUTES = [
+    ("test-bootstrap", [], [[*PYTEST, "--version"]]),
     ("test", [], [PYTEST]),
     ("test-fast", [], [PYTEST]),
     (
@@ -44,34 +59,7 @@ ROUTES = [
     ("test-integration", [], [[*PYTEST, "-m", "integration"]]),
     ("test-all", [], [[*PYTEST, "-m", ""]]),
     ("testall", [], [[*PYTEST, "-m", ""]]),
-    (
-        "test-encoding",
-        [],
-        [
-            [
-                "-X",
-                "utf8=0",
-                "-X",
-                "warn_default_encoding",
-                "-W",
-                "error::EncodingWarning",
-                "-m",
-                "pytest",
-                *ENCODING_TESTS,
-            ],
-            [
-                "-X",
-                "utf8=1",
-                "-X",
-                "warn_default_encoding",
-                "-W",
-                "error::EncodingWarning",
-                "-m",
-                "pytest",
-                *ENCODING_TESTS,
-            ],
-        ],
-    ),
+    ("test-encoding", [], ENCODING_COMMANDS),
     (
         "mutate",
         ["MOD=src/has space.py"],
@@ -107,6 +95,10 @@ ROUTES = [
     ("hw-release", [], [[*CAD, "release", "deploy"]]),
     ("_hw-package", [], [[*DOC, "release", "publish"]]),
 ]
+ROUTES.extend(
+    (f"test-encoding-{mode}", [], [command])
+    for mode, command in enumerate(ENCODING_COMMANDS)
+)
 
 
 @pytest.fixture

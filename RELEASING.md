@@ -40,6 +40,10 @@ downloads before creating the GitHub release. **Run workflow** is a non-publishi
   `pypi`. Require deployment review and restrict deployments to `v*` tags.
 - Build dependencies use the `build` group and `uv.lock`; CI generates temporary
   constraints. After changing dependencies, run `uv lock` and commit both files.
+- CI requires fresh-install and upgrade checks before publication. The build
+  selects the newest available, non-yanked stable PyPI release older than the
+  candidate and records `upgrade_from` in `manifest.json` for all platform jobs.
+  A failed lookup or no eligible baseline fails the build.
 
 ## Recovery
 

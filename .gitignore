@@ -43,6 +43,7 @@ log/
 
 # Test runtime artifacts
 /.test-tmp/
+/.test-results/
 /.hypothesis/
 /.pytest_cache/
 /.mypy_cache/

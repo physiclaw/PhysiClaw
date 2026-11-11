@@ -118,7 +118,23 @@ tests can be skipped or fail against a stale CAD installation after an upgrade.
 - Run one file: `uv run --locked --group dev --group cad pytest tests/test_package_init.py -v`
 - Run one test: `uv run --locked --group dev --group cad pytest tests/test_package_init.py::test_package_version_matches_installed_distribution -v`
 - Run only fast: `make test`
+- Prepare the locked test environment without running tests: `make test-bootstrap`
+- Run only slow or integration tests: `make test-slow` or `make test-integration`
+- Check both UTF-8 modes: `make test-encoding` (individual modes: `make test-encoding-0` and `make test-encoding-1`)
 - Mutation pass on a module: `make mutate MOD=src/physiclaw/common/text.py`
+
+`.github/workflows/ci.yml` runs the fast, slow, integration and encoding suites
+on Linux, macOS and Windows with Python 3.12, 3.13 and 3.14. Native-only tests
+declare their platform requirements through pytest skips. Independent checks
+continue after a test failure, while setup failures stop dependent checks.
+JUnit reports, test timings, coverage HTML and subprocess logs support diagnosis;
+report and log artifacts are retained for seven days.
+
+The reusable `package.yml` workflow checks the same OS/Python matrix, including
+fresh installs and upgrades. Both run `doctor`, HTTP readiness and graceful
+server interrupt checks. Upgrades also verify that configuration, calibration,
+macros and session data survive. See [RELEASING.md](../RELEASING.md) for baseline
+selection.
 
 ## When you are uncertain
 
@@ -181,8 +197,8 @@ For each module in the approved plan, in order:
 
 ### Phase 5 — Integrate
 
-- Add a CI workflow (`.github/workflows/test.yml`) running the suite on
-  push and PR, with coverage gate enforcement.
+- Keep `.github/workflows/ci.yml` running the suite on push and PR, with the
+  full OS/Python matrix and coverage gate enforcement.
 - Add a `tests/README.md` summarizing the conventions (point to this file
   as source of truth).
 - Final report: total tests, coverage, mutation score, slow/integration

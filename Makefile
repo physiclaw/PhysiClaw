@@ -1,4 +1,4 @@
-.PHONY: test test-cov test-fast test-encoding test-slow test-integration test-all testall test-studio-ui mutate lint fmt typecheck loc help firmware bump build publish release release-start release-status release-approve release-watch docs-deploy check-site-assets \
+.PHONY: test-bootstrap test test-cov test-fast test-encoding test-encoding-0 test-encoding-1 test-slow test-integration test-all testall test-studio-ui mutate lint fmt typecheck loc help firmware bump build publish release release-start release-status release-approve release-watch docs-deploy check-site-assets \
         hw-help hw-parts hw-build hw-check hw-step hw-print hw-manual hw-manual-pdf hw-sourcing hw-url hw-drawing hw-rebuild hw-preflight hw-prepare hw-verify hw-publish hw-release _hw-package
 
 PY ?= uv run
@@ -33,6 +33,7 @@ export VERSION VERBOSE RUN_ID JSON
 help:
 	@echo "Targets:"
 	@echo "  help                  — show this list (the default make target)"
+	@echo "  test-bootstrap        — prepare the locked dev + CAD test environment"
 	@echo "  test                  — fast unit suite (excludes slow + integration)"
 	@echo "  test-cov              — fast suite with coverage report (term + html)"
 	@echo "  test-fast             — alias for test"
@@ -63,6 +64,9 @@ help:
 	@echo ""
 	@$(MAKE) --no-print-directory hw-help
 
+test-bootstrap:
+	$(PYTEST) --version
+
 test:
 	$(PYTEST)
 
@@ -73,10 +77,13 @@ test-fast: test
 
 # PEP 597 catches implicit encodings at runtime; PEP 686 recommends testing
 # with UTF-8 mode disabled and enabled. Subprocess regressions forward the flags.
-test-encoding: ENCODING_TESTS = tests/test_text_encoding.py tests/common/test_text.py tests/scripts/test_eval_context.py tests/scripts/test_loc.py tests/cli/test_session_debug.py tests/hardware/documents/sourcing/test_urls.py
+ENCODING_TESTS = tests/test_text_encoding.py tests/common/test_text.py tests/scripts/test_eval_context.py tests/scripts/test_loc.py tests/cli/test_session_debug.py tests/hardware/documents/sourcing/test_urls.py
 test-encoding:
-	$(PYTHON) -X utf8=0 -X warn_default_encoding -W error::EncodingWarning -m pytest $(ENCODING_TESTS)
-	$(PYTHON) -X utf8=1 -X warn_default_encoding -W error::EncodingWarning -m pytest $(ENCODING_TESTS)
+	$(MAKE) test-encoding-0
+	$(MAKE) test-encoding-1
+
+test-encoding-0 test-encoding-1:
+	$(PYTHON) -X utf8=$(@:test-encoding-%=%) -X warn_default_encoding -W error::EncodingWarning -m pytest $(ENCODING_TESTS)
 
 test-slow:
 	$(PYTEST) -m slow

@@ -20,7 +20,43 @@ import zipfile
 from email.parser import BytesParser
 from pathlib import Path
 
+# Support both direct script execution and imports by tests/tools.
+if __package__:
+    from scripts import release
+else:
+    import release
+
 REPOSITORY = "https://github.com/physiclaw/PhysiClaw"
+UPGRADE_FILES = (
+    "config.toml",
+    "calibration/bundle.json",
+    "macros/upgrade-canary.yml",
+    "log/sessions/upgrade-canary/events.jsonl",
+)
+UPGRADE_SEED = """\
+from physiclaw.common import config, paths
+from physiclaw.core.calibration.state import Calibration
+from physiclaw.macros.store import init_macro
+
+config.set_dotted('server.save_tool_calls', 'true')
+Calibration(cam_size=(640, 480), cam_rotation=-1).save()
+init_macro('upgrade-canary')
+session = paths.sessions_dir() / 'upgrade-canary' / 'events.jsonl'
+session.parent.mkdir(parents=True, exist_ok=True)
+session.write_text('{"type":"upgrade-canary","text":"café 校准"}\\n', encoding='utf-8')
+"""
+UPGRADE_CHECK = """\
+from physiclaw.common import config
+from physiclaw.core.calibration.state import Calibration
+from physiclaw.macros.store import scan
+
+assert config.load().server.save_tool_calls is True
+calibration = Calibration.load()
+assert calibration is not None and calibration.cam_size == (640, 480)
+assert calibration.cam_rotation == -1
+macro = next(entry for entry in scan() if entry.name == 'upgrade-canary')
+assert macro.spec is not None and not macro.error, macro.error
+"""
 RESOURCES = (
     "agent/context/AGENT.md",
     "agent/context/PHYSICLAW.md",
@@ -42,6 +78,33 @@ def digest(path: Path) -> str:
 
 def filenames(version: str) -> set[str]:
     return {f"physiclaw-{version}-py3-none-any.whl", f"physiclaw-{version}.tar.gz"}
+
+
+def select_upgrade_baseline(candidate: str) -> str:
+    """Newest available stable release strictly older than this candidate."""
+    candidate_key = release.version_key(candidate)
+    request = urllib.request.Request(
+        "https://pypi.org/simple/physiclaw/",
+        headers={"Accept": "application/vnd.pypi.simple.v1+json"},
+    )
+    with urllib.request.urlopen(request, timeout=30) as response:
+        index = json.load(response)
+    available = {
+        item["filename"]
+        for item in index["files"]
+        if item.get("yanked", False) is False
+    }
+    candidates = []
+    for version in index["versions"]:
+        try:
+            key = release.version_key(version)
+        except release.ReleaseError:
+            continue
+        if key[3] == 3 and key < candidate_key and filenames(version) & available:
+            candidates.append(version)
+    if not candidates:
+        raise ValueError(f"No published stable upgrade baseline older than {candidate}")
+    return max(candidates, key=release.version_key)
 
 
 def distributions(bundle: Path) -> list[Path]:
@@ -77,6 +140,8 @@ def record(bundle: Path) -> None:
             raise ValueError("Source archive version does not match the release")
     manifest = {
         "version": version,
+        # Resolve once so every OS/Python cell uses the same published baseline.
+        "upgrade_from": select_upgrade_baseline(version),
         "commit": subprocess.check_output(
             ["git", "rev-parse", "HEAD"], text=True
         ).strip(),
@@ -84,6 +149,10 @@ def record(bundle: Path) -> None:
     }
     (bundle / "manifest.json").write_text(
         json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
+    )
+    print(
+        f"Recorded upgrade baseline: {manifest['upgrade_from']} -> {version}",
+        flush=True,
     )
 
 
@@ -410,9 +479,21 @@ def smoke_server(
     raise RuntimeError("Installed server could not start after 3 port collisions")
 
 
-def smoke_installer(bundle: Path) -> None:
-    """Run the public installer, doctor and server against this run's wheel."""
+def smoke_installer(
+    bundle: Path, *, upgrade: bool = False, log_dir: Path | None = None
+) -> None:
+    """Check a fresh install or a state-preserving upgrade to this run's wheel."""
     manifest = verify_local(bundle)
+    baseline = manifest.get("upgrade_from")
+    if upgrade:
+        if not isinstance(baseline, str):
+            raise ValueError("Missing upgrade baseline; record the bundle again")
+        key = release.version_key(baseline)
+        if key[3] != 3 or key >= release.version_key(manifest["version"]):
+            raise ValueError(
+                "Upgrade baseline must be a stable release older than the candidate"
+            )
+        print(f"Checking upgrade: {baseline} -> {manifest['version']}", flush=True)
     wheel = next(path for path in distributions(bundle) if path.suffix == ".whl")
     wheel_url = wheel.resolve().as_uri()
     repository = Path(__file__).resolve().parents[1]
@@ -464,6 +545,37 @@ def smoke_installer(bundle: Path) -> None:
         venv = tool_dir / "physiclaw"
         python = venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
         cli = bin_dir / ("physiclaw.exe" if os.name == "nt" else "physiclaw")
+        saved = {}
+        if upgrade:
+            baseline_env = {k: v for k, v in env.items() if k != "UV_CONSTRAINT"}
+            baseline_env["PHYSICLAW_VERSION"] = baseline
+            for command in (
+                [
+                    "uv",
+                    "--no-config",
+                    "tool",
+                    "install",
+                    f"physiclaw=={baseline}",
+                    "--python",
+                    python_version,
+                ],
+                [
+                    str(python),
+                    "-I",
+                    "-c",
+                    "import importlib.metadata as m, sys; "
+                    "assert m.version('physiclaw') == sys.argv[1]",
+                    baseline,
+                ],
+                [str(python), "-I", "-c", UPGRADE_SEED],
+                [str(python), "-I", "-c", UPGRADE_CHECK],
+            ):
+                subprocess.run(
+                    command, cwd=root, env=baseline_env, check=True, timeout=600
+                )
+            saved = {
+                name: (root / "home" / name).read_bytes() for name in UPGRADE_FILES
+            }
         probe = (
             "import importlib.metadata as m, json, sys; "
             "d = m.distribution('physiclaw'); "
@@ -486,7 +598,25 @@ def smoke_installer(bundle: Path) -> None:
             [str(cli), "doctor"],
         ):
             subprocess.run(command, cwd=root, env=env, check=True, timeout=600)
-        smoke_server(cli, root, env)
+        if log_dir is not None:
+            log_dir = log_dir.resolve()
+            log_dir.mkdir(parents=True, exist_ok=True)
+        smoke_server(cli, log_dir if log_dir is not None else root, env)
+        if upgrade:
+            subprocess.run(
+                [str(python), "-I", "-c", UPGRADE_CHECK],
+                cwd=root,
+                env=env,
+                check=True,
+                timeout=60,
+            )
+            for name, original in saved.items():
+                if (root / "home" / name).read_bytes() != original:
+                    raise ValueError(f"Upgrade changed user data: {name}")
+            print(
+                f"Upgrade from {baseline} preserved and loaded user data",
+                flush=True,
+            )
 
 
 def published_files(version: str) -> dict[str, dict]:
@@ -551,16 +681,29 @@ def main() -> None:
     )
     parser.add_argument("--bundle", type=Path, default=Path("release-bundle"))
     parser.add_argument("--allow-missing", action="store_true")
+    parser.add_argument(
+        "--upgrade",
+        action="store_true",
+        help="Start the installer check from the baseline recorded in the bundle",
+    )
+    parser.add_argument("--log-dir", type=Path, help="Keep installed-server smoke logs")
     args = parser.parse_args()
+    if args.upgrade and args.action != "smoke-installer":
+        parser.error("--upgrade requires smoke-installer")
     try:
         if args.action == "verify-pypi":
             verify_pypi(args.bundle, allow_missing=args.allow_missing)
+        elif args.action == "smoke-installer":
+            smoke_installer(
+                args.bundle,
+                upgrade=args.upgrade,
+                log_dir=args.log_dir,
+            )
         else:
             {
                 "record": record,
                 "check": verify_local,
                 "smoke": smoke,
-                "smoke-installer": smoke_installer,
             }[args.action](args.bundle)
     except subprocess.CalledProcessError as error:
         if error.stdout:

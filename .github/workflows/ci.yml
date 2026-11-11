@@ -2,7 +2,7 @@
 # All slow and integration tests run on all three OSes.
 # Fresh CLI and Make bootstrap run without manual dependency sync on all three OSes.
 # Platform-specific tests declare their requirements with pytest skips.
-# Package jobs run the platform installers, doctor and HTTP server checks.
+# Package jobs check fresh installs and upgrades, doctor and server interrupts.
 # Real hardware needs manual validation.
 name: CI
 
@@ -28,6 +28,24 @@ concurrency:
   cancel-in-progress: ${{ github.ref_type != 'tag' }}
 
 jobs:
+  workflows:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - &checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Validate GitHub Actions workflows
+        working-directory: ${{ runner.temp }}
+        run: |
+          curl --fail --silent --show-error --location --output actionlint.tar.gz \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+          echo '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  actionlint.tar.gz' | sha256sum --check
+          tar -xzf actionlint.tar.gz actionlint
+          cd "$GITHUB_WORKSPACE"
+          "$RUNNER_TEMP/actionlint" -color
+
   package:
     uses: ./.github/workflows/package.yml
 
@@ -42,9 +60,7 @@ jobs:
     env:
       PYTHONUTF8: "1"
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          persist-credentials: false
+      - *checkout
 
       # OpenCV's manylinux wheel links libGL + glib; install them so `import
       # cv2` works headless (mirrors install.sh's Linux guidance).
@@ -60,11 +76,6 @@ jobs:
           python-version: ${{ matrix.python }}
           enable-cache: true
 
-      - name: Fresh CLI startup without CAD
-        env:
-          UV_PROJECT_ENVIRONMENT: ${{ runner.temp }}/physiclaw-cli-smoke
-        run: uv run --locked pytest -m slow tests/cli/test_fresh_start.py
-
       - name: Install GNU Make (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -73,54 +84,106 @@ jobs:
             choco install make --yes --no-progress
           }
 
+      # Keep each native command in its own step: PowerShell reports the last
+      # command's exit code. pytest's basetemp also needs an existing parent.
+      - name: Prepare test reports
+        run: uv run --no-project python -c "from pathlib import Path; Path('.test-results').mkdir(exist_ok=True)"
+
       # Start with no project venv and no manual sync, as a fresh clone would.
       # The Make target must install both dev and CAD dependencies itself.
-      - name: Bootstrap and test with coverage
+      - name: Bootstrap test environment through Make
+        id: bootstrap
+        run: make test-bootstrap
+
+      # Explicit readiness guards let independent checks finish after a failure.
+      # A failing check still fails the job; setup failures stop dependent checks.
+      - name: Fresh CLI startup without CAD
+        if: &test_ready ${{ !cancelled() && steps.bootstrap.outcome == 'success' }}
+        env:
+          UV_PROJECT_ENVIRONMENT: ${{ runner.temp }}/physiclaw-cli-smoke
+          PYTEST_ADDOPTS: --junitxml=.test-results/fresh-cli.xml --basetemp=.test-results/tmp-fresh-cli --durations=25
+        run: uv run --locked pytest -m slow tests/cli/test_fresh_start.py
+
+      - name: Test with coverage
+        if: *test_ready
         # Keep native-encoding coverage, especially Windows' legacy code page.
         env:
           PYTHONUTF8: "0"
+          PYTEST_ADDOPTS: --junitxml=.test-results/fast.xml --basetemp=.test-results/tmp-fast --durations=25
         run: make test-cov
 
       # Inline JavaScript uses Node's built-in test runner; no npm
       # packages or Node runtime are needed by the Python application.
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        if: matrix.python == '3.12'
+      - id: node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: ${{ !cancelled() && steps.bootstrap.outcome == 'success' && matrix.python == '3.12' }}
         with:
           node-version: "22"
           package-manager-cache: false
 
       - name: JavaScript UI regressions
-        if: matrix.python == '3.12'
+        if: ${{ !cancelled() && steps.node.outcome == 'success' }}
         run: make test-studio-ui
 
       - name: Lint
-        if: matrix.python == '3.12'
+        if: ${{ !cancelled() && steps.bootstrap.outcome == 'success' && matrix.python == '3.12' }}
         run: make lint
 
       # Mirrors `make typecheck`: scope + settings from [tool.mypy] in
       # pyproject (application and hardware/port; CAD workflows are not gated yet).
       # Mypy defaults to the runner's native sys.platform, including win32.
       - name: Type check
+        if: *test_ready
         run: uv run --locked mypy
 
       # Static cross-artifact consistency for the CAD pipeline (procedure
       # stems / annotations / manual figures / sourcing ids) — stdlib-only, no
       # cad dependency group needed.
       - name: Hardware consistency check
+        if: *test_ready
         env:
           PHYSICLAW_HW_OUTPUT: ${{ runner.temp }}/hardware-smoke
         run: uv run --locked python -m hardware check
 
       - name: Hardware CAD smoke build
+        if: *test_ready
         env:
           PHYSICLAW_HW_OUTPUT: ${{ runner.temp }}/hardware-smoke
         run: make hw-build ARGS="--stems fastener_10_BHCS --bom"
 
-      - name: Encoding regressions in both UTF-8 modes
-        run: make test-encoding "PY=uv run --locked"
+      - name: Encoding regressions with UTF-8 disabled
+        if: *test_ready
+        env:
+          PYTEST_ADDOPTS: --junitxml=.test-results/encoding-0.xml --basetemp=.test-results/tmp-encoding-0 --durations=25
+        run: make test-encoding-0 "PY=uv run --locked"
+
+      - name: Encoding regressions with UTF-8 enabled
+        if: *test_ready
+        env:
+          PYTEST_ADDOPTS: --junitxml=.test-results/encoding-1.xml --basetemp=.test-results/tmp-encoding-1 --durations=25
+        run: make test-encoding-1 "PY=uv run --locked"
 
       - name: Slow regressions
+        if: *test_ready
+        env:
+          PYTEST_ADDOPTS: --junitxml=.test-results/slow.xml --basetemp=.test-results/tmp-slow --durations=25
         run: make test-slow
 
       - name: Integration regressions
+        if: *test_ready
+        env:
+          PYTEST_ADDOPTS: --junitxml=.test-results/integration.xml --basetemp=.test-results/tmp-integration --durations=25
         run: make test-integration
+
+      - name: Upload test reports and subprocess logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: tests-${{ matrix.os }}-py${{ matrix.python }}-${{ github.run_attempt }}
+          path: |
+            .test-results/*.xml
+            .test-results/**/*.log
+            htmlcov/
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
