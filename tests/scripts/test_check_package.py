@@ -246,7 +246,8 @@ def test_installer_rejects_corrupt_wheel_before_running(bundle, mocker):
         ("stale-state", "state survived interrupt"),
         ("control-collision", None),
         ("bridge-collision", None),
-        ("collision-exhausted", "after 3 port collisions"),
+        ("control-collision-exhausted", "after 3 port collisions"),
+        ("bridge-collision-exhausted", "after 3 port collisions"),
         ("permission", "exited before HTTP readiness"),
     ],
 )
@@ -362,13 +363,17 @@ def test_server_smoke_checks_http_and_always_stops(
             return popen(command, **kwargs)
         assert command[1:4] == ["server", "--host", "127.0.0.1"]
         assert command[-2:] == ["--no-runtime", "--no-setup-hardware"]
-        if mode == "collision-exhausted" or (
+        if mode.endswith("collision-exhausted") or (
             mode in {"control-collision", "bridge-collision"} and not children
         ):
-            number = int(command[5]) + (mode != "control-collision")
+            control = mode.startswith("control-")
+            host = "127.0.0.1" if control else "0.0.0.0"
+            number = int(command[5]) + (not control)
             # Claim the port after selection, before the child binds. This
             # listener belongs to another process and must survive cleanup.
-            collisions[number] = socket.create_server(("127.0.0.1", number))
+            # Match the child's address: Windows can bind loopback and wildcard
+            # sockets to the same port without reporting a collision.
+            collisions[number] = socket.create_server((host, number))
         child = popen([sys.executable, str(script), *command[1:]], **kwargs)
         children.append((child, int(command[5])))
         return child
@@ -403,14 +408,18 @@ def test_server_smoke_checks_http_and_always_stops(
                 timeout=0.2 if mode == "hang" else 10,
             )
         expected_attempts = (
-            3 if mode == "collision-exhausted" else 2 if collisions else 1
+            3 if mode.endswith("collision-exhausted") else 2 if collisions else 1
         )
         assert len(children) == expected_attempts
         assert len({port for _, port in children}) == expected_attempts
         for attempt, (child, port) in enumerate(children, 1):
             assert child.poll() is not None
-            assert (tmp_path / f"server-{attempt}.log").is_file()
+            log = (tmp_path / f"server-{attempt}.log").read_text(encoding="utf-8")
             for number in (port, port + 1):
+                if number in collisions:
+                    host = collisions[number].getsockname()[0]
+                    assert child.returncode != 0
+                    assert f"cannot listen on {host}:{number}:" in log
                 with socket.socket() as connection:
                     connection.settimeout(0.2)
                     listening = connection.connect_ex(("127.0.0.1", number)) == 0
