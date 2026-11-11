@@ -95,6 +95,13 @@ def test_each_pytest_suite_keeps_its_own_report_and_temporary_logs():
     assert upload["if"] == "${{ always() }}"
     assert upload["with"]["include-hidden-files"] is True
     assert ".test-results/*.xml" in upload["with"]["path"]
-    assert ".test-results/**/*.log" in upload["with"]["path"]
+    assert ".test-results/subprocess-logs.zip" in upload["with"]["path"]
+    collect = next(
+        step
+        for step in job["steps"]
+        if step.get("run") == "uv run --no-project python scripts/collect_test_logs.py"
+    )
+    assert collect["if"] == "${{ always() }}"
+    assert job["steps"].index(collect) < job["steps"].index(upload)
     assert "${{ matrix.os }}" in upload["with"]["name"]
     assert "${{ matrix.python }}" in upload["with"]["name"]

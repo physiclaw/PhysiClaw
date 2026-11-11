@@ -175,6 +175,10 @@ jobs:
           PYTEST_ADDOPTS: --junitxml=.test-results/integration.xml --basetemp=.test-results/tmp-integration --durations=25
         run: make test-integration
 
+      - name: Collect subprocess logs without following test symlinks
+        if: ${{ always() }}
+        run: uv run --no-project python scripts/collect_test_logs.py
+
       - name: Upload test reports and subprocess logs
         if: ${{ always() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -182,7 +186,7 @@ jobs:
           name: tests-${{ matrix.os }}-py${{ matrix.python }}-${{ github.run_attempt }}
           path: |
             .test-results/*.xml
-            .test-results/**/*.log
+            .test-results/subprocess-logs.zip
             htmlcov/
           include-hidden-files: true
           if-no-files-found: ignore
