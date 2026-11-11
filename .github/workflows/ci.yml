@@ -1,7 +1,7 @@
-# Lint + fast hermetic tests with branch coverage on Linux and macOS.
-# Slow managed first-image/EOF and bridge shutdown regressions run on all three OSes.
+# Shared lint, UI tests and fast Python tests with branch coverage on all three OSes.
+# All slow and integration tests run on all three OSes.
 # Fresh CLI and Make bootstrap run without manual dependency sync on all three OSes.
-# Windows runs the full fast suite plus runtime/shutdown regressions and CAD smoke.
+# Platform-specific tests declare their requirements with pytest skips.
 # Package jobs run the platform installers, doctor and HTTP server checks.
 # Real hardware needs manual validation.
 name: CI
@@ -35,8 +35,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.12", "3.13", "3.14"]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      PYTHONUTF8: "1"
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
@@ -53,7 +57,7 @@ jobs:
         uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
         with:
           version: "0.13.7"
-          python-version: "3.12"
+          python-version: ${{ matrix.python }}
           enable-cache: true
 
       - name: Fresh CLI startup without CAD
@@ -61,96 +65,47 @@ jobs:
           UV_PROJECT_ENVIRONMENT: ${{ runner.temp }}/physiclaw-cli-smoke
         run: uv run --locked pytest -m slow tests/cli/test_fresh_start.py
 
-      # Start with no project venv and no manual sync, as a fresh clone would.
-      # The Make target must install both dev and CAD dependencies itself.
-      - name: Bootstrap and test with coverage
-        run: make test-cov
-
-      # Inline JavaScript uses Node's built-in test runner; no npm
-      # packages or Node runtime are needed by the Python application.
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: "22"
-          package-manager-cache: false
-
-      - name: JavaScript UI regressions
-        run: make test-studio-ui
-
-      - name: Lint
-        run: make lint
-
-      # Mirrors `make typecheck`: scope + settings from [tool.mypy] in
-      # pyproject (application and hardware/port; CAD workflows are not gated yet).
-      - name: Type check
-        run: uv run mypy
-
-      - name: Make target regressions
-        run: uv run --locked pytest -m slow tests/test_makefile.py
-
-      # Static cross-artifact consistency for the CAD pipeline (procedure
-      # stems / annotations / manual figures / sourcing ids) — stdlib-only, no
-      # cad dependency group needed.
-      - name: Hardware consistency check
-        run: uv run --locked python -m hardware check
-
-      - name: Hardware CAD smoke build
-        env:
-          PHYSICLAW_HW_OUTPUT: ${{ runner.temp }}/hardware-smoke
-        run: uv run --locked --group cad python -m hardware step fastener_10_BHCS
-
-      - name: Encoding regressions in both UTF-8 modes
-        run: make test-encoding "PY=uv run --locked"
-
-      - name: Managed first image and shutdown regressions
-        # The main suite excludes slow tests; exercise subprocess and bridge cleanup too.
-        run: >-
-          uv run --locked pytest -m slow
-          tests/agent/runtime/test_managed_startup.py
-          tests/cli/test_bridge_shutdown.py
-
-      - name: Real MCP runtime shutdown lifecycle
-        run: uv run --locked pytest -m integration tests/cli/test_runtime_shutdown.py
-
-  windows-runtime:
-    runs-on: windows-latest
-    timeout-minutes: 30
-    env:
-      PYTHONUTF8: "1"
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          persist-credentials: false
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
-        with:
-          version: "0.13.7"
-          python-version: "3.12"
-          enable-cache: true
-
-      - name: Fresh CLI startup without CAD
-        env:
-          UV_PROJECT_ENVIRONMENT: ${{ runner.temp }}/physiclaw-cli-smoke
-        run: uv run --locked pytest -m slow tests/cli/test_fresh_start.py
-
-      - name: Install GNU Make
+      - name: Install GNU Make (Windows)
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           if (-not (Get-Command make -ErrorAction SilentlyContinue)) {
             choco install make --yes --no-progress
           }
 
-      - name: Bootstrap and run the full fast suite on Windows
+      # Start with no project venv and no manual sync, as a fresh clone would.
+      # The Make target must install both dev and CAD dependencies itself.
+      - name: Bootstrap and test with coverage
+        # Keep native-encoding coverage, especially Windows' legacy code page.
         env:
           PYTHONUTF8: "0"
-        run: make test
+        run: make test-cov
 
-      - name: Type check Windows
-        run: uv run --locked mypy --platform win32
+      # Inline JavaScript uses Node's built-in test runner; no npm
+      # packages or Node runtime are needed by the Python application.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: matrix.python == '3.12'
+        with:
+          node-version: "22"
+          package-manager-cache: false
 
-      - name: Make target regressions on Windows
-        run: uv run --locked pytest -m slow tests/test_makefile.py
+      - name: JavaScript UI regressions
+        if: matrix.python == '3.12'
+        run: make test-studio-ui
 
+      - name: Lint
+        if: matrix.python == '3.12'
+        run: make lint
+
+      # Mirrors `make typecheck`: scope + settings from [tool.mypy] in
+      # pyproject (application and hardware/port; CAD workflows are not gated yet).
+      # Mypy defaults to the runner's native sys.platform, including win32.
+      - name: Type check
+        run: uv run --locked mypy
+
+      # Static cross-artifact consistency for the CAD pipeline (procedure
+      # stems / annotations / manual figures / sourcing ids) — stdlib-only, no
+      # cad dependency group needed.
       - name: Hardware consistency check
         env:
           PHYSICLAW_HW_OUTPUT: ${{ runner.temp }}/hardware-smoke
@@ -164,40 +119,8 @@ jobs:
       - name: Encoding regressions in both UTF-8 modes
         run: make test-encoding "PY=uv run --locked"
 
-      - name: Doctor and terminal output regressions
-        # macOS/Linux run these in the full suite; also exercise native Windows.
-        run: >-
-          uv run --locked pytest
-          tests/cli/test_doctor.py
-          tests/cli/test_doctor_report.py
-          tests/cli/test__format.py
-          tests/common/logger/test_portable_output.py
+      - name: Slow regressions
+        run: make test-slow
 
-      - name: Runtime and Windows backend regressions
-        # Include the slow fresh-process test: pytest's default excludes it.
-        # Only POSIX cross-backend API parity skips here; native dispatch runs.
-        run: >-
-          uv run --locked pytest -m "not integration"
-          tests/agent/runtime
-          tests/port/backends/test_windows.py
-          tests/port/test_port.py
-
-      - name: Camera focus and bridge shutdown regressions
-        # Keep slow TCP-reset, request-drain and lifespan tests enabled.
-        # Camera tests fake hardware and exercise Linux/Windows controls on every OS.
-        run: >-
-          uv run --locked pytest -m "not integration"
-          tests/cli/test_server.py
-          tests/cli/test_bridge_shutdown.py
-          tests/core/calibration/test_camera_map.py
-          tests/core/hardware/test_camera.py
-          tests/core/hardware/test_focus.py
-
-      - name: Camera observation and warning regressions
-        run: >-
-          uv run --locked pytest -m "not integration"
-          tests/core/orchestration/test_observation.py
-          tests/core/orchestration/test_orchestrator.py
-          tests/core/server/test_tools.py
-          tests/contract/test_screen_observation.py
-          tests/agent/engine/test_fact_input.py
+      - name: Integration regressions
+        run: make test-integration

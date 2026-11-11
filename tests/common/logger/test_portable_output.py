@@ -5,6 +5,7 @@ import io
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -16,6 +17,7 @@ import pytest
 from physiclaw.common import log_style, terminal
 from physiclaw.port.backends import windows
 from tests.terminal_fakes import Console
+from tests.terminal_helpers import terminal_process
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -326,59 +328,35 @@ def test_preview_script_exercises_the_real_json_contract_without_hardware():
     assert records[0]["message"] == "Terminal preview · sample events"
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="POSIX PTY; Windows has native console tests above"
-)
 @pytest.mark.parametrize("no_color", [False, True])
-def test_real_pty_and_redirected_stdout_are_independent(no_color):
-    import fcntl
-    import pty
-    import struct
-    import termios
-
-    master, slave = pty.openpty()
-    try:
-        fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 48, 0, 0))
-        env = {**os.environ, "TERM": "xterm-256color", "PYTHONPATH": str(ROOT / "src")}
-        env.pop("PHYSICLAW_LOG_FORMAT", None)
-        env.pop("PHYSICLAW_LOG_COMPONENTS", None)
-        env.pop("NO_COLOR", None)
-        if no_color:
-            env["NO_COLOR"] = ""
-        result = subprocess.run(
-            [
-                sys.executable,
-                "-c",
-                "from physiclaw.common.log_style import configure_console; import logging; configure_console('runtime'); logging.getLogger('physiclaw.camera').warning('Check camera USB and power; retrying automatically'); print('payload')",
-            ],
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=slave,
-            timeout=10,
-        )
-        # macOS may discard unread PTY output when the last slave closes.
-        # The child has finished writing; drain before closing the parent's copy.
-        os.set_blocking(master, False)
-        chunks = []
-        while True:
-            try:
-                chunk = os.read(master, 65536)
-                if not chunk:
-                    break
-                chunks.append(chunk)
-            except BlockingIOError:
-                break
-            except OSError as error:
-                if error.errno == errno.EIO:
-                    break
-                raise
-        text = b"".join(chunks).decode()
-        assert result.returncode == 0 and result.stdout.strip() == b"payload"
-        assert ("\033[" in text) is not no_color
-        clean = terminal.ANSI_RE.sub("", text)
-        assert all(terminal.cell_width(line) < 48 for line in clean.splitlines())
-        assert "retrying automatically" in " ".join(clean.split())
-    finally:
-        os.close(master)
-        if slave is not None:
-            os.close(slave)
+def test_real_pty_and_redirected_stdout_are_independent(tmp_path, no_color):
+    env = {**os.environ, "TERM": "xterm-256color", "PYTHONPATH": str(ROOT / "src")}
+    env.pop("PHYSICLAW_LOG_FORMAT", None)
+    env.pop("PHYSICLAW_LOG_COMPONENTS", None)
+    env.pop("NO_COLOR", None)
+    if no_color:
+        env["NO_COLOR"] = ""
+    payload = tmp_path / "stdout.txt"
+    code = """
+import logging, sys
+from contextlib import redirect_stdout
+from physiclaw.common.log_style import configure_console
+with open(sys.argv[1], 'w', encoding='utf-8') as output, redirect_stdout(output):
+    configure_console('runtime')
+    logging.getLogger('physiclaw.camera').warning('Check camera USB and power; retrying automatically')
+    print('payload')
+    print('LOG_DONE', file=sys.stderr, flush=True)
+"""
+    with terminal_process(
+        [sys.executable, "-c", code, str(payload)], env=env, columns=48
+    ) as console:
+        console.expect("LOG_DONE")
+        assert console.wait() == 0
+        text = console.output
+    assert payload.read_text(encoding="utf-8").strip() == "payload"
+    # ConPTY emits cursor controls even without color; inspect SGR colors only.
+    assert bool(re.search(r"\x1b\[[0-9;]*(?:33|93)m", text)) is not no_color
+    clean = terminal.ANSI_RE.sub("", text)
+    assert all(terminal.cell_width(line) < 48 for line in clean.splitlines())
+    assert "retrying automatically" in " ".join(clean.split())
+    assert "payload" not in clean

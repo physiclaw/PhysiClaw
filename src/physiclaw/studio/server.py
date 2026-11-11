@@ -24,7 +24,6 @@ ran and reported failure.
 """
 
 import asyncio
-import json
 import logging
 from contextlib import asynccontextmanager
 from html import escape
@@ -48,7 +47,7 @@ from physiclaw.common import assets, gesture_vocab, paths
 from physiclaw.common.control_gate import ControlGate
 from physiclaw.common.logger.session_artifacts import mime_for, resolve_image
 from physiclaw.common.ready import START_HINT
-from physiclaw.common.text import read_text
+from physiclaw.common.text import load_json, read_text
 from physiclaw.conductor.spec.pack import split_ref
 from physiclaw.conductor.spec.specfile import SpecError
 from physiclaw.debug import stepping
@@ -94,7 +93,7 @@ async def _json_body(request: Request) -> dict:
     # Local on purpose (not `core.bridge.handler.json_or_none`): the
     # studio process must not import the core server's modules.
     try:
-        body = json.loads(await request.body())
+        body = load_json(await request.body())
     except (ValueError, RecursionError):
         raise ValueError("body must be JSON") from None
     if not isinstance(body, dict):

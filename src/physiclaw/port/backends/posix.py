@@ -15,6 +15,10 @@ def editor_command(editor: str, filename: str) -> list[str]:
     return [*shlex.split(editor), filename]
 
 
+def termination_signals() -> tuple[int, ...]:
+    return (signal.SIGTERM,)
+
+
 def process_group_options() -> dict:
     return {"start_new_session": True}
 

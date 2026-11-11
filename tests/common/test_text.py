@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,7 @@ from physiclaw.common.text import (
     append_text,
     iter_jsonl,
     json_span,
+    load_json,
     read_text,
     write_text,
     write_text_atomic,
@@ -134,6 +136,31 @@ def test_iter_jsonl_missing_file_yields_nothing(tmp_path) -> None:
     records = list(iter_jsonl(path))
 
     assert records == []
+
+
+@pytest.mark.parametrize("opener,closer", [("[", "]"), ('{"value":', "}")])
+def test_load_json_accepts_256_nested_containers(opener, closer):
+    encoded = opener * 256 + "0" + closer * 256
+
+    result = load_json(encoded)
+
+    assert json.dumps(result, separators=(",", ":")) == encoded
+
+
+@pytest.mark.parametrize("opener,closer", [("[", "]"), ('{"value":', "}")])
+def test_load_json_rejects_257_nested_containers(opener, closer):
+    encoded = opener * 257 + "0" + closer * 257
+
+    with pytest.raises(ValueError, match="nesting exceeds 256"):
+        load_json(encoded)
+
+
+def test_load_json_does_not_confuse_container_count_or_string_content_with_depth():
+    value = [{"brackets": "[" * 300, "quoted": '"\\'}] * 300
+
+    result = load_json(json.dumps(value).encode())
+
+    assert result == value
 
 
 def test_json_span_excessive_nesting_returns_none():

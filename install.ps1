@@ -9,6 +9,7 @@
 # Optional (set before invoking):
 #   $env:PHYSICLAW_VERSION = '0.0.5'   # pin a version
 #   $env:PHYSICLAW_DRY_RUN = '1'       # same as -DryRun
+#   $env:PHYSICLAW_PYTHON = '3.14'      # select Python (default: 3.12)
 #   $env:NO_COLOR = '1'                # plain output
 #
 # To pass options through ``iwr | iex``, wrap the script in a scriptblock.
@@ -19,7 +20,7 @@
 #   1. Checks you're on Windows.
 #   2. Installs `uv` if missing (via astral.sh installer, run in a child shell
 #      so its `exit 1` on failure never reaches your session).
-#   3. Ensures Python 3.12 is available (no-op if already cached).
+#   3. Ensures the selected Python is available (default: 3.12).
 #   4. Installs `physiclaw` (small - no heavy ML deps in the package).
 #   5. Runs `physiclaw setup local-vision-model` to install the icon-detector
 #      model. By default it fetches a prebuilt ONNX (fast, no extra deps); if
@@ -87,12 +88,13 @@ try {
     # -Version flag wins over the env var, which wins over "latest".
     $version = if ($Version) { $Version } else { $env:PHYSICLAW_VERSION }
     $specPlain = if ([string]::IsNullOrEmpty($version)) { 'physiclaw' } else { "physiclaw==$version" }
+    $installPython = if ($env:PHYSICLAW_PYTHON) { $env:PHYSICLAW_PYTHON } else { '3.12' }
 
     if ($DryRun) {
         Info "Dry run - would:"
         Write-Host "    install uv (if missing) from https://astral.sh/uv/install.ps1"
-        Write-Host "    uv python install 3.12 (if not cached)"
-        Write-Host "    uv tool install $specPlain --python 3.12 --force --refresh"
+        Write-Host "    uv python install $installPython (if not cached)"
+        Write-Host "    uv tool install $specPlain --python $installPython --force --refresh"
         Write-Host "    physiclaw setup local-vision-model"
         if ($useColor) { Write-Host "[OK] Dry run complete. No changes made." -ForegroundColor Green }
         else           { Write-Host "[OK] Dry run complete. No changes made." }
@@ -163,18 +165,18 @@ Common causes on Windows:
         }
     }
 
-    # Only hit uv's python-build-standalone manifest when 3.12 isn't cached.
+    # Only download Python when the selected interpreter isn't already cached.
     $pythonOk = $false
     try {
-        & uv python find 3.12 *> $null
+        & uv python find $installPython *> $null
         if ($LASTEXITCODE -eq 0) { $pythonOk = $true }
     } catch { $pythonOk = $false }
     if (-not $pythonOk) {
-        Info "Installing Python 3.12..."
-        & uv python install 3.12 --quiet
+        Info "Installing Python $installPython..."
+        & uv python install $installPython --quiet
         if ($LASTEXITCODE -ne 0) {
             Die @"
-``uv python install 3.12`` failed (exit $LASTEXITCODE).
+``uv python install $installPython`` failed (exit $LASTEXITCODE).
 
 Likely causes:
   - Network issue downloading the Python build
@@ -198,7 +200,7 @@ stable will resume where it stopped.
     # from a previous `uv tool install` an hour ago.
     # Keep uv's diagnostics visible and treat its failure as authoritative:
     # a previously installed CLI may still run after an unsuccessful update.
-    & uv tool install $specPlain --python 3.12 --force --refresh
+    & uv tool install $specPlain --python $installPython --force --refresh
     $installExit = $LASTEXITCODE
     if ($installExit -ne 0) {
         Die "``uv tool install $specPlain`` failed (exit $installExit). See uv output above and retry. A previous installation may still be available."
@@ -245,7 +247,7 @@ To diagnose, run the CLI directly:
   physiclaw --version
 
 To reinstall with verbose output:
-  uv tool install $specPlain --python 3.12 --force --verbose
+  uv tool install $specPlain --python $installPython --force --verbose
 "@
     }
 

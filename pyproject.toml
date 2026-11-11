@@ -19,6 +19,8 @@ classifiers = [
     "Operating System :: Microsoft :: Windows",
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: System :: Hardware",
 ]
@@ -89,6 +91,8 @@ dev = [
     "pytest-cov>=5",
     "pytest-mock>=3.14",
     "pytest-asyncio>=0.23",
+    # Exercise real Windows console input through ConPTY in terminal tests.
+    "pywinpty>=3.1.2,<4; sys_platform == 'win32'",
     "freezegun>=1.5",
     "hypothesis>=6.100",
     "respx>=0.21",

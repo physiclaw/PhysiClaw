@@ -7,6 +7,7 @@ never import this module directly — go through ``physiclaw.port``.
 import logging
 import math
 import os
+import signal
 import socket
 import subprocess
 import threading
@@ -290,6 +291,10 @@ def editor_command(editor: str, filename: str) -> str:
     # Popen passes a string to CreateProcess unchanged when shell=False.
     # Preserve the user's Windows quoting; quote only the appended filename.
     return f"{editor} {subprocess.list2cmdline([filename])}"
+
+
+def termination_signals() -> tuple[int, ...]:
+    return (signal.SIGTERM, getattr(signal, "SIGBREAK"))
 
 
 def process_group_options() -> dict:

@@ -24,6 +24,7 @@ from physiclaw.conductor.load.files import read_template_manifest
 from physiclaw.conductor.load.pack import load_pack, scan_playbooks
 from physiclaw.conductor.spec.model import PlaybookError, check_name
 from physiclaw.conductor.spec.pack import Pack
+from physiclaw.port import filesystem
 from physiclaw.port.locks import exclusive_file_lock
 
 log = logging.getLogger(__name__)
@@ -64,7 +65,7 @@ class Template:
 def read_template(src: Path) -> Template:
     """Resolve `.`/`..` before deriving the destination; never copy outside src."""
     try:
-        src = src.resolve(strict=True)
+        src = filesystem.resolve_path(src)
     except RuntimeError as e:
         raise PlaybookError(f"invalid template path: {src}") from e
     if not src.is_dir():
@@ -90,7 +91,7 @@ def _read_files(root: Path) -> dict[Path, str]:
             if not directory and path.suffix not in {".yml", ".md"}:
                 continue
             try:
-                resolved = path.resolve(strict=True)
+                resolved = filesystem.resolve_path(path)
             except RuntimeError as e:
                 raise PlaybookError(f"symlink cycle at {path}") from e
             if not resolved.is_relative_to(root):

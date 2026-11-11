@@ -11,11 +11,20 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX installer")
-def test_bash_installer_uses_the_configured_uv_tool_directory(tmp_path):
+@pytest.mark.parametrize("python_version", [None, "3.13", "3.14"])
+def test_bash_installer_uses_configured_python_and_tool_directory(
+    tmp_path, python_version
+):
     wrapper = tmp_path / "installer-test.sh"
     wrapper.write_text(
         """\
-uv() { return 0; }
+uv() {
+  case "$1 $2" in
+    'python find') [[ "$3" == "${PHYSICLAW_PYTHON:-3.12}" ]] ;;
+    'tool install') [[ "$4" == --python && "$5" == "${PHYSICLAW_PYTHON:-3.12}" ]] ;;
+    *) return 1 ;;
+  esac
+}
 physiclaw() {
   if [[ "${PATH%%:*}" != "$UV_TOOL_BIN_DIR" ]]; then
     echo 'wrong tool directory' >&2
@@ -42,6 +51,8 @@ bash "$1" --version 0.11.0
             "UV_TOOL_BIN_DIR": str(tmp_path / "tools with spaces"),
             "NO_COLOR": "1",
             "PHYSICLAW_DRY_RUN": "0",
+            "PHYSICLAW_PYTHON": python_version or "",
+            "UV_PYTHON": "3.11",  # Must not override the installer's selection.
         },
         timeout=10,
     )
@@ -69,12 +80,13 @@ def test_bash_version_option_requires_a_value(args):
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows PowerShell installer")
+@pytest.mark.parametrize("python_version", [None, "3.13", "3.14"])
 @pytest.mark.parametrize(
     "install_exit,version_exit,model_exit",
     [(7, 0, 0), (0, 9, 0), (0, 0, 7), (0, 0, 0)],
 )
 def test_powershell_install_failure_cannot_be_hidden_by_an_old_cli(
-    tmp_path, install_exit, version_exit, model_exit
+    tmp_path, install_exit, version_exit, model_exit, python_version
 ):
     # Functions shadow external tools in the child shell. A working old CLI
     # must not turn a failed installation into success. A failed version check
@@ -86,7 +98,15 @@ def test_powershell_install_failure_cannot_be_hidden_by_an_old_cli(
     wrapper.write_text(
         f"""
 function global:uv {{
-    if ($args[0] -eq 'python') {{ $global:LASTEXITCODE = 0; return }}
+    $expectedPython = if ($env:PHYSICLAW_PYTHON) {{ $env:PHYSICLAW_PYTHON }} else {{ '3.12' }}
+    if ($args[0] -eq 'python') {{
+        if ($args[2] -ne $expectedPython) {{ throw 'Wrong Python version' }}
+        $global:LASTEXITCODE = 0
+        return
+    }}
+    if ($args[3] -ne '--python' -or $args[4] -ne $expectedPython) {{
+        throw 'Wrong Python version'
+    }}
     $global:LASTEXITCODE = {install_exit}
 }}
 function global:physiclaw {{
@@ -117,6 +137,8 @@ exit $global:LASTEXITCODE
             "UV_TOOL_BIN_DIR": str(tmp_path / "tools with spaces"),
             "NO_COLOR": "1",
             "PHYSICLAW_DRY_RUN": "0",
+            "PHYSICLAW_PYTHON": python_version or "",
+            "UV_PYTHON": "3.11",
         },
         timeout=30,
     )

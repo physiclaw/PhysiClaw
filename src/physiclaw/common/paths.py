@@ -411,9 +411,11 @@ def calibration_bundle() -> Path:
 
 
 def load_calibration_bundle() -> dict | None:
-    """Read+parse ``calibration/bundle.json``. None on missing/unreadable/invalid."""
+    """Read+parse the bundle; metadata errors propagate for status diagnostics."""
     p = calibration_bundle()
-    if not p.exists():
+    try:
+        p.stat()  # exists() suppresses permission errors starting with Python 3.14.
+    except FileNotFoundError:
         return None
     try:
         data = json.loads(read_text(p))

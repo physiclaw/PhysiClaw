@@ -23,6 +23,27 @@ from typing import Any
 from physiclaw.port import filesystem
 
 
+def load_json(text: str | bytes, **kwargs: Any) -> Any:
+    """Keep JSON safe for recursive consumers on every supported Python version.
+
+    Python 3.14 can decode nesting that earlier versions rejected. Bound
+    container depth to 256 so rendering and traversing the result remain safe.
+    """
+    value = json.loads(text, **kwargs)
+    if not isinstance(value, (dict, list)):
+        return value
+    pending = [(value, 0)]
+    while pending:
+        item, depth = pending.pop()
+        if depth >= 256:
+            raise ValueError("JSON nesting exceeds 256 containers")
+        children = item.values() if isinstance(item, dict) else item
+        pending.extend(
+            (child, depth + 1) for child in children if isinstance(child, (dict, list))
+        )
+    return value
+
+
 def _finite_json_number(text: str) -> float:
     number = float(text)
     if not math.isfinite(number):
@@ -33,7 +54,7 @@ def _finite_json_number(text: str) -> float:
 def json_object(text: str) -> dict[str, Any] | None:
     """Read a finite JSON object; None for malformed or non-object data."""
     try:
-        value = json.loads(
+        value = load_json(
             text, parse_float=_finite_json_number, parse_constant=_finite_json_number
         )
     except (ValueError, RecursionError):
@@ -51,7 +72,7 @@ def json_span(text: str, opener: str, closer: str) -> Any | None:
     if start == -1 or end <= start:
         return None
     try:
-        return json.loads(text[start : end + 1])
+        return load_json(text[start : end + 1])
     except (ValueError, TypeError, RecursionError):
         return None
 
@@ -71,7 +92,7 @@ def iter_jsonl(path: Path, needle: str | None = None) -> Iterator[dict[str, Any]
                 line = raw.decode("utf-8")
                 if needle is not None and needle not in line:
                     continue
-                rec = json.loads(line)
+                rec = load_json(line)
             except (ValueError, RecursionError):
                 continue
             if isinstance(rec, dict):

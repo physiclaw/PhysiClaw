@@ -395,7 +395,6 @@ def test_unset_removes_override_and_inherits_defaults(tmp_path):
     assert tomllib.loads(path.read_text(encoding="utf-8")).get("update", {}) == {}
 
 
-@pytest.mark.skipif(os.name == "nt", reason="symlinks need Windows privileges")
 def test_upgrade_preserves_symlink(legacy_config):
     original = legacy_config.read_bytes()
     link = legacy_config.parent / "linked.toml"

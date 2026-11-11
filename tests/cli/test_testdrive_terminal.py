@@ -1,12 +1,10 @@
-"""Prompt portability: real POSIX editing and simulated Windows console APIs."""
+"""Prompt portability through real native terminals and console API regressions."""
 
 import ctypes
 import importlib
 import os
 import re
-import subprocess
 import sys
-import time
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -15,6 +13,7 @@ import pytest
 from physiclaw.common import terminal
 from physiclaw.port.backends import darwin, linux, windows
 from tests.terminal_fakes import Console
+from tests.terminal_helpers import terminal_process
 
 testdrive = importlib.import_module("physiclaw.cli.testdrive")
 
@@ -203,19 +202,16 @@ def test_portable_editor_keeps_history_and_handles_eof_and_interrupt(
                 read(key, True)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Requires a POSIX PTY")
 @pytest.mark.parametrize("no_color", [False, True])
 def test_real_line_editor_recalls_and_edits_colored_prompts(no_color):
-    import pty
-    import select
-
-    master, slave = pty.openpty()
     env = {**os.environ, "TERM": "xterm-256color", "PROMPT_TOOLKIT_NO_CPR": "1"}
     env.pop("NO_COLOR", None)
     if no_color:
         env["NO_COLOR"] = ""
     code = """
-import readline
+import sys
+if sys.platform != "win32":
+    import readline
 from physiclaw.cli.testdrive import _prompt_session, _read_command
 session = _prompt_session()
 commands = []
@@ -224,50 +220,24 @@ for index, result in enumerate((None, True, False)):
     commands.append(_read_command(result, session=session))
 print('received=' + repr(commands))
 """
-    child = subprocess.Popen(
-        [sys.executable, "-c", code], stdin=slave, stdout=slave, stderr=slave, env=env
-    )
-    chunks = []
-
-    def until(pattern):
-        output = b""
-        deadline = time.monotonic() + 10
-        while (
-            not re.search(
-                pattern, terminal.ANSI_RE.sub("", output.decode(errors="replace")), re.S
-            )
-            and time.monotonic() < deadline
-        ):
-            if select.select([master], [], [], 0.1)[0]:
-                output += os.read(master, 65536)
-        chunks.append(output)
-        assert re.search(
-            pattern, terminal.ANSI_RE.sub("", output.decode(errors="replace")), re.S
-        ), output.decode(errors="replace")
-
-    try:
-        until(r"ready:0.*testdrive →")
-        os.write(master, b"tap\n")
-        until(r"ready:1.*testdrive →")
-        # Recall tap, go to its start, replace it with a signed jog.
-        os.write(master, b"\033[A\001\013Y-1\n")
-        until(r"ready:2.*testdrive →")
-        os.write(master, b"\033[A\n")
-        until(re.escape("received=['tap', 'Y-1', 'Y-1']"))
-        assert child.wait(timeout=5) == 0
-        output = b"".join(chunks)
-        styles = re.findall(r"testdrive \x1b\[([0-9;]+)m→\x1b\[0m", output.decode())
-        for color in ("32", "31"):
+    with terminal_process([sys.executable, "-c", code], env=env) as console:
+        console.expect(r"ready:0.*testdrive →")
+        console.write("tap\r")
+        console.expect(r"ready:1.*testdrive →")
+        # Recall tap, go Home and Delete its three characters, then enter a jog.
+        console.write("\033[A\033[H\033[3~\033[3~\033[3~Y-1\r")
+        console.expect(r"ready:2.*testdrive →")
+        console.write("\033[A\r")
+        console.expect(re.escape("received=['tap', 'Y-1', 'Y-1']"))
+        assert console.wait() == 0
+        styles = re.findall(r"\x1b\[([0-9;]*)m", console.output)
+        for normal, bright in (("32", "92"), ("31", "91")):
+            # ConPTY can render bold ANSI colors as their bright equivalents.
             assert (
                 any(
-                    "1" in style.split(";") and color in style.split(";")
+                    ("1" in style.split(";") and normal in style.split(";"))
+                    or bright in style.split(";")
                     for style in styles
                 )
                 is not no_color
             )
-    finally:
-        if child.poll() is None:
-            child.kill()
-            child.wait(timeout=5)
-        os.close(master)
-        os.close(slave)

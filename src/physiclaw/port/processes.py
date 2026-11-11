@@ -12,6 +12,11 @@ def spawn_managed(argv: list[str]) -> subprocess.Popen:
     )
 
 
+def termination_signals() -> tuple[int, ...]:
+    """Signals replayed after graceful server shutdown besides Ctrl+C."""
+    return _native.termination_signals()
+
+
 def prepare_managed_runtime() -> None:
     """Perform native initialization before a managed control reader starts."""
     _native.prepare_managed_runtime()

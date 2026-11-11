@@ -26,3 +26,13 @@ def test_windows_console_key_handles_unicode_and_extended_keys(
     result = terminal.read_key()
 
     assert result == expected
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Native Windows console input")
+def test_windows_ctrl_c_interrupts_key_prompt(monkeypatch):
+    import msvcrt
+
+    monkeypatch.setattr(msvcrt, "getwch", lambda: "\x03")
+
+    with pytest.raises(KeyboardInterrupt):
+        terminal.read_key()

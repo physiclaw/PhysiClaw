@@ -11,6 +11,7 @@ import logging
 import os
 import socket
 import subprocess
+import sys
 import threading
 from unittest.mock import MagicMock
 
@@ -1316,16 +1317,19 @@ def test_server_closes_bridge_when_control_serving_raises(mocker):
 def test_server_interrupt_cleans_both_planes_and_restores_signal(mode, mocker):
     import signal
 
-    previous = signal.getsignal(signal.SIGTERM)
+    signals = [signal.SIGTERM]
+    if sys.platform == "win32":
+        signals.append(signal.SIGBREAK)
+    previous = {sig: signal.getsignal(sig) for sig in signals}
     deps, servers = _serving_pair(mocker, mode)
     handler = mocker.spy(signal, "signal")
 
     server_mod.server(host="127.0.0.1", port=8048, no_setup_hardware=True)
 
-    assert signal.getsignal(signal.SIGTERM) == previous
+    assert {sig: signal.getsignal(sig) for sig in signals} == previous
     assert handler.call_args_list == [
-        mocker.call(signal.SIGTERM, signal.default_int_handler),
-        mocker.call(signal.SIGTERM, previous),
+        *(mocker.call(sig, signal.default_int_handler) for sig in signals),
+        *(mocker.call(sig, previous[sig]) for sig in reversed(signals)),
     ]
     assert servers[0].should_exit
     deps["shutdown"].assert_called_once()

@@ -6,11 +6,9 @@ import io
 import json
 import os
 import random
-import select
-import signal
+import re
 import subprocess
 import sys
-import time
 from collections import Counter
 from contextlib import nullcontext
 from copy import deepcopy
@@ -23,6 +21,8 @@ import pytest
 from hardware.documents import BuildError
 from hardware.documents.sourcing import urls
 from hardware.scheme import REPO_ROOT
+from physiclaw.common.terminal import ANSI_RE
+from tests.terminal_helpers import terminal_process
 
 NOW = datetime(2026, 10, 22, 9, tzinfo=UTC)
 
@@ -813,101 +813,71 @@ def test_history_body_io_error_is_not_reported_as_lock_contention(tmp_path):
 def test_terminal_opens_one_link_per_key_and_restores_input(
     tmp_path, keys, browser_result
 ):
-    if os.name == "nt":
-        pytest.skip(
-            "POSIX terminal restoration; Windows key handling is tested separately"
-        )
-    import pty
-    import termios
-
     state_path = tmp_path / "checks.json"
-    master, slave = pty.openpty()
-    settings = termios.tcgetattr(slave)
     script = """
 import sys
 from hardware.documents.sourcing import urls
+from tests.terminal_helpers import input_mode
 
 def open_url(url, **kwargs):
-    print("BROWSER " + url, flush=True)
+    print("\\nBROWSER " + url, flush=True)
     return sys.argv[2] == "True"
 
 urls.webbrowser.open = open_url
+settings = input_mode()
 try:
     result = urls.main(["--state", sys.argv[1]])
 except KeyboardInterrupt:
     result = 130
+assert input_mode() == settings, "Terminal input mode was not restored"
 print("REVIEW_EXIT", flush=True)
 sys.exit(result)
 """
-    child = subprocess.Popen(
+    with terminal_process(
         [sys.executable, "-u", "-c", script, str(state_path), str(browser_result)],
-        stdin=slave,
-        stdout=slave,
-        stderr=slave,
-        cwd=REPO_ROOT,
+        columns=240,
         env={
             **os.environ,
             "PHYSICLAW_HW_OUTPUT": str(tmp_path / "output"),
             "NO_COLOR": "1",
+            "PYTHONIOENCODING": "utf-8",
         },
-    )
-    output = b""
-
-    def wait_for(text):
-        nonlocal output
-        deadline = time.monotonic() + 10
-        while text.encode() not in output:
-            remaining = max(0, deadline - time.monotonic())
-            assert select.select([master], [], [], remaining)[0], output.decode()
-            output += os.read(master, 65536)
-
-    try:
-        wait_for("Open 1/6")
+    ) as console:
+        console.expect("Open 1/6")
         # Recording is complete before waiting, even if the user quits immediately.
         recorded = state_path.read_bytes()
         state = json.loads(recorded)
         listed = [
-            line for line in output.decode().splitlines() if line.startswith("https://")
+            line
+            for line in ANSI_RE.sub("", console.output).splitlines()
+            if line.startswith("https://")
         ]
         assert len(listed) == 6
         assert set(state["checks"]) == set(listed)
         assert state["round_index"] == 1
         count = 0
         if keys is None:
-            child.send_signal(signal.SIGINT)
+            console.interrupt()
         else:
             for key in keys:
-                os.write(master, key.encode())
+                console.write(key)
                 if key in {"q", "Q", "\x1b", "\x04"}:
                     break
-                wait_for("BROWSER " + listed[count])
+                console.expect(re.escape("BROWSER " + listed[count]))
                 count += 1
                 if count < 6:
-                    wait_for(f"Open {count + 1}/6")
-        wait_for("REVIEW_EXIT")
-        assert child.wait(timeout=10) == (130 if keys is None else 0)
-        while select.select([master], [], [], 0)[0]:
-            output += os.read(master, 65536)
+                    console.expect(f"Open {count + 1}/6")
+        console.expect("REVIEW_EXIT")
+        assert console.wait() == (130 if keys is None else 0)
         opened = [
             line.split("BROWSER ", 1)[1]
-            for line in output.decode().splitlines()
+            for line in ANSI_RE.sub("", console.output).splitlines()
             if "BROWSER " in line
         ]
         assert opened == listed[:count]
-        restored = termios.tcgetattr(slave)
-        # macOS sets PENDIN when canonical input is restored.
-        restored[3] &= ~termios.PENDIN
-        settings[3] &= ~termios.PENDIN
-        assert restored == settings
         assert state_path.read_bytes() == recorded
         if not browser_result:
-            assert "failed; use the URL above" in output.decode()
-    finally:
-        if child.poll() is None:
-            child.kill()
-            child.wait(timeout=10)
-        os.close(master)
-        os.close(slave)
+            assert "failed; use the URL above" in console.output
 
 
 @pytest.mark.parametrize(

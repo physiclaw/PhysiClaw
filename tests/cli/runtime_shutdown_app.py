@@ -3,14 +3,38 @@
 Run only through test_runtime_shutdown.py. No phone or model API is used.
 """
 
+import _thread
 import asyncio
 import importlib
+import json
 import logging
 import os
 import socket
 import subprocess
 import sys
+import threading
 import time
+
+
+def read_interrupts(loop=None) -> None:
+    """Inject Ctrl+C without requiring a shared console on a Windows CI runner.
+
+    This pipe belongs to the test harness. The managed runtime still receives
+    its real, separate stdin EOF from the application parent during shutdown.
+    """
+    from physiclaw.port import processes as process_port
+
+    process_port.prepare_managed_runtime()
+
+    def read():
+        while os.read(sys.stdin.fileno(), 1):
+            if loop is None:
+                _thread.interrupt_main()
+            else:
+                # Wake a standalone runtime even during its 600-second sleep.
+                loop.call_soon_threadsafe(_thread.interrupt_main)
+
+    threading.Thread(target=read, name="test-interrupt", daemon=True).start()
 
 
 def child(base: str, mode: str) -> None:
@@ -44,6 +68,8 @@ def child(base: str, mode: str) -> None:
             await mcp.call_tool("finish")
         elif mode == "tool":
             await mcp.call_tool("finish")
+        if mode == "standalone":
+            read_interrupts(asyncio.get_running_loop())
         print("REACT_DONE", flush=True)
 
     async def hooks():
@@ -170,6 +196,7 @@ def parent(port: int, mode: str, listeners: list[socket.socket]) -> None:
             asyncio.run(runtime.stop())
 
         server_mod._serve = wrong_order
+    read_interrupts()
     try:
         server_mod.server(
             host="127.0.0.1",
@@ -195,8 +222,15 @@ if __name__ == "__main__":
     if sys.argv[1] == "child":
         child(sys.argv[2], sys.argv[3])
     else:
+        if sys.platform == "win32":
+            listeners = [
+                socket.fromshare(bytes.fromhex(shared))
+                for shared in json.loads(sys.stdin.buffer.readline())
+            ]
+        else:
+            listeners = [socket.socket(fileno=int(fd)) for fd in sys.argv[4:]]
         parent(
             int(sys.argv[2]),
             sys.argv[3],
-            [socket.socket(fileno=int(fd)) for fd in sys.argv[4:]],
+            listeners,
         )

@@ -182,13 +182,17 @@ def _server_response(opener, url: str, deadline: float) -> tuple[str, bytes]:
         return response.headers.get_content_type(), body
 
 
-def _stop_server(process, ports: tuple[int, ...]) -> None:
+def _stop_server(process, ports: tuple[int, ...], *, interrupt: bool = False) -> None:
     windows = os.name == "nt"
     kill_tree = ["taskkill", "/PID", str(process.pid), "/T", "/F"]
     was_running = process.poll() is None
     try:
         if was_running:
-            if windows:
+            if interrupt:
+                process.send_signal(
+                    signal.CTRL_BREAK_EVENT if windows else signal.SIGINT
+                )
+            elif windows:
                 # The Windows launcher owns a Python child. Stop the whole tree.
                 result = subprocess.run(kill_tree, check=False, timeout=15)
                 # taskkill can race with a process that has already exited.
@@ -218,6 +222,8 @@ def _stop_server(process, ports: tuple[int, ...]) -> None:
                             f"Server listener {number} survived shutdown"
                         )
                     time.sleep(0.1)
+    if interrupt and (not was_running or process.returncode != 0):
+        raise RuntimeError(f"Server failed during interrupt: {process.returncode}")
     if was_running and not windows and process.returncode not in (0, -signal.SIGTERM):
         raise RuntimeError(f"Server failed during shutdown: {process.returncode}")
 
@@ -280,9 +286,16 @@ def _smoke_server_attempt(
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     with log.open("w", encoding="utf-8") as output:
         process = subprocess.Popen(
-            command, cwd=root, env=env, stdout=output, stderr=subprocess.STDOUT
+            command,
+            cwd=root,
+            env=env,
+            stdout=output,
+            stderr=subprocess.STDOUT,
+            # Target the installed Windows launcher and its Python child together.
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
         )
         conflict = None
+        ready = False
         try:
             while time.monotonic() < deadline:
                 if process.poll() is not None:
@@ -341,6 +354,7 @@ def _smoke_server_attempt(
                         "Installed server status, setup page and phone bridge passed",
                         flush=True,
                     )
+                    ready = True
                     return True
                 except urllib.error.HTTPError:
                     raise
@@ -352,8 +366,12 @@ def _smoke_server_attempt(
                 # A confirmed collision belongs to another process, not this
                 # child's cleanup. Still check the other listener for leaks.
                 _stop_server(
-                    process, tuple(p for p in (port, port + 1) if p != conflict)
+                    process,
+                    tuple(p for p in (port, port + 1) if p != conflict),
+                    interrupt=ready,
                 )
+                if ready and state_file.exists():
+                    raise RuntimeError("Server state survived interrupt cleanup")
             finally:
                 print(
                     log.read_text(encoding="utf-8", errors="replace"),
@@ -380,7 +398,10 @@ def smoke_server(
         if _smoke_server_attempt(
             cli, root, env, port=port, deadline=deadline, attempt=attempt
         ):
-            print("Installed server stopped; both listeners closed", flush=True)
+            print(
+                "Installed server interrupt passed; state cleared and both listeners closed",
+                flush=True,
+            )
             return
         print(
             f"Installed server startup hit a port collision on attempt {attempt}",
@@ -395,6 +416,7 @@ def smoke_installer(bundle: Path) -> None:
     wheel = next(path for path in distributions(bundle) if path.suffix == ".whl")
     wheel_url = wheel.resolve().as_uri()
     repository = Path(__file__).resolve().parents[1]
+    python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
     with tempfile.TemporaryDirectory(prefix="physiclaw-installer-") as temporary:
         root = Path(temporary)
         bin_dir = root / "bin"
@@ -413,6 +435,7 @@ def smoke_installer(bundle: Path) -> None:
             PHYSICLAW_DISABLE_UPDATE_CHECK="1",
             UV_TOOL_DIR=str(tool_dir),
             UV_TOOL_BIN_DIR=str(bin_dir),
+            PHYSICLAW_PYTHON=python_version,
             # uv splits this setting on whitespace; a URI also supports spaces.
             UV_CONSTRAINT=constraints.as_uri(),
             UV_NO_CONFIG="1",
@@ -445,11 +468,20 @@ def smoke_installer(bundle: Path) -> None:
             "import importlib.metadata as m, json, sys; "
             "d = m.distribution('physiclaw'); "
             "assert d.version == sys.argv[1]; "
-            "assert json.loads(d.read_text('direct_url.json'))['url'] == sys.argv[2]"
+            "assert json.loads(d.read_text('direct_url.json'))['url'] == sys.argv[2]; "
+            "assert sys.version_info[:2] == tuple(map(int, sys.argv[3].split('.')))"
         )
         for command in (
             installer,
-            [str(python), "-I", "-c", probe, manifest["version"], wheel_url],
+            [
+                str(python),
+                "-I",
+                "-c",
+                probe,
+                manifest["version"],
+                wheel_url,
+                python_version,
+            ],
             ["uv", "--no-config", "pip", "check", "--python", str(python)],
             [str(cli), "doctor"],
         ):

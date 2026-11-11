@@ -146,6 +146,9 @@ def key_input(stream: TextIO) -> Iterator[None]:
 def read_key(stream: TextIO) -> str:
     msvcrt = importlib.import_module("msvcrt")
     key = msvcrt.getwch()
+    if key == "\x03":
+        # The CRT reads in raw mode, so Ctrl+C can arrive as a character.
+        raise KeyboardInterrupt
     if key in ("\x00", "\xe0"):
         msvcrt.getwch()
         return "special"

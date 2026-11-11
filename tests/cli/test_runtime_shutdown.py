@@ -4,6 +4,7 @@ Run: pytest -m integration tests/cli/test_runtime_shutdown.py
 """
 
 import errno
+import json
 import os
 import re
 import signal
@@ -16,10 +17,13 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = [
-    pytest.mark.integration,
-    pytest.mark.skipif(sys.platform == "win32", reason="POSIX signal replay tests"),
-]
+from physiclaw.port import processes as process_port
+
+pytestmark = pytest.mark.integration
+POSIX_SIGNAL = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Direct POSIX signal delivery; Ctrl+C runs on every OS",
+)
 TARGET_ERRORS = (
     "ASGI callable returned without completing response",
     "Session termination failed",
@@ -49,7 +53,7 @@ async def test_unconfigured_server_serves_mcp_after_hardware_ready_without_agent
         async with McpClient(f"http://127.0.0.1:{port}") as client:
             tools = await client.list_tools()
             assert any(tool["name"] == "finish" for tool in tools)
-        parent.send_signal(signal.SIGINT)
+        interrupt(parent)
         parent.wait(timeout=5)
 
     output = path.read_text(encoding="utf-8")
@@ -92,35 +96,69 @@ def running(tmp_path, mode):
         "NO_PROXY": "127.0.0.1,localhost,::1",
         "no_proxy": "127.0.0.1,localhost,::1",
     }
+    proc = None
     with path.open("a", encoding="utf-8") as output:
-        with reserved_ports() as (port, listeners):
-            proc = subprocess.Popen(
-                [
-                    sys.executable,
-                    str(Path(__file__).with_name("runtime_shutdown_app.py")),
-                    "parent",
-                    str(port),
-                    mode,
-                    *(str(listener.fileno()) for listener in listeners),
-                ],
-                pass_fds=tuple(listener.fileno() for listener in listeners),
-                env=env,
-                stdout=output,
-                stderr=subprocess.STDOUT,
-            )
         try:
+            with reserved_ports() as (port, listeners):
+                descriptors = tuple(listener.fileno() for listener in listeners)
+                options = (
+                    {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+                    if sys.platform == "win32"
+                    else {"pass_fds": descriptors}
+                )
+                proc = subprocess.Popen(
+                    [
+                        sys.executable,
+                        str(Path(__file__).with_name("runtime_shutdown_app.py")),
+                        "parent",
+                        str(port),
+                        mode,
+                        *(str(fd) for fd in descriptors),
+                    ],
+                    **options,
+                    stdin=subprocess.PIPE,
+                    env=env,
+                    stdout=output,
+                    stderr=subprocess.STDOUT,
+                )
+                if sys.platform == "win32":
+                    # WSADuplicateSocket keeps both addresses reserved while
+                    # the child starts; Windows cannot inherit via pass_fds.
+                    shared = [listener.share(proc.pid).hex() for listener in listeners]
+                    proc.stdin.write(json.dumps(shared).encode("ascii") + b"\n")
+                    proc.stdin.flush()
             yield proc, path, port
         finally:
-            if proc.poll() is None:
-                proc.kill()
-            proc.wait(timeout=5)
+            if proc is not None:
+                if proc.poll() is None:
+                    proc.kill()
+                proc.wait(timeout=5)
+                proc.stdin.close()
             # Do not leave a child behind even when a regression fails a test.
             match = re.search(r"CHILD_PID=(\d+)", path.read_text(encoding="utf-8"))
             if match:
                 try:
-                    os.kill(int(match[1]), signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
+                    pid = int(match[1])
+                    if process_port.pid_alive(pid):
+                        os.kill(
+                            pid,
+                            signal.SIGTERM
+                            if sys.platform == "win32"
+                            else signal.SIGKILL,
+                        )
+                except OSError:
+                    if process_port.pid_alive(pid):
+                        raise
+
+
+def interrupt(proc, sig=None):
+    if sig is not None:
+        proc.send_signal(sig)
+        return
+    # The fixture injects Python's Ctrl+C on its own main thread. This needs
+    # no shared desktop console and leaves the real server/EOF shutdown intact.
+    proc.stdin.write(b"\n")
+    proc.stdin.flush()
 
 
 def wait_for(proc, path, text):
@@ -139,8 +177,8 @@ def finished(proc, path, port):
     output = path.read_text(encoding="utf-8")
     assert "Runtime child reaped" in output, output
     child = int(re.search(r"CHILD_PID=(\d+)", output)[1])
-    with pytest.raises(ProcessLookupError):
-        os.kill(child, 0)
+    # os.kill(pid, 0) terminates a process on Windows instead of probing it.
+    assert not process_port.pid_alive(child), output
     for number in (port, port + 1):
         with socket.socket() as sock:
             sock.settimeout(0.2)
@@ -157,11 +195,21 @@ def finished(proc, path, port):
         ("not-ready", "ready=False"),
     ],
 )
-@pytest.mark.parametrize("sig", [signal.SIGINT, signal.SIGTERM])
+@pytest.mark.parametrize(
+    "sig",
+    [
+        pytest.param(None, id="ctrl-c"),
+        pytest.param(signal.SIGINT, id="sigint", marks=POSIX_SIGNAL),
+        pytest.param(
+            signal.CTRL_BREAK_EVENT if sys.platform == "win32" else signal.SIGTERM,
+            id="ctrl-break" if sys.platform == "win32" else "sigterm",
+        ),
+    ],
+)
 def test_managed_exit_keeps_services_alive_for_cleanup(tmp_path, mode, marker, sig):
     with running(tmp_path, mode) as (proc, path, port):
         wait_for(proc, path, marker)
-        proc.send_signal(sig)
+        interrupt(proc, sig)
         output = finished(proc, path, port)
     assert proc.returncode == 0, output
     assert not any(error in output for error in (*TARGET_ERRORS, "cancel scope")), (
@@ -199,7 +247,7 @@ def test_abnormal_exit_is_bounded_and_reaps_child(tmp_path, mode, marker):
     with running(tmp_path, mode) as (proc, path, port):
         if mode not in {"startup-failure", "bridge-failure"}:
             wait_for(proc, path, marker)
-            proc.send_signal(signal.SIGINT)
+            interrupt(proc)
         output = finished(proc, path, port)
     if mode == "unresponsive":
         assert "Runtime exit forced (timeout)" in output
@@ -215,9 +263,9 @@ def test_abnormal_exit_is_bounded_and_reaps_child(tmp_path, mode, marker):
 def test_repeated_interrupt_forces_exit_without_repeating_cleanup(tmp_path):
     with running(tmp_path, "tool") as (proc, path, port):
         wait_for(proc, path, "TOOL_STARTED")
-        proc.send_signal(signal.SIGINT)
+        interrupt(proc)
         wait_for(proc, path, "Requesting runtime exit")
-        proc.send_signal(signal.SIGINT)
+        interrupt(proc)
         output = finished(proc, path, port)
     assert "Runtime exit forced (interrupt)" in output
     assert output.count("Runtime child reaped") == 1
@@ -227,7 +275,7 @@ def test_repeated_interrupt_forces_exit_without_repeating_cleanup(tmp_path):
 def test_server_first_negative_control_detects_wrong_order(tmp_path):
     with running(tmp_path, "server-first") as (proc, path, port):
         wait_for(proc, path, "REACT_DONE")
-        proc.send_signal(signal.SIGINT)
+        interrupt(proc)
         output = finished(proc, path, port)
     assert all(error in output for error in TARGET_ERRORS), output
 
@@ -244,6 +292,7 @@ def test_no_runtime_server_and_standalone_runtime_keep_real_mcp_lifecycle(tmp_pa
                     f"http://127.0.0.1:{port}",
                     "standalone",
                 ],
+                stdin=subprocess.PIPE,
                 stdout=output,
                 stderr=subprocess.STDOUT,
                 env={
@@ -255,13 +304,14 @@ def test_no_runtime_server_and_standalone_runtime_keep_real_mcp_lifecycle(tmp_pa
             )
             try:
                 wait_for(child, path, "REACT_DONE")
-                child.send_signal(signal.SIGINT)
+                interrupt(child)
                 child.wait(timeout=5)
             finally:
                 if child.poll() is None:
                     child.kill()
                     child.wait(timeout=5)
-        parent.send_signal(signal.SIGINT)
+                child.stdin.close()
+        interrupt(parent)
         parent.wait(timeout=5)
     output = path.read_text(encoding="utf-8")
     assert child.returncode == 0, output
@@ -285,7 +335,7 @@ def test_regression_listeners_cannot_be_stolen_during_spawn(tmp_path, mocker):
 
     with running(tmp_path, "external") as (parent, path, port):
         wait_for(parent, path, "MCP tools live")
-        parent.send_signal(signal.SIGINT)
+        interrupt(parent)
         parent.wait(timeout=5)
 
     assert parent.returncode == 0, path.read_text(encoding="utf-8")

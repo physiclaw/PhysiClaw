@@ -13,12 +13,13 @@
 # Environment:
 #   PHYSICLAW_VERSION=0.0.3   pin a version
 #   PHYSICLAW_DRY_RUN=1       same as --dry-run (handy with `curl | bash`)
+#   PHYSICLAW_PYTHON=3.14     select Python (default: 3.12)
 #   NO_COLOR=1                plain output
 #
 # What it does (hardware setup is still a separate step at the end):
 #   1. Checks you're on macOS or Linux.
 #   2. Installs `uv` if missing (hardened fetch of https://astral.sh/uv/install.sh).
-#   3. Ensures Python 3.12 is available (no-op if already cached).
+#   3. Ensures the selected Python is available (default: 3.12).
 #   4. Installs `physiclaw` (small — no heavy ML deps in the package).
 #   5. Runs `physiclaw setup local-vision-model` to install the icon-detector
 #      model. By default it fetches a prebuilt ONNX (fast, no extra deps); if
@@ -61,12 +62,14 @@ Options:
 Environment:
   PHYSICLAW_VERSION=<v>   pin a version
   PHYSICLAW_DRY_RUN=1     same as --dry-run
+  PHYSICLAW_PYTHON=3.14   select Python (default: 3.12)
   NO_COLOR=1              plain output
 EOF
 }
 
 # --- Args. ------------------------------------------------------------------
 VERSION="${PHYSICLAW_VERSION:-}"
+INSTALL_PYTHON="${PHYSICLAW_PYTHON:-3.12}"
 DRY_RUN=0
 [[ "${PHYSICLAW_DRY_RUN:-}" == "1" ]] && DRY_RUN=1
 # A bad invocation exits 2 (usage error) and prints help — distinct from die's
@@ -173,12 +176,12 @@ if ! command -v uv >/dev/null 2>&1; then
   FRESH_UV=1
 fi
 
-# Only hit uv's python-build-standalone manifest when 3.12 isn't already cached.
+# Only download Python when the selected interpreter isn't already cached.
 if [[ $DRY_RUN == 1 ]]; then
-  would "uv python install 3.12 (if not cached)"
-elif ! uv python find 3.12 >/dev/null 2>&1; then
-  info "Installing Python 3.12…"
-  uv python install 3.12 --quiet
+  would "uv python install $INSTALL_PYTHON (if not cached)"
+elif ! uv python find "$INSTALL_PYTHON" >/dev/null 2>&1; then
+  info "Installing Python $INSTALL_PYTHON…"
+  uv python install "$INSTALL_PYTHON" --quiet
 fi
 
 # Follow-up commands must use the same tool directory as uv's installation.
@@ -195,9 +198,9 @@ SPEC_PLAIN="physiclaw${VERSION:+==$VERSION}"
 # the last `uv tool install` an hour ago.
 info "Installing ${SPEC_PLAIN}…"
 if [[ $DRY_RUN == 1 ]]; then
-  would "uv tool install $SPEC_PLAIN --python 3.12 --force --refresh"
+  would "uv tool install $SPEC_PLAIN --python $INSTALL_PYTHON --force --refresh"
 else
-  uv tool install "$SPEC_PLAIN" --python 3.12 --force --refresh >/dev/null
+  uv tool install "$SPEC_PLAIN" --python "$INSTALL_PYTHON" --force --refresh >/dev/null
 
   command -v physiclaw >/dev/null 2>&1 || {
     rc=$([[ "$PLATFORM" == mac ]] && echo "~/.zshrc" || echo "~/.bashrc")

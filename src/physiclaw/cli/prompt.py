@@ -122,7 +122,9 @@ def _emit(text: str, save_as: Path | None) -> None:
     content = text.rstrip("\n") + "\n"
     try:
         # Follow destination symlinks as the previous direct write did.
-        target = filesystem.native_path(save_as.resolve())
+        target = filesystem.native_path(
+            filesystem.resolve_path(save_as, allow_missing=True)
+        )
         write_text_atomic(target, content)
     except (OSError, UnicodeError, RuntimeError) as e:
         # resolve() raises RuntimeError for symlink loops on Python 3.12.

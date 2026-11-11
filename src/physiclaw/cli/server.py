@@ -199,11 +199,12 @@ def server(
     if live and live.get("service") == ASSISTIVE_TOUCH_SERVICE:
         stop_service(live)
     with ExitStack() as resources:
-        # Uvicorn replays SIGTERM after graceful shutdown. Translate that replay
+        # Uvicorn replays termination signals after graceful shutdown. Translate them
         # into KeyboardInterrupt so Python cleanup runs before restoring it.
         if threading.current_thread() is threading.main_thread():
-            previous = signal.signal(signal.SIGTERM, signal.default_int_handler)
-            resources.callback(signal.signal, signal.SIGTERM, previous)
+            for sig in process_port.termination_signals():
+                previous = signal.signal(sig, signal.default_int_handler)
+                resources.callback(signal.signal, sig, previous)
         try:
             resources.enter_context(
                 exclusive_file_lock(paths.runtime_state_file().with_suffix(".lock"))

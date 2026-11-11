@@ -160,6 +160,7 @@ def test_installer_uses_built_wheel_and_runs_doctor_in_isolation(
         monkeypatch.setenv(key, "must-not-leak")
     monkeypatch.setenv("PHYSICLAW_DRY_RUN", "1")
     monkeypatch.setenv("PYTHONIOENCODING", "cp1252")
+    monkeypatch.setenv("PHYSICLAW_PYTHON", "not-the-test-interpreter")
     server = mocker.patch.object(check_package, "smoke_server")
     calls = []
 
@@ -174,6 +175,10 @@ def test_installer_uses_built_wheel_and_runs_doctor_in_isolation(
         assert env["PYTHONIOENCODING"] == "utf-8"
         assert env["UV_TOOL_DIR"] == str(cwd / "tools")
         assert env["UV_TOOL_BIN_DIR"] == str(cwd / "bin")
+        assert (
+            env["PHYSICLAW_PYTHON"]
+            == f"{sys.version_info.major}.{sys.version_info.minor}"
+        )
         assert env["PATH"].split(os.pathsep)[0] == str(cwd / "bin")
         constraints = cwd / "constraints.txt"
         assert env["UV_CONSTRAINT"] == constraints.as_uri()
@@ -237,6 +242,8 @@ def test_installer_rejects_corrupt_wheel_before_running(bundle, mocker):
         ("redirect", "Unexpected HTTP response"),
         ("bad-page", "did not serve the packaged /setup-hardware page"),
         ("bad-bridge", "did not serve the packaged /bridge page"),
+        ("shutdown-error", "failed during interrupt"),
+        ("stale-state", "state survived interrupt"),
         ("control-collision", None),
         ("bridge-collision", None),
         ("collision-exhausted", "after 3 port collisions"),
@@ -252,6 +259,7 @@ def test_server_smoke_checks_http_and_always_stops(
             import http.server
             import json
             import os
+            import signal
             import socketserver
             import sys
             import threading
@@ -260,6 +268,8 @@ def test_server_smoke_checks_http_and_always_stops(
             from unittest.mock import patch
 
             mode = os.environ["SMOKE_MODE"]
+            if os.name == "nt":
+                signal.signal(signal.SIGBREAK, signal.default_int_handler)
             print("fixture server starting", flush=True)
             if mode == "exit":
                 sys.exit(2)
@@ -320,7 +330,18 @@ def test_server_smoke_checks_http_and_always_stops(
                 state.parent.mkdir(parents=True, exist_ok=True)
                 state.write_text(json.dumps({"pid": os.getpid(), "host": "127.0.0.1", "port": port}), encoding="utf-8")
                 threading.Thread(target=bridge.serve_forever, daemon=True).start()
-                control.serve_forever()
+                try:
+                    control.serve_forever()
+                except KeyboardInterrupt:
+                    print("CONSOLE_INTERRUPT", flush=True)
+                finally:
+                    bridge.shutdown()
+                    bridge.server_close()
+                    control.server_close()
+                    if mode != "stale-state":
+                        state.unlink()
+                if mode == "shutdown-error":
+                    sys.exit(3)
             """),
         encoding="utf-8",
     )
@@ -401,6 +422,8 @@ def test_server_smoke_checks_http_and_always_stops(
     if mode != "hang":
         assert "fixture server starting" in output
     if mode in {"ready", "slow-page", "control-collision", "bridge-collision"}:
+        assert "CONSOLE_INTERRUPT" in output
+        assert "interrupt passed; state cleared and both listeners closed" in output
         assert all(
             path in output for path in ("/api/status", "/setup-hardware", "/bridge")
         )
