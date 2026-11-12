@@ -246,7 +246,9 @@ def test_vision_invalid_base64_uses_release(installer):
 
 
 @pytest.mark.parametrize(
-    "failure", [OSError("offline"), b"invalid archive", archive(b"wrong hash")]
+    "failure",
+    [OSError("offline"), b"invalid archive", archive(b"wrong hash")],
+    ids=["offline", "invalid-archive", "checksum-mismatch"],
 )
 def test_vision_all_prebuilt_mirrors_fail_then_converts(installer, failure):
     installer.responses[installer.cdn_urls[0]] = OSError("CDN offline")

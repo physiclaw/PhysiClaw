@@ -1,16 +1,20 @@
 """Tests for `physiclaw.core.hardware.transport` — SerialTransport.
 
-Protocol behavior (ok/error/alarm/optional) is exercised end-to-end
-through the arm in `test_arm.py`; this file pins what the transport
-adds: the typed error taxonomy and the port lock.
+The public transport API is exercised with fragmented serial replies, bounded
+clocks and I/O faults. Assertions protect acknowledgment ownership, motion
+refusal, emergency release, framing and lock behavior. `test_arm.py` also
+exercises the protocol through physical gesture commands.
 """
 
 from __future__ import annotations
 
 from collections import deque
+from itertools import count, pairwise
 from types import SimpleNamespace
 
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 from physiclaw.core.hardware import transport as transport_mod
 from physiclaw.core.hardware.device import (
@@ -211,13 +215,14 @@ def test_regression_unacknowledged_command_still_allows_emergency_coil_off() -> 
     assert ser.writes == [b"M3 S1000\n", b"M5\n"]
 
 
-def test_regression_late_ack_does_not_count_as_success(mocker) -> None:
+@pytest.mark.parametrize("arrival", [12.0, 13.0])
+def test_regression_late_ack_does_not_count_as_success(mocker, arrival) -> None:
     ser = _FakeSerial([b"ok\n"])
     clock = SimpleNamespace(now=0.0)
     mocker.patch.object(transport_mod.time, "monotonic", side_effect=lambda: clock.now)
 
     def late_read(n):
-        clock.now = 13.0
+        clock.now = arrival
         return b"ok\n"
 
     mocker.patch.object(ser, "read", side_effect=late_read)
@@ -394,3 +399,293 @@ def test_send_bounded_skips_when_wire_lock_is_held() -> None:
     finally:
         release.set()
         holder.join(timeout=5)
+
+
+@pytest.mark.parametrize(
+    "reply", [b"error:3\n", b"error: 3\n", b"error:162\n", b"error: 162\n"]
+)
+def test_setting_rejection_is_an_error_unless_explicitly_optional(reply):
+    ser = _FakeSerial([reply + b"ok\n"])
+    transport = SerialTransport(ser)
+
+    with pytest.raises(ProtocolError, match="GRBL error"):
+        transport.send("$32=0")
+    transport.send("M5")
+
+    assert ser.writes == [b"$32=0\n", b"M5\n"]
+
+
+@pytest.mark.parametrize(
+    "reply", [b"error:3\n", b"error: 3\n", b"error:162\n", b"error: 162\n"]
+)
+def test_optional_setting_rejection_leaves_next_command_acknowledgment_intact(reply):
+    ser = _FakeSerial([reply + b"[MSG:ERR: read-only setting]\nok\nerror:23\n"])
+    transport = SerialTransport(ser)
+
+    transport.send("$32=0", optional=True)
+    transport.send("M5")
+    with pytest.raises(ProtocolError, match="error:23"):
+        transport.send("G0 X1")
+
+    assert ser.writes == [b"$32=0\n", b"M5\n", b"G0 X1\n"]
+
+
+@pytest.mark.parametrize("reply", [b"error:2\n", b"error:23\n", b"error:163\n"])
+def test_optional_setting_never_swallows_other_firmware_errors(reply):
+    ser = _FakeSerial([reply + b"ok\n"])
+    transport = SerialTransport(ser)
+
+    with pytest.raises(ProtocolError, match="GRBL error"):
+        transport.send("$32=0", optional=True)
+    transport.send("M5")
+
+    assert ser.writes == [b"$32=0\n", b"M5\n"]
+
+
+def test_unacknowledged_send_blocks_motion_even_if_late_ok_arrives():
+    ser = _FakeSerial()
+    transport = SerialTransport(ser)
+    transport.send("G90", wait_ok=False)
+    ser.responses.append(b"ok\n")
+
+    with pytest.raises(ProtocolError, match="unsynchronized; reconnect"):
+        transport.send("G0 X1")
+    with pytest.raises(ProtocolError, match="unsynchronized; reconnect"):
+        transport.send("M5")
+
+    assert ser.writes == [b"G90\n", b"M5\n"]
+
+
+def test_input_reset_and_healthy_status_cannot_restore_lost_ack_ownership(mocker):
+    ser = _FakeSerial([b"o"])
+    transport = SerialTransport(ser)
+    mocker.patch.object(transport_mod.time, "sleep")
+    with pytest.raises(DeviceTimeout, match="GRBL not responding"):
+        transport.send("G90")
+
+    transport.reset_input_buffer()
+    ser.responses.append(b"<Idle|WPos:0,0>\n")
+    status = transport.query_status()
+    with pytest.raises(ProtocolError, match="unsynchronized; reconnect"):
+        transport.send("G0 X1")
+
+    assert status == "<Idle|WPos:0,0>"
+    assert ser.writes == [b"G90\n", b"?"]
+
+
+@pytest.mark.parametrize("operation", ["read", "write"])
+def test_serial_io_failure_blocks_followup_motion_but_allows_emergency_release(
+    mocker, operation
+):
+    ser = _FakeSerial([b"ok\n"])
+    transport = SerialTransport(ser)
+    native = getattr(ser, operation)
+
+    fault = mocker.patch.object(
+        ser, operation, side_effect=OSError("serial disconnected")
+    )
+    with pytest.raises(OSError, match="serial disconnected"):
+        transport.send("G90")
+    fault.side_effect = native
+    writes_after_failure = list(ser.writes)
+
+    with pytest.raises(ProtocolError, match="unsynchronized; reconnect"):
+        transport.send("G0 X1")
+    with pytest.raises(ProtocolError, match="unsynchronized; reconnect"):
+        transport.send("M5")
+
+    assert ser.writes == writes_after_failure + [b"M5\n"]
+
+
+def test_diagnostic_chatter_stops_at_default_twelve_second_budget(mocker):
+    clock = SimpleNamespace(now=0.0)
+    ser = _FakeSerial([b"[MSG:busy]\n"] * 8)
+    native_read = ser.read
+
+    def read(n):
+        clock.now += ser.timeout
+        return native_read(n)
+
+    mocker.patch.object(ser, "read", side_effect=read)
+    mocker.patch.object(
+        transport_mod, "time", SimpleNamespace(monotonic=lambda: clock.now)
+    )
+    transport = SerialTransport(ser)
+
+    with pytest.raises(DeviceTimeout, match="GRBL not responding"):
+        transport.send("G90")
+
+    assert clock.now == 12.0
+    assert ser.timeout == 3.0
+
+
+_REPLY_STREAM = b"[MSG:ready]\r\nok\r\nerror:23\r\nok\n"
+
+
+def _fragment_reply(cuts):
+    boundaries = [0, *sorted(cuts), len(_REPLY_STREAM)]
+    return [_REPLY_STREAM[start:end] for start, end in pairwise(boundaries)]
+
+
+@given(cuts=st.sets(st.integers(min_value=1, max_value=len(_REPLY_STREAM) - 1)))
+def test_arbitrary_serial_chunking_preserves_command_reply_ownership(cuts):
+    ser = _FakeSerial(_fragment_reply(cuts))
+    transport = SerialTransport(ser)
+
+    transport.send("G90")
+    with pytest.raises(ProtocolError, match="error:23.*G0 X1"):
+        transport.send("G0 X1")
+    transport.send("M5")
+
+    assert ser.writes == [b"G90\n", b"G0 X1\n", b"M5\n"]
+
+
+def test_split_ack_can_resume_after_transient_empty_reads():
+    ser = _FakeSerial([b"", b"", b"", b"[MSG:busy]\n", b"o", b"", b"", b"", b"k\n"])
+    transport = SerialTransport(ser)
+
+    transport.send("G90")
+
+    assert ser.writes == [b"G90\n"]
+
+
+def test_four_consecutive_empty_reads_refuse_late_ack():
+    ser = _FakeSerial([b""] * 4 + [b"ok\n"])
+    transport = SerialTransport(ser)
+
+    with pytest.raises(DeviceTimeout, match="GRBL not responding"):
+        transport.send("G90")
+    with pytest.raises(ProtocolError, match="unsynchronized; reconnect"):
+        transport.send("G0 X1")
+
+    assert ser.writes == [b"G90\n"]
+
+
+@pytest.mark.parametrize(
+    "native_timeout,first_budget",
+    [(None, 0.3), (0.25, 0.25), (3.0, 0.3)],
+    ids=["None", "0.25", "3.0"],
+)
+def test_partial_reads_use_remaining_budget_even_with_unbounded_serial_timeout(
+    mocker, native_timeout, first_budget
+):
+    ser = _FakeSerial([b"o", b"k\n"])
+    ser.timeout = native_timeout
+    native_read = ser.read
+    clock = SimpleNamespace(now=100.0)
+    budgets = []
+    delays = iter([0.2, 0.05])
+
+    def read(n):
+        budgets.append(ser.timeout)
+        clock.now += next(delays)
+        return native_read(n)
+
+    mocker.patch.object(ser, "read", side_effect=read)
+    mocker.patch.object(
+        transport_mod, "time", SimpleNamespace(monotonic=lambda: clock.now)
+    )
+    transport = SerialTransport(ser)
+    transport.RESPONSE_TIMEOUT_SECONDS = 0.3
+
+    transport.send("G90")
+
+    assert budgets == pytest.approx([first_budget, 0.1])
+    assert ser.timeout == native_timeout
+
+
+def test_expiry_between_clock_checks_prevents_native_read(mocker):
+    ser = _FakeSerial([b"ok\n"])
+    ticks = count(1)
+    mocker.patch.object(
+        transport_mod, "time", SimpleNamespace(monotonic=lambda: next(ticks))
+    )
+    read = mocker.spy(ser, "read")
+    transport = SerialTransport(ser)
+    transport.RESPONSE_TIMEOUT_SECONDS = 3
+
+    with pytest.raises(DeviceTimeout, match="GRBL not responding"):
+        transport.send("G90")
+
+    read.assert_not_called()
+
+
+def test_fragmented_oversized_reply_cannot_exceed_native_read_bound():
+    ser = _FakeSerial([b"x" * 4095, b"xok\n"])
+    transport = SerialTransport(ser)
+
+    with pytest.raises(ProtocolError, match="reply exceeds 4096 bytes"):
+        transport.send("G90")
+
+    assert b"".join(ser.responses) == b"ok\n"
+
+
+@pytest.mark.parametrize("noise", [b"noise>\n", b"<Idle\n", b"<Idle|WPos:\xff>\n"])
+def test_status_skips_invalid_frames_until_complete_valid_report(mocker, noise):
+    ser = _FakeSerial([noise + b"<Run|WPos:1,2>\n"])
+    mocker.patch.object(transport_mod.time, "sleep")
+
+    status = SerialTransport(ser).query_status()
+
+    assert status == "<Run|WPos:1,2>"
+    assert ser.writes == [b"?"]
+
+
+@pytest.mark.parametrize("native_timeout, expected_budget", [(None, 12.0), (3.0, 3.0)])
+def test_status_diagnostics_exhaust_budget_without_reporting_a_position(
+    mocker, native_timeout, expected_budget
+):
+    ser = _FakeSerial([b"[MSG:busy]\n"] * 20)
+    ser.timeout = native_timeout
+    native_read = ser.read
+    clock = SimpleNamespace(now=0.0)
+
+    def read(n):
+        clock.now += 1.0
+        return native_read(n)
+
+    def sleep(seconds):
+        clock.now += seconds
+
+    mocker.patch.object(ser, "read", side_effect=read)
+    mocker.patch.object(
+        transport_mod, "time", SimpleNamespace(monotonic=lambda: clock.now, sleep=sleep)
+    )
+
+    status = SerialTransport(ser).query_status()
+
+    assert status == ""
+    assert clock.now == pytest.approx(expected_budget + 0.1)
+    assert ser.timeout == native_timeout
+
+
+def test_startup_returns_complete_available_banner_with_replacement_noise_ignored():
+    banner = b"Grbl 1.1\n" + b"[MSG:booting]\n" * 30 + b"\xff"
+    ser = _FakeSerial([banner])
+    transport = SerialTransport(ser)
+
+    startup = transport.read_startup()
+
+    assert startup == "Grbl 1.1\n" + "[MSG:booting]\n" * 30
+    assert ser.writes == []
+
+
+def test_status_budget_expiring_after_diagnostic_returns_no_position(mocker):
+    ser = _FakeSerial([b"[MSG:busy]\n"])
+    ser.timeout = 5.0
+    ticks = count(1)
+    mocker.patch.object(
+        transport_mod,
+        "time",
+        SimpleNamespace(monotonic=lambda: next(ticks), sleep=lambda _: None),
+    )
+
+    status = SerialTransport(ser).query_status()
+
+    assert status == ""
+
+
+# Accepted mutation survivors are cosmetic diagnostics, False -> None flags
+# (only truthiness is observed), and equivalent outer deadline comparisons.
+# A one-byte change to the startup cap or idle-read chunk size does not change
+# the safety contract; bounded reads and decoded output are asserted instead.

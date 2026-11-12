@@ -8,7 +8,11 @@ serial port through StylusArm) is covered by the gesture tests in test_arm.py.
 
 from __future__ import annotations
 
+import math
+
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 from physiclaw.core.hardware.solenoid import Solenoid
 
@@ -88,9 +92,9 @@ def test_configure_sets_pwm_mode_and_range_optionally_then_coil_off(
     sol.configure()
 
     assert rec.calls == [
-        ("send", f"$32={Solenoid.SPINDLE_MODE}", True),  # spindle mode, optional
-        ("send", f"$30={Solenoid.PWM_MAX}", True),  # S-range, optional
-        ("send", Solenoid.GCODE_OFF, False),  # failsafe coil-off
+        ("send", "$32=0", True),  # spindle mode, optional
+        ("send", "$30=1000", True),  # S-range, optional
+        ("send", "M5", False),  # failsafe coil-off
     ]
 
 
@@ -102,7 +106,7 @@ def test_press_strikes_settles_then_holds(rec: Recorder, sol: Solenoid) -> None:
 
     assert rec.calls == [
         ("send", "M3 S1000", False),  # strike at HIT_S
-        ("dwell", Solenoid.SETTLE_MS / 1000.0),  # settle
+        ("dwell", 0.08),  # settle before reducing strike current
         ("send", "M3 S750", False),  # drop to HOLD_S, coil left energized
     ]
 
@@ -112,7 +116,7 @@ def test_release_cuts_then_waits_for_rebound(rec: Recorder, sol: Solenoid) -> No
 
     assert rec.calls == [
         ("send", "M5", False),  # cut the coil
-        ("dwell", Solenoid.RELEASE_MS / 1000.0),  # wait for the spring to lift
+        ("dwell", 0.2),  # wait for the spring to lift
     ]
 
 
@@ -126,7 +130,7 @@ def test_tap_fires_for_duration_then_releases(rec: Recorder, sol: Solenoid) -> N
         ("send", "M3 S1000", False),  # strike at HIT_S
         ("dwell", 0.08),  # contact duration
         ("send", "M5", False),  # release (via release())
-        ("dwell", Solenoid.RELEASE_MS / 1000.0),  # spring rebound
+        ("dwell", 0.2),  # spring rebound
     ]
     # No hold step for a momentary tap.
     assert ("send", "M3 S750", False) not in rec.calls
@@ -141,14 +145,11 @@ def test_double_tap_uses_short_gap_then_full_release(
         ("send", "M3 S1000", False),  # first strike
         ("dwell", 0.08),  # contact duration
         ("send", "M5", False),  # lift
-        (
-            "dwell",
-            Solenoid.DOUBLE_TAP_GAP_MS / 1000.0,
-        ),  # brief gap — break contact only
+        ("dwell", 0.1),  # brief gap — break contact only
         ("send", "M3 S1000", False),  # second strike
         ("dwell", 0.08),  # contact duration
         ("send", "M5", False),  # release
-        ("dwell", Solenoid.RELEASE_MS / 1000.0),  # full spring-clear after the pair
+        ("dwell", 0.2),  # full spring-clear after the pair
     ]
     # The inter-tap gap must stay below a full release, or down-to-down drifts
     # past the iOS double-tap window and the pair reads as two single taps.
@@ -173,11 +174,11 @@ def test_press_and_hold_drops_to_hold_current_for_duration(
 
     assert rec.calls == [
         ("send", "M3 S1000", False),  # strike at HIT_S
-        ("dwell", Solenoid.SETTLE_MS / 1000.0),  # settle
+        ("dwell", 0.08),  # settle
         ("send", "M3 S750", False),  # hold current
         ("dwell", 1.2),  # hold duration
         ("send", "M5", False),  # release
-        ("dwell", Solenoid.RELEASE_MS / 1000.0),  # spring rebound
+        ("dwell", 0.2),  # spring rebound
     ]
 
 
@@ -210,11 +211,16 @@ def test_init_rejects_unsafe_hold_current(rec: Recorder, hold: int) -> None:
         BadSolenoid(send=rec.send, dwell=rec.dwell)
 
 
-def test_init_accepts_hold_below_hit(rec: Recorder) -> None:
+@pytest.mark.parametrize("hold", [1, 999])
+def test_init_accepts_hold_below_hit(rec: Recorder, hold: int) -> None:
     class OkSolenoid(Solenoid):
-        HOLD_S = 999  # just under HIT_S — allowed (thermal tuning is the user's)
+        HOLD_S = hold  # Both open-boundary neighbors are valid configuration.
 
-    OkSolenoid(send=rec.send, dwell=rec.dwell)  # no raise
+    sol = OkSolenoid(send=rec.send, dwell=rec.dwell)
+
+    sol.press()
+
+    assert rec.sends == ["M3 S1000", f"M3 S{hold}"]
 
 
 # ---------- coil is forced off on any mid-gesture failure ----------
@@ -284,3 +290,91 @@ def test_force_off_failure_is_swallowed_and_original_error_survives(
         sol.tap(0.08)
 
     assert "M5" in rec.sends  # release was still attempted
+
+
+# These are the bench-calibrated wire sequences, independent of the driver's
+# constants. Reading SETTLE_MS / RELEASE_MS from the implementation in the
+# expected result would let a broken unit conversion or changed timing pass.
+_PRESS = [("send", "M3 S1000", False), ("dwell", 0.08), ("send", "M3 S750", False)]
+_RELEASE = [("send", "M5", False), ("dwell", 0.2)]
+_TAP = [("send", "M3 S1000", False), ("dwell", 0.08)]
+_GESTURES = [
+    ("press", (), _PRESS),
+    ("tap", (0.08,), _TAP + _RELEASE),
+    (
+        "double_tap",
+        (0.08,),
+        _TAP + [("send", "M5", False), ("dwell", 0.1)] + _TAP + _RELEASE,
+    ),
+    ("press_and_hold", (1.2,), _PRESS + [("dwell", 1.2)] + _RELEASE),
+]
+_FAULT_CASES = [
+    pytest.param(method, args, expected[:step], id=f"{method}-operation-{step}")
+    for method, args, expected in _GESTURES
+    for step in range(1, len(expected) + 1)
+]
+
+
+@pytest.mark.parametrize("method,args,attempted", _FAULT_CASES)
+@pytest.mark.parametrize("error_type", [Boom, KeyboardInterrupt])
+def test_gesture_fault_at_every_io_boundary_releases_and_preserves_error(
+    method, args, attempted, error_type
+):
+    error = error_type("injected gesture failure")
+
+    def fail_once(_op, _payload):
+        if len(rec.calls) == len(attempted):
+            raise error
+        return False
+
+    rec = Recorder(fail_on=fail_once)
+    sol = Solenoid(send=rec.send, dwell=rec.dwell)
+
+    with pytest.raises(error_type, match="injected gesture failure") as caught:
+        getattr(sol, method)(*args)
+
+    assert caught.value is error
+    assert rec.calls == attempted + _RELEASE
+
+
+@pytest.mark.parametrize("error_type", [Boom, KeyboardInterrupt])
+def test_held_body_failure_releases_before_propagating_original_error(
+    rec, sol, error_type
+):
+    error = error_type("slide interrupted")
+
+    with pytest.raises(error_type, match="slide interrupted") as caught, sol.held():
+        raise error
+
+    assert caught.value is error
+    assert rec.calls == _PRESS + _RELEASE
+
+
+@pytest.mark.parametrize("method", ["tap", "double_tap"])
+def test_tap_first_float_above_maximum_never_energizes(rec, sol, method):
+    duration = math.nextafter(0.15, math.inf)
+
+    with pytest.raises(ValueError, match="press_and_hold"):
+        getattr(sol, method)(duration)
+
+    assert rec.calls == []
+
+
+@pytest.mark.parametrize("method", ["tap", "double_tap"])
+@given(duration=st.floats(min_value=0, max_value=0.15))
+def test_tap_safe_duration_preserves_contact_and_finishes_with_rebound(
+    method, duration
+):
+    rec = Recorder()
+    sol = Solenoid(send=rec.send, dwell=rec.dwell)
+
+    getattr(sol, method)(duration)
+
+    assert rec.calls[:2] == [("send", "M3 S1000", False), ("dwell", duration)]
+    assert rec.calls[-2:] == _RELEASE
+
+
+# Accepted mutation survivors: diagnostic text can change without changing the
+# exception contract; False -> None in the completion flag is equivalent because
+# it is only tested for truth. Do not couple safety tests to either spelling.
+# Callable type-alias mutations affect annotations, outside runtime behavior.
