@@ -1,5 +1,5 @@
 .PHONY: test-bootstrap test test-cov test-all-cov test-fast test-encoding test-encoding-0 test-encoding-1 test-slow test-integration test-all testall test-studio-ui mutate lint fmt typecheck loc help firmware bump build publish release release-start release-status release-approve release-watch docs-deploy check-site-assets \
-        hw-help hw-parts hw-build hw-check hw-step hw-print hw-manual hw-manual-pdf hw-sourcing hw-url hw-drawing hw-rebuild hw-preflight hw-prepare hw-verify hw-publish hw-release _hw-package
+        manual hw-help hw-parts hw-build hw-check hw-step hw-print hw-manual hw-manual-pdf hw-sourcing hw-url hw-drawing hw-rebuild hw-preflight hw-prepare hw-verify hw-publish hw-release _hw-package
 
 PY ?= uv run
 PYTHON ?= $(PY) python
@@ -145,6 +145,7 @@ hw-help:
 	@echo "Hardware — run from the repository root:"
 	@echo ""
 	@echo "  Local work (no upload):"
+	@echo "    make manual                         Build CAD → manual HTML/PDFs → sourcing HTML"
 	@echo "    make hw-build [ARGS=--bom]           Build CAD drawings and STEPs; reuse cache"
 	@echo "    make hw-check                       Check hardware source consistency"
 	@echo "    make hw-url                         Show 3 Taobao and 3 AliExpress URLs"
@@ -173,6 +174,12 @@ hw-help:
 	@echo ""
 	@echo "  Options: make hw-build ARGS=--help (also works for other build commands)"
 	@echo "  Guide: hardware/README.md"
+
+# Keep the document builds after CAD, even under make -j; stop on failure.
+manual:
+	@$(MAKE) hw-build
+	@$(MAKE) hw-manual-pdf
+	@$(MAKE) hw-sourcing
 
 hw-parts:
 	@$(HW) parts $(ARGS)

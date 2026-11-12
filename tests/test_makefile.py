@@ -67,6 +67,7 @@ ROUTES = [
         ['ARGS=--tag test --out "bundle path.zip"'],
         [["firmware/firmware.py", "--tag", "test", "--out", "bundle path.zip"]],
     ),
+    ("manual", [], [[*CAD, "build"], [*DOC, "manual", "--pdf"], [*DOC, "sourcing"]]),
     ("hw-parts", [], [[*CAD, "parts"]]),
     ("hw-build", ["ARGS=--bom"], [[*CAD, "build", "--bom"]]),
     ("hw-check", ["ARGS=--help"], [[*DOC, "check", "--help"]]),
@@ -358,6 +359,7 @@ def test_make_missing_required_argument_fails_before_running_anything(
     "target",
     [
         "test-encoding",
+        "manual",
         "lint",
         "release",
         "hw-release",
