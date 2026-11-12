@@ -245,8 +245,9 @@ def test_managed_exit_keeps_services_alive_for_cleanup(tmp_path, mode, marker, s
 )
 def test_abnormal_exit_is_bounded_and_reaps_child(tmp_path, mode, marker):
     with running(tmp_path, mode) as (proc, path, port):
+        # Imports and startup must not consume the shutdown deadline.
+        wait_for(proc, path, marker)
         if mode not in {"startup-failure", "bridge-failure"}:
-            wait_for(proc, path, marker)
             interrupt(proc)
         output = finished(proc, path, port)
     if mode == "unresponsive":
