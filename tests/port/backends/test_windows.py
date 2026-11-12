@@ -1,18 +1,39 @@
 """Tests for `physiclaw.port.backends.windows` — Windows-specific helpers.
 
-These run on every platform: subprocess, socket, and os.startfile are
-mocked, so the windows module's dispatch logic is exercised regardless
-of where the suite is run.
+Most run on every platform with native calls mocked. Process-handle lifecycle
+regressions also exercise the real Windows API when available.
 """
 
 from __future__ import annotations
 
 import socket
+import subprocess
+import sys
 from unittest.mock import MagicMock, call
 
 import pytest
 
 from physiclaw.port.backends import windows
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="requires Windows process handles")
+@pytest.mark.parametrize("exit_code", [0, 259])
+def test_pid_alive_checks_exit_while_process_handle_remains_open(exit_code):
+    with subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            f"import sys; sys.stdin.buffer.read(); sys.exit({exit_code})",
+        ],
+        stdin=subprocess.PIPE,
+    ) as child:
+        assert windows.pid_alive(child.pid)
+        child.stdin.close()
+        assert child.wait(timeout=5) == exit_code
+
+        # Popen still owns its handle, so OpenProcess can also succeed after exit.
+        # Exit code 259 must not be confused with Windows' STILL_ACTIVE sentinel.
+        assert not windows.pid_alive(child.pid)
 
 
 @pytest.mark.parametrize("value", [float("inf"), float("nan"), -1.0])

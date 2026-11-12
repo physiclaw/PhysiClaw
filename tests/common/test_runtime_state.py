@@ -389,20 +389,27 @@ def test_request_shutdown_failed_signal_returns_false(mocker) -> None:
     assert sent is False
 
 
-def test_read_live_windows_queries_process_without_signaling(mocker) -> None:
+@pytest.mark.parametrize("wait_status,expected", [(0x102, True), (0, False)])
+def test_read_live_windows_queries_process_without_signaling(
+    mocker, wait_status, expected
+) -> None:
     import ctypes
 
     runtime_state.write("localhost", 8048)
     mocker.patch.object(processes, "_native", windows)
     kernel = mocker.Mock()
     kernel.OpenProcess.return_value = 1234
+    kernel.WaitForSingleObject.return_value = wait_status
     mocker.patch.object(ctypes, "WinDLL", return_value=kernel, create=True)
     kill = mocker.patch.object(runtime_state.os, "kill")
 
     live = runtime_state.read_live()
 
-    assert live is not None and live["pid"] == os.getpid()
-    kernel.OpenProcess.assert_called_once_with(0x1000, False, os.getpid())
+    assert (live is not None) is expected
+    if live is not None:
+        assert live["pid"] == os.getpid()
+    kernel.OpenProcess.assert_called_once_with(0x100000, False, os.getpid())
+    kernel.WaitForSingleObject.assert_called_once_with(1234, 0)
     kernel.CloseHandle.assert_called_once_with(1234)
     kill.assert_not_called()
 
@@ -435,6 +442,7 @@ def test_request_shutdown_windows_does_not_terminate_process(mocker) -> None:
     mocker.patch.object(processes, "_native", windows)
     kernel = mocker.Mock()
     kernel.OpenProcess.return_value = 1234
+    kernel.WaitForSingleObject.return_value = 0x102
     mocker.patch.object(ctypes, "WinDLL", return_value=kernel, create=True)
     kill = mocker.patch.object(runtime_state.os, "kill")
 

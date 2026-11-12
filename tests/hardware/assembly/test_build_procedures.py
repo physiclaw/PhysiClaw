@@ -63,16 +63,29 @@ def test_cancelling_reference_build_stops_child_and_returns_cancelled(
     monkeypatch.setattr(bp, "X_TRAVEL", 220)
     monkeypatch.setattr(bp, "_execute", lambda args: 0)
     original_popen = subprocess.Popen
+    original_emit = bp.buildlog.BuildLog.emit
     children = []
+
+    def cancel_when_ready(log, event, message, **fields):
+        original_emit(log, event, message, **fields)
+        if event == "subprocess_output" and message == "reference ready":
+            # CTRL_BREAK during Windows DLL initialization can produce a startup
+            # error dialog. Cancel only after the child has entered Python code.
+            bp._CANCELLED.set()
 
     def reference_child(args, **kwargs):
         child = original_popen(
-            [sys.executable, "-c", "import time; time.sleep(30)"], **kwargs
+            [
+                sys.executable,
+                "-c",
+                "import time; print('reference ready', flush=True); time.sleep(30)",
+            ],
+            **kwargs,
         )
         children.append(child)
-        bp._CANCELLED.set()
         return child
 
+    monkeypatch.setattr(bp.buildlog.BuildLog, "emit", cancel_when_ready)
     monkeypatch.setattr(subprocess, "Popen", reference_child)
     started = time.monotonic()
     assert bp.main([]) == 130
@@ -81,6 +94,7 @@ def test_cancelling_reference_build_stops_child_and_returns_cancelled(
     assert time.monotonic() - started < 15
     assert len(children) == 1
     assert children[0].poll() is not None
+    assert children[0].returncode & 0xFFFFFFFF != 0xC0000142
 
 
 def test_failed_reference_build_fails_complete_hardware_build(tmp_path, monkeypatch):

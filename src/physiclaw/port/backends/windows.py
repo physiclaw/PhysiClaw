@@ -307,19 +307,26 @@ def prepare_managed_runtime() -> None:
 
 
 def pid_alive(pid: int) -> bool:
-    """Query a process handle; os.kill(pid, 0) can terminate it on Windows."""
+    """Check process state; a retained handle can outlive the process itself."""
     import ctypes
     from ctypes import wintypes
 
     kernel = getattr(ctypes, "WinDLL")("kernel32", use_last_error=True)
     kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
     kernel.OpenProcess.restype = wintypes.HANDLE
+    kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+    kernel.WaitForSingleObject.restype = wintypes.DWORD
     kernel.CloseHandle.argtypes = [wintypes.HANDLE]
-    handle = kernel.OpenProcess(0x1000, False, pid)
-    if handle:
+    handle = kernel.OpenProcess(0x100000, False, pid)  # SYNCHRONIZE
+    if not handle:
+        return getattr(ctypes, "get_last_error")() == 5
+    try:
+        status = kernel.WaitForSingleObject(handle, 0)
+        if status == 0xFFFFFFFF:  # WAIT_FAILED
+            raise getattr(ctypes, "WinError")(getattr(ctypes, "get_last_error")())
+        return status == 0x102  # WAIT_TIMEOUT: the process has not exited.
+    finally:
         kernel.CloseHandle(handle)
-        return True
-    return getattr(ctypes, "get_last_error")() == 5
 
 
 def request_shutdown(pid: int) -> None:
