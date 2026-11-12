@@ -12,7 +12,7 @@
     },
     "lede": {
       "en": "PhysiClaw's CoreXY stage uses three MGN9H rails. Two Y rails run along the sides of the frame, with one X rail spanning between them.",
-      "zh": "PhysiClaw 的 X/Y 运动采用 CoreXY 结构，由三根 MGN9H 导轨导向。左右两根导轨用作 Y 轴，横跨其间的一根用作 X 轴。"
+      "zh": "XY 平面运动采用 CoreXY 传动，三根 MGN9H 导轨负责导向。两根 Y 轴导轨装在框架左右两侧，X 轴导轨横跨在两者之间。"
     }
   },
   {
