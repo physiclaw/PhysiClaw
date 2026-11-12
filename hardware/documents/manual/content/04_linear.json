@@ -11,8 +11,8 @@
       "zh": "直线运动"
     },
     "lede": {
-      "en": "PhysiClaw's X/Y motion is a CoreXY stage on three MGN9H rails. The Y axis uses two rails, one on the left and one on the right. One rail spans between them as the X axis. Each of the two XY joints, where the X axis meets a Y rail, carries two idlers. Keep every carriage on its rail. A carriage that slides off spills its balls and is ruined.",
-      "zh": "PhysiClaw 的 X/Y 运动采用 CoreXY 结构，由三根 MGN9H 导轨导向。左右两根导轨用作 Y 轴，横跨其间的一根用作 X 轴。X 轴与两侧 Y 导轨的连接处各装一个 XY 连接件，每个连接件上装两个惰轮。每个滑块都要留在导轨上。滑块一旦滑出导轨，钢珠散落，滑块随之损坏。"
+      "en": "PhysiClaw's CoreXY stage uses three MGN9H rails. Two Y rails run along the sides of the frame, with one X rail spanning between them.",
+      "zh": "PhysiClaw 的 X/Y 运动采用 CoreXY 结构，由三根 MGN9H 导轨导向。左右两根导轨用作 Y 轴，横跨其间的一根用作 X 轴。"
     }
   },
   {

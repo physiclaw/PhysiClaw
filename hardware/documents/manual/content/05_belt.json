@@ -11,8 +11,8 @@
       "zh": "同步带"
     },
     "lede": {
-      "en": "PhysiClaw's CoreXY stage runs on two GT2 belts, the Motor A belt and the Motor B belt. They run on the upper and lower belt planes, so they never cross. The two belts must have equal tension, or the motion is not accurate.",
-      "zh": "PhysiClaw 的 CoreXY 结构由两条 GT2 同步带驱动，即电机 A 的同步带和电机 B 的同步带。两条同步带上下分层布置，互不交叉。两条同步带的张力必须一致，运动才能准确。"
+      "en": "The CoreXY system uses two timing belts on separate levels without crossing. Both belts must have equal tension for accurate motion.",
+      "zh": "CoreXY 的两条同步带上下分层布置，互不交叉。两条同步带张力一致，才能保证运动精度。"
     }
   },
   {

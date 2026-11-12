@@ -440,10 +440,11 @@
   .opener .lede {
     font-size: 13pt;
     color: var(--ink-soft);
-    max-width: 200mm;
+    width: 140mm;
+    max-width: 100%;
     line-height: 1.55;
     margin: 0;
-    text-wrap: balance;
+    text-wrap: pretty;
   }
   .opener .bar {
     width: 60mm;

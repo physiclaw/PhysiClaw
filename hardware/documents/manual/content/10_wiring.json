@@ -11,8 +11,8 @@
       "zh": "接线"
     },
     "lede": {
-      "en": "Connect the stepper driver outputs of the control board to the motors. Connect the solenoid to the Spindle output. Ground the solenoid.",
-      "zh": "将控制板上驱动模块的输出接到电机。把电磁铁接到主轴（Spindle）输出，并接地。"
+      "en": "The motors and solenoid connect to different outputs on the control board. The solenoid housing needs a separate earth connection so the phone can reliably detect stylus taps.",
+      "zh": "电机和电磁铁接到控制板的不同输出端。电磁铁外壳需单独接地，让手机能稳定识别触控笔的点击。"
     }
   },
   {

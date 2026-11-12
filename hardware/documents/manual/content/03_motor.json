@@ -11,8 +11,8 @@
       "zh": "电机"
     },
     "lede": {
-      "en": "Two NEMA 17 stepper motors sit on the top extrusion of the frame, one at each side. The motors drive the CoreXY belts, which move the X carriage.",
-      "zh": "两台 42 步进电机装在框架顶部的型材上，左右各一。电机驱动 CoreXY 同步带，带动 X 滑座移动。"
+      "en": "Two stepper motors mount at the top of the frame, one on each side. They drive the CoreXY belts to move the X carriage.",
+      "zh": "两台步进电机装在框架顶部，左右各一。电机驱动 CoreXY 同步带，带动 X 滑座移动。"
     }
   },
   {

@@ -11,8 +11,8 @@
       "zh": "手机托架"
     },
     "lede": {
-      "en": "Two cross-beams mount under the frame and carry the printed phone bed. The phone lies in the bed with the screen up, level under the stylus. Its top-left corner sits against the corner of the bed.",
-      "zh": "两根横梁装在框架底面，承载 3D 打印的手机托架。手机屏幕朝上放入托架，水平置于触控笔下方。手机左上角抵住托架内角。"
+      "en": "Two crossbeams beneath the frame support the phone bed. Position the phone with its top-left corner against the bed's inner corner.",
+      "zh": "两根横梁装在框架底面，支撑手机托架。放入手机时，让手机左上角抵住托架内角。"
     }
   },
   {

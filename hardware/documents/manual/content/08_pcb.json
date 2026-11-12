@@ -11,8 +11,8 @@
       "zh": "控制板"
     },
     "lede": {
-      "en": "The control board mounts at the front of the frame. Spiral wrap binds the solenoid's lead wires to a Teflon tube. The tube stiffens the bundle so that it holds its shape, clear of the motors and belts. The tube anchors to the tube holder on the frame and to the X carriage.",
-      "zh": "控制板安装在框架前方。电磁铁引线用螺旋缠绕带与特氟龙管缠成一束。特氟龙管增加线束刚性，使线束保持形状，避开电机和同步带。管的两端分别固定在框架上的导管支架和 X 滑座上。"
+      "en": "The control board mounts on the top extrusion's outer face and drives the motors and solenoid. A Teflon tube supports the solenoid leads, keeping them clear of motors and belts as the X carriage moves.",
+      "zh": "控制板装在框架顶部型材的外侧，驱动电机和电磁铁。特氟龙管支撑电磁铁引线，让线束随 X 滑座移动时避开电机和同步带。"
     }
   },
   {

@@ -11,8 +11,8 @@
       "zh": "触控机构"
     },
     "lede": {
-      "en": "Install the capacitive stylus tip on the push-pull solenoid. Then install the two together onto the X carriage.",
-      "zh": "把电容触控笔尖装到推拉式电磁铁上，再把两者一起装到 X 滑座上。"
+      "en": "The touch end mounts on the X carriage and combines a push-pull solenoid with a stylus tip. The solenoid moves the tip along the Z axis to tap the phone screen.",
+      "zh": "触控机构装在 X 滑座上，由推拉式电磁铁和触控笔尖组成。电磁铁带动笔尖沿 Z 轴上下移动，点击手机屏幕。"
     }
   },
   {
