@@ -1,1 +1,1 @@
-"""Google chat service adapter."""
+"""Google chat and native decision service adapters."""

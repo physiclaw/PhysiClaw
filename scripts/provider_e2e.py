@@ -1134,6 +1134,11 @@ class Runner:
                     valid = all(a.selected_id == "tap" for a in result.answers.values())
                     raw = responses[-1] if responses else {}
                     usage = raw.get("usage") or {}
+                    if pid == "google":
+                        usage = {
+                            "input_tokens": usage.get("total_input_tokens"),
+                            "output_tokens": usage.get("total_output_tokens"),
+                        }
                     details = usage.get("input_tokens_details") or {}
                     expected = {
                         "input_tokens": usage.get("input_tokens"),

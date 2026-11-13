@@ -15,6 +15,7 @@ from physiclaw.provider.client.configuration import CredentialSpec
 from physiclaw.provider.vendors.anthropic.chat import AnthropicChatProvider
 from physiclaw.provider.vendors.deepseek.chat import DeepSeekChatProvider
 from physiclaw.provider.vendors.google.chat import GoogleChatProvider
+from physiclaw.provider.vendors.google.decision import GoogleDecisionProvider
 from physiclaw.provider.vendors.liquid.decision import LiquidDecisionProvider
 from physiclaw.provider.vendors.moonshot.chat import MoonshotChatProvider
 from physiclaw.provider.vendors.openai.chat import OpenAIChatProvider
@@ -69,7 +70,14 @@ _VENDORS: dict[str, VendorServices] = {
         ),
     ),
     "anthropic": VendorServices(chat=AnthropicChatProvider),
-    "google": VendorServices(chat=GoogleChatProvider),
+    "google": VendorServices(
+        chat=GoogleChatProvider,
+        decision=DecisionProviderSpec(
+            GoogleDecisionProvider,
+            GoogleDecisionProvider.capabilities_for,
+            GoogleDecisionProvider.credentials(),
+        ),
+    ),
     "deepseek": VendorServices(chat=DeepSeekChatProvider),
     "typesafe": VendorServices(
         decision=DecisionProviderSpec(

@@ -132,6 +132,11 @@ def test_decision_only_provider_cannot_be_main_agent(fake_registration):
         ("typesafe", "jev-next", "https://api.typesafe.ai/v1/systemone"),
         ("liquid", "d1-next", "https://api.liquid.ai/decisions/v1/systemone"),
         ("openai", "future-model", "https://api.openai.com/v1/decisions"),
+        (
+            "google",
+            "future-model",
+            "https://generativelanguage.googleapis.com/v1beta/decisions",
+        ),
         ("openrouter", "vendor/future", "https://openrouter.ai/api/alpha/decisions"),
         ("openrouter", "cloudflare/clef", "https://openrouter.ai/api/alpha/decisions"),
     ],
@@ -183,7 +188,9 @@ async def test_model_ids_pass_through_and_api_rejection_never_switches_service(
         else:
             body = json.loads(sent.content)
             assert body["model"] == model
-            if with_image:
+            if with_image and vendor == "google":
+                assert body["input"][1]["type"] == "image"
+            elif with_image:
                 assert b"data:image/jpeg;base64," in sent.content
         assert len(respx_mock.calls) == route.call_count == 2
     finally:

@@ -23,6 +23,7 @@ from physiclaw.provider import make_decision_provider
     params=[
         ("typesafe", "jev-1.14.0"),
         ("openai", "gpt-6-luna"),
+        ("google", "gemini-decision-1"),
         ("openrouter", "typesafe/jev-1.14"),
         ("openrouter", "liquid/d1-ultra"),
         ("liquid", "d1-ultra"),
@@ -47,6 +48,7 @@ def url(provider):
     return {
         "typesafe": "https://api.typesafe.ai/v1/systemone",
         "openai": "https://api.openai.com/v1/decisions",
+        "google": "https://generativelanguage.googleapis.com/v1beta/decisions",
         "openrouter": "https://openrouter.ai/api/alpha/decisions",
         "liquid": "https://api.liquid.ai/decisions/v1/systemone",
     }[provider.PROVIDER_ID]
@@ -80,7 +82,9 @@ def reply(provider, request, *, phase="ROUTINE", target="b0"):
         "answers": answers
         if provider.PROVIDER_ID != "openai"
         else list(answers.values()),
-        "usage": {"input_tokens": 450, "output_tokens": 0},
+        "usage": {"total_input_tokens": 450, "total_output_tokens": 0}
+        if provider.PROVIDER_ID == "google"
+        else {"input_tokens": 450, "output_tokens": 0},
     }
 
 
@@ -136,6 +140,17 @@ async def test_preview_questions_reach_all_adapters_with_one_image(
         for question in questions.values():
             question["options"] = {
                 c["value"]: json.loads(c["description"]) for c in question["choices"]
+            }
+    elif provider.PROVIDER_ID == "google":
+        body = json.loads(wire.content)
+        text, image = body["input"]
+        state = json.loads(text["text"])
+        assert state["observation"]["id"] == review.context.observation_id
+        assert base64.b64decode(image["data"]) == review.context.frame.data
+        questions = body["questions"]
+        for question in questions.values():
+            question["criteria"] = {
+                key: json.loads(value) for key, value in question["criteria"].items()
             }
     else:
         body = json.loads(wire.content)
