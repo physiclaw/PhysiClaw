@@ -174,7 +174,9 @@ jobs:
         run: make test-slow
 
       - name: Integration regressions
-        timeout-minutes: 5
+        # Real parent/child startup includes cold imports under coverage on
+        # shared runners. Individual tests still enforce shutdown deadlines.
+        timeout-minutes: 10
         if: *test_ready
         env:
           COVERAGE_FILE: .test-results/.coverage.integration

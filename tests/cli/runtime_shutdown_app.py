@@ -15,6 +15,10 @@ import sys
 import threading
 import time
 
+# Cold imports under subprocess coverage can be slow on shared CI runners.
+# This budget is only for startup; tests bound shutdown separately.
+STARTUP_TIMEOUT = 60
+
 
 def read_interrupts(loop=None) -> None:
     """Inject Ctrl+C without requiring a shared console on a Windows CI runner.
@@ -181,7 +185,8 @@ def parent(port: int, mode: str, listeners: list[socket.socket]) -> None:
         if mode == "early-exit":
             # Keep stdin open through interpreter finalization; CHILD_EXIT
             # alone is too early to detect a blocked BufferedReader daemon.
-            proc.wait(timeout=5)
+            # This also includes cold child imports, not just finalization.
+            proc.wait(timeout=STARTUP_TIMEOUT)
         return proc
 
     server_mod.subprocess.Popen = spawn

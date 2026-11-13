@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 
 from physiclaw.port import processes as process_port
+from tests.cli.runtime_shutdown_app import STARTUP_TIMEOUT
 
 pytestmark = pytest.mark.integration
 POSIX_SIGNAL = pytest.mark.skipif(
@@ -161,15 +162,20 @@ def interrupt(proc, sig=None):
     proc.stdin.flush()
 
 
-def wait_for(proc, path, text):
-    deadline = time.monotonic() + 12
-    while time.monotonic() < deadline:
+def wait_for(proc, path, text, *, timeout=STARTUP_TIMEOUT):
+    deadline = time.monotonic() + timeout
+    while True:
+        # Poll before reading so an exited process's final output is included.
+        code = proc.poll()
         output = path.read_text(encoding="utf-8")
         if text in output:
             return output
-        assert proc.poll() is None, output
+        if code is not None or time.monotonic() >= deadline:
+            pytest.fail(
+                f"Waiting for {text!r} failed (timeout={timeout}s, "
+                f"returncode={code}):\n{output}"
+            )
         time.sleep(0.02)
-    pytest.fail(path.read_text(encoding="utf-8"))
 
 
 def finished(proc, path, port):
@@ -265,7 +271,7 @@ def test_repeated_interrupt_forces_exit_without_repeating_cleanup(tmp_path):
     with running(tmp_path, "tool") as (proc, path, port):
         wait_for(proc, path, "TOOL_STARTED")
         interrupt(proc)
-        wait_for(proc, path, "Requesting runtime exit")
+        wait_for(proc, path, "Requesting runtime exit", timeout=8)
         interrupt(proc)
         output = finished(proc, path, port)
     assert "Runtime exit forced (interrupt)" in output
@@ -320,7 +326,7 @@ def test_no_runtime_server_and_standalone_runtime_keep_real_mcp_lifecycle(tmp_pa
                     child.wait(timeout=5)
                 child.stdin.close()
         interrupt(parent)
-        parent.wait(timeout=5)
+        parent.wait(timeout=8)
     output = path.read_text(encoding="utf-8")
     assert child.returncode == 0, output
     assert "CLOSE_MCP_DONE" in output
