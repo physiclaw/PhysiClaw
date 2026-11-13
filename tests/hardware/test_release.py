@@ -138,32 +138,6 @@ def test_prepare_builds_in_private_tree_and_seals_exact_assets(bundle, preparati
     assert len(preparation) == count
 
 
-def test_custom_travel_reuses_separate_illustration_cache(preparation, monkeypatch):
-    monkeypatch.setattr(rel, "X_TRAVEL", 220)
-    cache = rel.CACHE_DIR.parent / "manual-illustrations" / ".cache"
-    cache.mkdir(parents=True)
-    (cache / "marker").write_bytes(b"reference cache")
-    stage = rel._stage
-
-    def check_cache(output, *args):
-        if args[0] == "build":
-            linked = output / "manual-illustrations" / ".cache"
-            assert linked.samefile(cache)
-            assert (linked / "marker").read_bytes() == b"reference cache"
-            assert not linked.samefile(rel.CACHE_DIR)
-            reference_step = output / "manual-illustrations" / "step" / rel.FRAME_STEP
-            reference_step.parent.mkdir()
-            reference_step.write_bytes(b"reference geometry must not be packaged")
-        stage(output, *args)
-
-    monkeypatch.setattr(rel, "_stage", check_cache)
-    bundle = rel.prepare(VERSION)
-    assert (cache / "marker").read_bytes() == b"reference cache"
-    with zipfile.ZipFile(bundle / rel.FRAME_ZIP) as archive:
-        assert archive.namelist() == [rel.FRAME_STEP]
-        assert archive.read(rel.FRAME_STEP) == STEP
-
-
 def test_prepare_excludes_unrelated_files_but_keeps_referenced_assets(
     preparation, monkeypatch
 ):

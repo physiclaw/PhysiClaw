@@ -20,7 +20,6 @@ from pathlib import Path
 from hardware import buildlog
 from hardware.assembly import cache
 from hardware.assembly.discovery import list_procedures
-from hardware.assembly.travel_ranges import ILLUSTRATION_TRAVEL, X_TRAVEL, Y_TRAVEL
 from hardware.build_lock import locked_main
 from hardware.port.processes import CancellationEvent
 from hardware.scheme import OUTPUT_DIR, VARIANTS, svg_path_for
@@ -209,7 +208,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(add_help=False)
     buildlog.add_arguments(parser)
     args, other = parser.parse_known_args(argv)
-    eligible = not other and (X_TRAVEL, Y_TRAVEL) == ILLUSTRATION_TRAVEL
+    eligible = not other
     started = time.monotonic()
     hit = _cached_plan() if eligible else None
     if hit is None:

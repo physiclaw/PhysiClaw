@@ -2,23 +2,8 @@
 
 import os
 import py_compile
-import shutil
 import subprocess
 import sys
-
-import pytest
-
-from hardware.scheme import REPO_ROOT
-
-
-@pytest.fixture
-def source_tree(tmp_path):
-    shutil.copytree(
-        REPO_ROOT / "hardware",
-        tmp_path / "hardware",
-        ignore=shutil.ignore_patterns("output", "__pycache__"),
-    )
-    return tmp_path
 
 
 def stale_bytecode(path, original, edited):
@@ -36,7 +21,6 @@ def stale_bytecode(path, original, edited):
 
 def run(root, *args):
     env = {**os.environ, "PYTHONPATH": str(root)}
-    env.pop("PHYSICLAW_HW_MANUAL_ILLUSTRATIONS", None)
     result = subprocess.run(
         [sys.executable, *args],
         cwd=root,

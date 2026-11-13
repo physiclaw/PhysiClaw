@@ -25,7 +25,6 @@ from urllib.parse import unquote, urlsplit
 from xml.etree import ElementTree as ET
 
 from hardware import buildlog
-from hardware.assembly.travel_ranges import ILLUSTRATION_TRAVEL, X_TRAVEL, Y_TRAVEL
 from hardware.build_lock import locked_main
 from hardware.documents.drawing.extrusion import LANG_FILENAME as DRAWINGS
 from hardware.documents.drawing.extrusion import PDF_FILENAME as DRAWING_PDFS
@@ -344,14 +343,6 @@ def prepare(version: str) -> Path:
         output.mkdir()
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
         filesystem.link_directory(CACHE_DIR, output / ".cache")
-        if (X_TRAVEL, Y_TRAVEL) != ILLUSTRATION_TRAVEL:
-            illustration_cache = CACHE_DIR.parent / "manual-illustrations" / ".cache"
-            illustration_cache.mkdir(parents=True, exist_ok=True)
-            illustration_output = output / "manual-illustrations"
-            illustration_output.mkdir()
-            filesystem.link_directory(
-                illustration_cache, illustration_output / ".cache"
-            )
         try:
             for args in (
                 ("check",),

@@ -8,7 +8,7 @@ Each figure has a stable descriptive name: <view>_annotated_<name>.svg.
 Several figures may share a view; their names remain stable when reordered or
 when another figure is removed.
 
-Crops are editorial frames in projected millimetres at ILLUSTRATION_TRAVEL.
+Crops are editorial frames in projected millimetres for the 110 by 200 mm build.
 Highlights are always recomputed from the current parts and the view's camera.
 This module stays stdlib-only for the build cache and consistency checker.
 """

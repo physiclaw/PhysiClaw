@@ -540,12 +540,6 @@ def test_unreadable_cached_artifact_is_a_miss(repo, monkeypatch):
     assert any("cached artifact unreadable" in reason for reason in reasons)
 
 
-def test_reference_illustrations_cannot_restore_manufacturing_cache(repo, monkeypatch):
-    actual = cache.source_key(STEM)
-    monkeypatch.setattr(cache, "MANUAL_ILLUSTRATIONS", True)
-    assert cache.source_key(STEM) != actual
-
-
 def test_source_key_changes_when_procedure_source_changes(repo):
     before = cache.source_key(STEM)
 

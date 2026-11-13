@@ -56,7 +56,6 @@ from hardware.scheme import (
     ANNOTATION_DIR,
     BOM_DIR,
     CACHE_DIR,
-    MANUAL_ILLUSTRATIONS,
     PROCEDURES_DIR,
     RENDER_WORK_DIR,
     REPO_ROOT,
@@ -264,7 +263,6 @@ def source_key(stem: str) -> str:
     h = hashlib.sha256()
     # Reject v3 entries that may contain geometry built from stale bytecode.
     h.update(_SOURCE_SALT)
-    h.update(f"manual-illustrations={MANUAL_ILLUSTRATIONS}\n".encode())
     h.update(b"build123d=" + _kernel_version().encode() + b"\n")
     h.update(platform.python_version().encode())
     h.update(platform.platform().encode())
@@ -313,7 +311,6 @@ def _source_inputs(stem: str) -> dict[str, str]:
     return {
         **_file_inputs(_source_files(stem)),
         "cache format": _SOURCE_SALT.decode().strip(),
-        "manual illustration profile": str(MANUAL_ILLUSTRATIONS),
         "build123d version": _kernel_version(),
         "Python version": platform.python_version(),
         "platform": platform.platform(),

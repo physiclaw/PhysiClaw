@@ -87,7 +87,7 @@ def cut_list(rows: list[dict] | None = None) -> list[CutItem]:
 
     Raises ``BuildError`` when a spec's BOM row is missing, or when the
     row's spec text (either language) no longer states the length the model
-    cuts — the BOM is hand-written, so this is where a travel-range edit
+    cuts — the BOM is hand-written, so this is where a dimension change
     that was not carried into the manual surfaces."""
     rows = load_bom_rows() if rows is None else rows
     by_id = {r.get("part_id"): r for r in rows}

@@ -57,21 +57,6 @@ Manual builds and `make hw-check` validate content against `manual/schema.py`:
 
 Review generated pages for visual layout issues after validation passes.
 
-## Travel-dependent content
-
-Keep `X_TRAVEL` and `Y_TRAVEL` in [travel_ranges.py](../assembly/travel_ranges.py)
-and the [runtime constants](../../src/physiclaw/core/hardware/arm.py) equal.
-Use named tokens such as `"{X_RAIL_LENGTH} mm"` in BOM rows, chapters and vendor
-files. [dimensions.py](dimensions.py) defines the tokens; unknown tokens fail
-validation.
-
-Manual illustrations retain the original 110 × 200 mm proportions; parts lists
-and technical drawings use configured dimensions. At the original travel, the
-manual reads `hardware/output/svg/`; custom travel uses reference renders in
-`hardware/output/manual-illustrations/svg/` with a separate CAD cache.
-A full `make hw-build` generates the required illustrations; `make hw-step`
-builds only one step. These paths also follow `PHYSICLAW_HW_OUTPUT`.
-
 ## Supplier URL review
 
 `make hw-url` shows up to three Taobao/Tmall and three AliExpress links from

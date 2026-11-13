@@ -15,15 +15,9 @@ from functools import cache
 from pathlib import Path
 from typing import Protocol
 
-from hardware.assembly.travel_ranges import ILLUSTRATION_TRAVEL, X_TRAVEL, Y_TRAVEL
 from hardware.documents import BuildError
 from hardware.documents.assets import figure, icon
-from hardware.scheme import OUTPUT_DIR, SVG_DIR, SVG_NAME_RE
-
-# Never fall back to resized manufacturing renders: their crops and annotation
-# coordinates no longer match the authored manual layout.
-if (X_TRAVEL, Y_TRAVEL) != ILLUSTRATION_TRAVEL:
-    SVG_DIR = OUTPUT_DIR / "manual-illustrations" / "svg"
+from hardware.scheme import SVG_DIR, SVG_NAME_RE
 
 ASSETS_SUBDIR = "assets"  # where external mode writes images, relative to the HTML.
 
@@ -54,12 +48,7 @@ def _require_renders(names: Iterable[str]) -> None:
         f"{listed}\n\n"
         "These are produced by the assembly render pipeline.\n"
         "Regenerate them with:\n"
-        "    uv run --group cad python -m hardware build"
-        + (
-            f"\nAffected stems: {' '.join(stems)}"
-            if (X_TRAVEL, Y_TRAVEL) != ILLUSTRATION_TRAVEL
-            else f" --stems {' '.join(stems)}"
-        )
+        f"    uv run --group cad python -m hardware build --stems {' '.join(stems)}"
     )
 
 

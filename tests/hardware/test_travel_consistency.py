@@ -1,137 +1,23 @@
-"""Change the real travel source in isolation and exercise downstream artifacts."""
+"""Validate fixed travel and its downstream documents and CAD geometry."""
 
 import os
-import py_compile
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
 from hardware.scheme import REPO_ROOT
 
 
-def _reference_probe() -> dict:
-    """Render both reference variants in a fresh, isolated CAD process."""
-    import json
-
-    result = subprocess.run(
-        [sys.executable, str(Path(__file__).resolve()), "--illustrations"],
-        env={
-            **os.environ,
-            "PHYSICLAW_HW_OUTPUT": str(REPO_ROOT / "artifacts"),
-            "PHYSICLAW_HW_MANUAL_ILLUSTRATIONS": "1",
-        },
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        timeout=120,
-    )
-    assert result.returncode == 0, (
-        f"Reference renderer exited {result.returncode}\n"
-        + result.stdout
-        + result.stderr
-    )
-    return json.loads(result.stdout.splitlines()[-1])
-
-
-def _illustration_probe() -> None:
-    import hashlib
-    import json
-
-    from hardware.assembly import cache
-    from hardware.assembly import travel_ranges as t
-    from hardware.assembly.build_procedures import main as build
-    from hardware.documents.manual import assets
-    from hardware.scheme import OUTPUT_DIR, SVG_DIR
-
-    assert Path(__file__).resolve().parents[2] != REPO_ROOT
-    assert (t.X_TRAVEL, t.Y_TRAVEL) == t.ILLUSTRATION_TRAVEL
-    assert (t.X_EXTRUSION_LENGTH, t.Y_EXTRUSION_LENGTH) == (190, 345)
-    assert OUTPUT_DIR == REPO_ROOT / "artifacts/manual-illustrations"
-    assert assets.SVG_DIR == SVG_DIR
-    # Exercise the production worker/checkpoint recovery path: exact HLR can
-    # segfault, and an unguarded in-process render makes this test flaky.
-    result = build(
-        [
-            "--stems",
-            "frame_10_extrusion_tnut",
-            "--jobs",
-            "1",
-            "--log-format",
-            "json",
-        ]
-    )
-    assert result == 0
-    print(
-        json.dumps(
-            {
-                "source_key": cache.source_key("frame_10_extrusion_tnut"),
-                "svgs": {
-                    p.name: hashlib.sha256(p.read_bytes()).hexdigest()
-                    for p in SVG_DIR.glob("*.svg")
-                },
-            }
-        )
-    )
-
-
-def _probe(x_delta: int, y_delta: int) -> None:
+def _probe() -> None:
     import html
     import re
     from html.parser import HTMLParser
     from xml.etree import ElementTree as ET
 
-    from hardware.assembly import cache
-
     root = REPO_ROOT
     assert root != Path(__file__).resolve().parents[2], (
         "probe requires an isolated copy"
     )
-    reference_before = _reference_probe()
-    travel_source = root / "hardware/assembly/travel_ranges.py"
-    stems = (
-        "frame_10_extrusion_tnut",
-        "linear_10_y",
-        "linear_32_x",
-        "phone_10_extrusion",
-        "camera_40_frame",
-    )
-    before = {stem: cache.source_key(stem) for stem in stems}
-    source = travel_source.read_text(encoding="utf-8")
-    source_stat = travel_source.stat()
-    py_compile.compile(
-        str(travel_source),
-        doraise=True,
-        invalidation_mode=py_compile.PycInvalidationMode.TIMESTAMP,
-    )
-    configured_travel = []
-    for axis, delta in zip(("X", "Y"), (x_delta, y_delta), strict=True):
-        configured_travel.append(
-            int(re.search(rf"^{axis}_TRAVEL = (\d+)", source, re.MULTILINE)[1]) + delta
-        )
-        source, count = re.subn(
-            rf"^{axis}_TRAVEL = (\d+)",
-            lambda match, axis=axis, delta=delta: (
-                f"{axis}_TRAVEL = {int(match[1]) + delta}"
-            ),
-            source,
-            flags=re.MULTILINE,
-        )
-        assert count == 1
-    travel_source.write_text(source, encoding="utf-8")
-    # Equal-size, same-timestamp edits must affect actual imported CAD code too,
-    # not merely its source hash. Leave a valid-looking stale .pyc behind.
-    assert travel_source.stat().st_size == source_stat.st_size
-    os.utime(travel_source, ns=(source_stat.st_atime_ns, source_stat.st_mtime_ns))
-    # No module has imported travel yet; subsequent consumers see the changed build.
-    assert all(cache.source_key(stem) != before[stem] for stem in stems)
-    reference_after = _reference_probe()
-    assert reference_before["svgs"] == reference_after["svgs"]
-    assert reference_after["source_key"] != cache.source_key(stems[0])
-
     from hardware import check
     from hardware.assembly import travel_ranges as t
     from hardware.documents.bom.loader import load_bom_rows
@@ -151,8 +37,8 @@ def _probe(x_delta: int, y_delta: int) -> None:
     rows = load_bom_rows()
     from hardware.scheme import OUTPUT_DIR
 
-    assert tuple(configured_travel) == (t.X_TRAVEL, t.Y_TRAVEL)
-    assert assets.SVG_DIR == OUTPUT_DIR / "manual-illustrations/svg"
+    assert (t.X_TRAVEL, t.Y_TRAVEL) == (110, 200)
+    assert assets.SVG_DIR == OUTPUT_DIR / "svg"
     by_id = {row["part_id"]: row for row in rows}
     cuts = drawing.cut_list(rows)
     lengths = {
@@ -202,7 +88,7 @@ def _probe(x_delta: int, y_delta: int) -> None:
 
     for lang in ("en", "zh"):
         # Exercise the real text renderers. CAD-backed figures are checked through
-        # source keys and STEP builds below; no placeholder figure files are emitted.
+        # STEP builds below; no placeholder figure files are emitted.
         manual_html = manual.render_document(
             pages, "", manual.Ctx(lang, ExternalAssets())
         )
@@ -322,22 +208,13 @@ def _probe(x_delta: int, y_delta: int) -> None:
     )
 
 
-@pytest.mark.parametrize("x_delta,y_delta", [(20, 0), (0, 20), (25, 35)])
-def test_changed_travel_keeps_documents_step_and_cache_consistent(
-    tmp_path, x_delta, y_delta
-):
-    shutil.copytree(
-        REPO_ROOT / "hardware",
-        tmp_path / "hardware",
-        ignore=shutil.ignore_patterns("output", "__pycache__"),
-    )
-    for name in ("pyproject.toml", "uv.lock"):
-        shutil.copyfile(REPO_ROOT / name, tmp_path / name)
+def test_travel_keeps_documents_and_step_consistent(source_tree):
     env = dict(os.environ)
-    env["PYTHONPATH"] = str(tmp_path)
+    env["PYTHONPATH"] = str(source_tree)
+    env["PHYSICLAW_HW_OUTPUT"] = str(source_tree / "artifacts")
     result = subprocess.run(
-        [sys.executable, str(Path(__file__).resolve()), str(x_delta), str(y_delta)],
-        cwd=tmp_path,
+        [sys.executable, str(Path(__file__).resolve())],
+        cwd=source_tree,
         env=env,
         capture_output=True,
         text=True,
@@ -349,7 +226,4 @@ def test_changed_travel_keeps_documents_step_and_cache_consistent(
 
 
 if __name__ == "__main__":
-    if sys.argv[1:] == ["--illustrations"]:
-        _illustration_probe()
-    else:
-        _probe(*map(int, sys.argv[1:]))
+    _probe()
