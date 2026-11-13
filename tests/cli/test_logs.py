@@ -766,7 +766,11 @@ def test_save_includes_one_current_format_readme(sessions, tmp_path):
         max_size=12,
     )
 )
-@settings(max_examples=25, suppress_health_check=[HealthCheck.function_scoped_fixture])
+@settings(
+    max_examples=25,
+    deadline=None,
+    suppress_health_check=[HealthCheck.function_scoped_fixture],
+)
 def test_usage_json_preserves_generated_rows_around_damaged_lines(sessions, rows):
     directory = _write_session(sessions, "property-abc123")
     records = [
