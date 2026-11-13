@@ -177,9 +177,11 @@ hw-help:
 
 # Keep the document builds after CAD, even under make -j; stop on failure.
 manual:
-	@$(MAKE) hw-build
-	@$(MAKE) hw-manual-pdf
-	@$(MAKE) hw-sourcing
+	@$(MAKE) --no-print-directory hw-build
+	@echo
+	@$(MAKE) --no-print-directory hw-manual-pdf
+	@echo
+	@$(MAKE) --no-print-directory hw-sourcing
 
 hw-parts:
 	@$(HW) parts $(ARGS)

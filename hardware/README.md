@@ -14,20 +14,20 @@ Start with the guides and downloads below. Generating files locally is optional.
 
 ## Generate files locally
 
-Works on macOS, Windows and Linux. Install [uv](https://docs.astral.sh/uv/).
-PDF builds and release preparation also need Chrome or Chromium. The `make`
-commands need GNU Make; Python alternatives are shown below.
-Run all commands from the repository root.
+Works on macOS, Windows and Linux. Install [uv](https://docs.astral.sh/uv/) and
+GNU Make. PDF builds and release preparation also require Chrome or Chromium.
+Run all commands from the repository root; Python alternatives are shown below.
 
-Build the CAD models, assembly manual and sourcing guide:
+Build CAD models, then the assembly manual (HTML/PDF) and sourcing guide (HTML):
 
 ```sh
 make manual
 ```
 
-This runs `hw-build` → `hw-manual-pdf` → `hw-sourcing`, stopping on failure.
-Documents include English and Chinese editions. Builds install locked CAD
-dependencies and reuse cached work. Outputs default to `hardware/output/`.
+`uv` installs Python and the locked dependencies automatically. The first run
+builds all assemblies; subsequent runs reuse the CAD cache. Documents include
+English and Chinese editions. Outputs default to `hardware/output/`, with the
+manual in `manual/` and sourcing guide in `sourcing/`.
 
 Individual targets (manual builds require illustrations from `make hw-build`):
 
