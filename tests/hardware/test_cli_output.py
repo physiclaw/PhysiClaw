@@ -77,6 +77,7 @@ def test_human_output_has_one_result_and_aligned_elapsed_column(tmp_path, comman
     assert result.returncode == 0, result.stderr + result.stdout
     assert result.stderr == ""
     assert result.stdout.startswith("Hardware ")
+    assert result.stdout.endswith("\n\n")
     assert result.stdout.count("SUCCESS") == 1
     assert "INFO" not in result.stdout
     assert "warning:" not in result.stdout.lower()

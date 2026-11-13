@@ -79,7 +79,7 @@ def test_interactive_build_reuses_one_progress_row_and_saves_every_completion(
     assert len(progress) == 1
     assert progress[0].startswith("[71/71] part_71")
     assert "SUCCESS  71/71 complete" in "\n".join(displayed)
-    assert terminal_output.getvalue().endswith("\n")
+    assert terminal_output.getvalue().endswith("\n\n")
     saved = saved_events(log)
     assert [e["completed"] for e in saved if e["event"] == "step_finished"] == list(
         range(1, 72)
@@ -106,7 +106,7 @@ def test_live_progress_finishes_before_errors_and_final_status(
     assert "[1/2] frame_10" in displayed
     assert "ERROR: Keep this diagnosis" in displayed
     assert status.upper() in displayed and "Details:" in displayed
-    assert terminal_output.getvalue().endswith("\n")
+    assert terminal_output.getvalue().endswith("\n\n")
 
 
 @pytest.mark.parametrize("codec", ["utf-8", "ascii"])

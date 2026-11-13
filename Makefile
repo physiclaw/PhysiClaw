@@ -34,35 +34,35 @@ export VERSION VERBOSE RUN_ID JSON
 
 help:
 	@echo "Targets:"
-	@echo "  help                  — show this list (the default make target)"
-	@echo "  test-bootstrap        — prepare the locked dev + CAD test environment"
-	@echo "  test                  — fast unit suite (excludes slow + integration)"
-	@echo "  test-cov              — fast suite with coverage report (term + html)"
-	@echo "  test-all-cov          — all suites with subprocess and branch coverage"
-	@echo "  test-fast             — alias for test"
-	@echo "  test-encoding         — strict encoding regressions with UTF-8 mode off and on"
-	@echo "  test-slow             — only @pytest.mark.slow"
-	@echo "  test-integration      — only @pytest.mark.integration"
-	@echo "  test-all              — every test, including slow and integration"
-	@echo "  testall               — alias for test-all"
-	@echo "  test-studio-ui        — JavaScript UI regressions (Node 22+)"
-	@echo "  mutate MOD=path       — mutmut on a path (e.g. MOD=src/physiclaw/agent/engine/validator.py)"
-	@echo "  lint                  — ruff check + format check (repository Python files)"
-	@echo "  fmt                   — ruff format (repository Python files)"
-	@echo "  typecheck             — mypy on application and hardware port (scope in [tool.mypy])"
-	@echo "  loc                   — Total = Code + Test + Text (NO_COLOR=1 for plain output)"
-	@echo "  firmware [ARGS=...]    — rebuild fluidnc.zip, preserve output/.cache; ARGS=--help for options"
-	@echo "  bump [VERSION=X.Y.Z]   — increment a stable version's patch number by default."
+	@echo "  help                  - show this list (the default make target)"
+	@echo "  test-bootstrap        - prepare the locked dev + CAD test environment"
+	@echo "  test                  - fast unit suite (excludes slow + integration)"
+	@echo "  test-cov              - fast suite with coverage report (term + html)"
+	@echo "  test-all-cov          - all suites with subprocess and branch coverage"
+	@echo "  test-fast             - alias for test"
+	@echo "  test-encoding         - strict encoding regressions with UTF-8 mode off and on"
+	@echo "  test-slow             - only @pytest.mark.slow"
+	@echo "  test-integration      - only @pytest.mark.integration"
+	@echo "  test-all              - every test, including slow and integration"
+	@echo "  testall               - alias for test-all"
+	@echo "  test-studio-ui        - JavaScript UI regressions (Node 22+)"
+	@echo "  mutate MOD=path       - mutmut on a path (e.g. MOD=src/physiclaw/agent/engine/validator.py)"
+	@echo "  lint                  - ruff check + format check (repository Python files)"
+	@echo "  fmt                   - ruff format (repository Python files)"
+	@echo "  typecheck             - mypy on application and hardware port (scope in [tool.mypy])"
+	@echo "  loc                   - Total = Code + Test + Text (NO_COLOR=1 for plain output)"
+	@echo "  firmware [ARGS=...]    - rebuild fluidnc.zip, preserve output/.cache; ARGS=--help for options"
+	@echo "  bump [VERSION=X.Y.Z]   - increment a stable version's patch number by default."
 	@echo "                          Set VERSION explicitly for major/minor/prereleases."
 	@echo "                          Commits version + lockfile locally; push main before release."
-	@echo "  build                 — uv build wheel + sdist for the version in pyproject.toml"
-	@echo "  release-start         — push the version tag and start release CI."
-	@echo "  release-status        — show release progress and the next action (read-only)."
-	@echo "  release-approve       — approve PyPI publication after release checks pass."
-	@echo "  release-watch         — follow CI to completion (read-only)."
+	@echo "  build                 - uv build wheel + sdist for the version in pyproject.toml"
+	@echo "  release-start         - push the version tag and start release CI."
+	@echo "  release-status        - show release progress and the next action (read-only)."
+	@echo "  release-approve       - approve PyPI publication after release checks pass."
+	@echo "  release-watch         - follow CI to completion (read-only)."
 	@echo "                          Uses this version + commit; RUN_ID=ID selects a specific run."
 	@echo "                          Status/approval/watch require gh; JSON=1 for status/approval."
-	@echo "  release, publish      — compatibility aliases for release-start."
+	@echo "  release, publish      - compatibility aliases for release-start."
 	@echo "                          VERBOSE=1 shows command logs; NO_COLOR=1 disables color."
 	@echo ""
 	@$(MAKE) --no-print-directory hw-help
@@ -142,10 +142,10 @@ bump build publish release release-start release-status release-approve release-
 # Flags / positionals go through ARGS, e.g.  make hw-build ARGS="--bom".
 
 hw-help:
-	@echo "Hardware — run from the repository root:"
+	@echo "Hardware - run from the repository root:"
 	@echo ""
 	@echo "  Local work (no upload):"
-	@echo "    make manual                         Build CAD → manual HTML/PDFs → sourcing HTML"
+	@echo "    make manual                         Build CAD -> manual HTML/PDFs -> sourcing HTML"
 	@echo "    make hw-build [ARGS=--bom]           Build CAD drawings and STEPs; reuse cache"
 	@echo "    make hw-check                       Check hardware source consistency"
 	@echo "    make hw-url                         Show 3 Taobao and 3 AliExpress URLs"
@@ -153,8 +153,8 @@ hw-help:
 	@echo "    make hw-verify HW_VERSION=X.Y        Verify an existing bundle without rebuilding"
 	@echo ""
 	@echo "  Release (commit and push main first):"
-	@echo "    make hw-release HW_VERSION=X.Y       Prepare → verify → publish → deploy and check sites"
-	@echo "    make hw-publish HW_VERSION=X.Y       Publish a prepared bundle → deploy and check sites"
+	@echo "    make hw-release HW_VERSION=X.Y       Prepare -> verify -> publish -> deploy and check sites"
+	@echo "    make hw-publish HW_VERSION=X.Y       Publish a prepared bundle -> deploy and check sites"
 	@echo "    make hw-preflight HW_VERSION=X.Y     Check Git/GitHub readiness; no upload"
 	@echo "    make docs-deploy [HW_VERSION=X.Y]    Trigger docs, wait for readiness, check both sites"
 	@echo "    make check-site-assets [HW_VERSION=X.Y]  Check both sites without deploying"
@@ -178,9 +178,7 @@ hw-help:
 # Keep the document builds after CAD, even under make -j; stop on failure.
 manual:
 	@$(MAKE) --no-print-directory hw-build
-	@echo
 	@$(MAKE) --no-print-directory hw-manual-pdf
-	@echo
 	@$(MAKE) --no-print-directory hw-sourcing
 
 hw-parts:

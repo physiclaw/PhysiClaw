@@ -310,7 +310,7 @@ class BuildFormatter(logging.Formatter):
                 )
                 for detail in record.get("terminal_details", [])
             ]
-            return "\n".join((rule, text, *details))
+            return "\n".join((rule, text, *details, ""))
         return text
 
     def _terminal_record(self, record, state):

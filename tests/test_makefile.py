@@ -385,6 +385,7 @@ def test_make_help_and_default_do_not_run_a_worker(make_project, target):
     result, records = invoke(*arguments)
 
     assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.isascii()
     assert "hw-build" in result.stdout and "hw-release" in result.stdout
     assert all(
         target not in result.stdout
