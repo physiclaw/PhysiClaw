@@ -49,7 +49,6 @@ def test_regression_load_summary_rejects_unusable_json(tmp_path, payload):
     assert summary is None
 
 
-@settings(deadline=None)
 @given(
     st.dictionaries(
         st.text(), st.one_of(st.none(), st.booleans(), st.integers(), st.text())

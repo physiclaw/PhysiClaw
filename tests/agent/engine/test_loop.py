@@ -55,7 +55,7 @@ from physiclaw.contract.dto import (
     UserMessage,
 )
 from physiclaw.contract.plugin import ProposedTurn
-from tests.timing_helpers import WAIT_TIMEOUT, ManualTimeouts
+from tests.timing_helpers import ManualTimeouts, wait_for
 
 # ---------- drive ----------
 
@@ -1145,8 +1145,6 @@ async def test_loop_memory_gate_fails_open_after_one_retry(patched_loop_deps) ->
 
 # ---------- wall-clock budget ----------
 
-BUDGET_TEST_WATCHDOG = WAIT_TIMEOUT
-
 
 @pytest.fixture
 def budget_clock():
@@ -1201,7 +1199,7 @@ async def test_regression_budget_cancels_inflight_calls(stalled_run, manual_budg
     run, call, cancelled = stalled_run
     session = _llm(run).session
 
-    await asyncio.wait_for(drive(run, session), timeout=BUDGET_TEST_WATCHDOG)
+    await wait_for(drive(run, session))
 
     assert session.sentinel_status == STUCK
     assert session.budget_exhausted is True
@@ -1236,7 +1234,7 @@ async def test_regression_budget_interrupts_provider_retry_backoff(
         messages=[],
     )
 
-    await asyncio.wait_for(drive(run, session), timeout=BUDGET_TEST_WATCHDOG)
+    await wait_for(drive(run, session))
 
     assert session.budget_exhausted is True
     assert len(provider.calls) == 1
@@ -1400,7 +1398,7 @@ async def test_budget_trace_records_the_interrupted_turn(
 
     run.plugins[-1].plugin.provider.respond = chat
 
-    await asyncio.wait_for(drive(run, session), timeout=BUDGET_TEST_WATCHDOG)
+    await wait_for(drive(run, session))
 
     assert session.budget_exhausted is True
     run.tr.write.assert_any_call(

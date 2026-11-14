@@ -337,8 +337,7 @@ def test_healthy_requires_running_thread_and_recent_frame() -> None:
     assert not r.healthy()
 
 
-def test_note_reopened_resets_stale_clock(mocker) -> None:
-    mocker.patch.object(fr_mod, "time", SimpleNamespace(monotonic=lambda: 100.0))
+def test_note_reopened_resets_stale_clock() -> None:
     r = _reader()
     r._frame_time = 0.0
 

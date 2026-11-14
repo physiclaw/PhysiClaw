@@ -480,7 +480,7 @@ async def test_stop_during_check_does_not_start_react(mocker, phase):
 
 @pytest.mark.parametrize("seconds", [0, 600])
 async def test_stop_wakes_runtime_sleep(seconds, mocker):
-    from tests.timing_helpers import WAIT_TIMEOUT
+    from tests.timing_helpers import wait_for
 
     rt = Runtime(lambda triggers: None)
     entered = asyncio.Event()
@@ -494,9 +494,9 @@ async def test_stop_wakes_runtime_sleep(seconds, mocker):
     sleeping = asyncio.create_task(rt._sleep(seconds))
     try:
         if seconds:
-            await asyncio.wait_for(entered.wait(), WAIT_TIMEOUT)
+            await wait_for(entered.wait())
         rt.stop()
-        await asyncio.wait_for(sleeping, WAIT_TIMEOUT)
+        await wait_for(sleeping)
     finally:
         sleeping.cancel()
         await asyncio.gather(sleeping, return_exceptions=True)

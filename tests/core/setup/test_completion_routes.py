@@ -69,7 +69,7 @@ async def test_ready_route_fires_become_ready_off_thread(
     import asyncio
     import threading
 
-    from tests.timing_helpers import WAIT_TIMEOUT
+    from tests.timing_helpers import WAIT_TIMEOUT, wait_for
 
     pl = MagicMock()
     loop = asyncio.get_running_loop()
@@ -93,13 +93,11 @@ async def test_ready_route_fires_become_ready_off_thread(
     completion_routes.register(fake_mcp, pl)
 
     try:
-        await asyncio.wait_for(
-            fake_mcp.get("/api/ready", "POST")(async_request()), WAIT_TIMEOUT
-        )
-        await asyncio.wait_for(started.wait(), WAIT_TIMEOUT)
+        await wait_for(fake_mcp.get("/api/ready", "POST")(async_request()))
+        await wait_for(started.wait())
         assert not finished.is_set()
     finally:
         resume.set()
-        await asyncio.wait_for(finished.wait(), WAIT_TIMEOUT)
+        await wait_for(finished.wait())
     assert errors == []
     pl.become_ready.assert_called_once()

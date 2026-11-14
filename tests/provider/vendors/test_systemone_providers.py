@@ -25,7 +25,7 @@ from physiclaw.provider import (
     provider_key_status,
 )
 from physiclaw.provider.decision import base as decision_base
-from tests.timing_helpers import WAIT_TIMEOUT, wait_for
+from tests.timing_helpers import wait_for
 
 ROUTES = [
     ("liquid", "d1"),
@@ -246,7 +246,7 @@ async def test_cancellation_and_deadline_do_not_retry(
         side_effect=block
     )
     task = asyncio.create_task(provider.evaluate(decision_request, deadline=deadline()))
-    await asyncio.wait_for(entered.wait(), WAIT_TIMEOUT)
+    await wait_for(entered.wait())
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await wait_for(task)

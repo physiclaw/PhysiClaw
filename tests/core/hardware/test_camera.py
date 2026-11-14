@@ -510,12 +510,7 @@ def test_reconnect_verifies_frames_and_resets_drought(mocker) -> None:
 
 
 def test_reconnect_rejects_empty_stream_then_recovers_on_next_attempt(mocker) -> None:
-    from types import SimpleNamespace
-
     now = fr_mod.time.monotonic()
-    mocker.patch.object(
-        fr_mod, "time", SimpleNamespace(monotonic=lambda: now, time=fr_mod.time.time)
-    )
     cam, _ = _ready_camera(mocker)
     empty = FakeVideoCapture(index=0)
     recovered = _frame()

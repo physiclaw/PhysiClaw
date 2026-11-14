@@ -49,7 +49,7 @@ from physiclaw.agent.runtime.hook import Trigger
 from physiclaw.agent.runtime.sentinel import DONE, IDLE, STUCK, WAIT
 from physiclaw.contract.dto import UserMessage
 from physiclaw.contract.plugin import ProposedTurn
-from tests.timing_helpers import WAIT_TIMEOUT
+from tests.timing_helpers import wait_for
 
 # ---------- _run_session ----------
 
@@ -468,7 +468,7 @@ async def test_session_closes_pending_shadow_before_trace_and_chat_provider(
     original_chat = completed_run.provider.respond
 
     async def chat(messages, tools, *, metadata):
-        await asyncio.wait_for(started.wait(), WAIT_TIMEOUT)
+        await wait_for(started.wait())
         return await original_chat(messages, tools, metadata=metadata)
 
     completed_run.provider.respond = chat

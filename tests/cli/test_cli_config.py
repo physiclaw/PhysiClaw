@@ -49,11 +49,7 @@ def test_path_prints_config_file_path(mocker) -> None:
 # ---------- show ----------
 
 
-@settings(
-    deadline=None,
-    max_examples=30,
-    suppress_health_check=[HealthCheck.function_scoped_fixture],
-)
+@settings(max_examples=30, suppress_health_check=[HealthCheck.function_scoped_fixture])
 @given(
     secret=st.text(alphabet=st.characters(blacklist_categories=("Cs",)), max_size=60)
 )
@@ -473,11 +469,7 @@ def test_edit_preserves_existing_executable_path(
     run.assert_called_once_with([str(editor), str(_config.config_path())], check=True)
 
 
-@settings(
-    deadline=None,
-    max_examples=30,
-    suppress_health_check=[HealthCheck.function_scoped_fixture],
-)
+@settings(max_examples=30, suppress_health_check=[HealthCheck.function_scoped_fixture])
 @given(
     arguments=st.lists(st.text(alphabet="abc xyz012-_$;\\\"'", max_size=15), max_size=4)
 )

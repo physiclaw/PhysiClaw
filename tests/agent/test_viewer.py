@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 from freezegun import freeze_time
-from hypothesis import example, given, settings
+from hypothesis import example, given
 from hypothesis import strategies as st
 from symlink_helpers import symlink_to
 
@@ -444,7 +444,6 @@ def test_regression_malformed_record_keeps_raw_data_and_following_record(
     assert rows[1]["summary"] == "OUTCOME: DONE — still visible"
 
 
-@settings(deadline=None)
 @given(
     st.dictionaries(
         st.sampled_from(

@@ -210,12 +210,10 @@ async def owned_session(mocker):
             session=session, first=first, second=second, factory=factory
         )
     finally:
-        first.allow_close.set()
-        second.allow_close.set()
-        first.allow_call.set()
-        second.allow_call.set()
-        first.allow_list.set()
-        second.allow_list.set()
+        for client in (first, second):
+            client.allow_close.set()
+            client.allow_call.set()
+            client.allow_list.set()
         await wait_for(session.close())
 
 
@@ -275,7 +273,7 @@ async def test_regression_cancelled_action_waits_for_cleanup_before_unlock(
     await wait_for(client.started.wait())
 
     action.cancel("stop action")
-    await asyncio.wait_for(client.close_started.wait(), WAIT_TIMEOUT)
+    await wait_for(client.close_started.wait())
     busy_during_close = s.busy
     client.allow_close.set()
     with pytest.raises(asyncio.CancelledError, match="stop action"):
@@ -319,9 +317,9 @@ async def test_close_can_interrupt_an_inflight_driver(owned_session):
     action = asyncio.create_task(s.drive(job))
     await wait_for(client.started.wait())
 
-    await asyncio.wait_for(s.close(), WAIT_TIMEOUT)
+    await wait_for(s.close())
     with pytest.raises(asyncio.CancelledError):
-        await asyncio.wait_for(action, WAIT_TIMEOUT)
+        await wait_for(action)
 
     assert client.closed is True
     assert client.calls == []
@@ -414,7 +412,7 @@ async def test_cancelled_driver_cannot_keep_the_worker_alive(owned_session):
 
     action.cancel()
     with pytest.raises(asyncio.CancelledError):
-        await asyncio.wait_for(action, WAIT_TIMEOUT)
+        await wait_for(action)
 
     assert owned_session.first.closed is True
     assert s.state()["connected"] is False
@@ -433,10 +431,10 @@ async def test_close_finishes_when_driver_swallows_cancellation(owned_session):
             return "finished during shutdown"
 
     action = asyncio.create_task(s.drive(job))
-    await asyncio.wait_for(started.wait(), WAIT_TIMEOUT)
+    await wait_for(started.wait())
 
     closing = asyncio.create_task(s.close())
-    result = await asyncio.wait_for(action, WAIT_TIMEOUT)
+    result = await wait_for(action)
     # Bound the observation without cancelling close itself: the regression
     # being checked is precisely a close that ignores caller cancellation.
     try:
@@ -514,7 +512,7 @@ async def test_close_before_worker_starts_does_not_hang_or_execute(owned_session
     action = asyncio.create_task(s.act("tap", {}))
     closing = asyncio.create_task(s.close())
     with pytest.raises(asyncio.CancelledError, match="MCP session closed"):
-        await asyncio.wait_for(action, WAIT_TIMEOUT)
+        await wait_for(action)
     await wait_for(closing)
     opened_before_retry = owned_session.factory.call_count
     result = await s.act("peek", {})

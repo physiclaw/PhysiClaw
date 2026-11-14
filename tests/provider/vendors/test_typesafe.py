@@ -29,7 +29,7 @@ from physiclaw.decision.policy import question_profile
 from physiclaw.provider import make_decision_provider
 from physiclaw.provider.decision import base as decision_base
 from physiclaw.provider.vendors.typesafe.decision import TypeSafeDecisionProvider
-from tests.timing_helpers import WAIT_TIMEOUT, wait_for
+from tests.timing_helpers import wait_for
 
 URL = "https://api.typesafe.ai/v1/systemone"
 SECRET = "fixture-secret-not-a-real-key"
@@ -452,7 +452,7 @@ async def test_cancellation_propagates_and_client_remains_usable(
 
     route = respx_mock.post(URL).mock(side_effect=blocked)
     task = asyncio.create_task(provider.evaluate(decision_request, deadline=deadline()))
-    await asyncio.wait_for(started.wait(), WAIT_TIMEOUT)
+    await wait_for(started.wait())
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await wait_for(task)

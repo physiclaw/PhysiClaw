@@ -34,7 +34,7 @@ from physiclaw.contract.dto import UserMessage
 from physiclaw.contract.observation import OBSERVATION_META
 from physiclaw.contract.plugin import PluginServices
 from physiclaw.decision.plugin import DecisionPlugin
-from tests.timing_helpers import WAIT_TIMEOUT
+from tests.timing_helpers import wait_for
 
 
 def test_snapshot_is_detached_and_excludes_private_interpretation():
@@ -231,10 +231,10 @@ async def test_real_workflow_and_requests_match_with_decision_off_and_shadow(
             )
             if mode == "shadow" and metadata.turn == 2:
                 # The LLM reaches its normal call while shadow inference waits.
-                await asyncio.wait_for(started.wait(), WAIT_TIMEOUT)
+                await wait_for(started.wait())
                 if shadow_finishes:
                     release.set()
-                    await asyncio.wait_for(finished.wait(), WAIT_TIMEOUT)
+                    await wait_for(finished.wait())
             return await original_chat(messages, tools, metadata=metadata)
 
         provider.respond = capture

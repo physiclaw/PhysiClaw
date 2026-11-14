@@ -249,19 +249,18 @@ async def test_off_bypasses_all_decision_work_even_with_model_configured(
 
 
 async def test_settings_are_captured_once_for_each_session(
-    shadow, turn, metadata, monkeypatch
+    shadow, turn, metadata, monkeypatch, controlled_time
 ):
     monkeypatch.setattr(config.CONFIG.decision, "mode", "off")
     monkeypatch.setattr(config.CONFIG.decision, "model", "other/new-model")
     monkeypatch.setattr(config.CONFIG.decision, "timeout_seconds", 20.0)
-    before = plugin_mod.asyncio.get_running_loop().time()
     await shadow.plugin.advance(turn, metadata=metadata)
     await wait_for(shadow.plugin._task)
     shadow.factory.assert_called_once_with(
         "test", "configured-model", require_images=True
     )
     deadline = shadow.provider.evaluate.call_args.kwargs["deadline"]
-    assert before < deadline <= plugin_mod.asyncio.get_running_loop().time() + 2.0
+    assert deadline == controlled_time.now + 2.0
 
     fresh = DecisionPlugin()
     await fresh.session_setup(shadow.services)
@@ -398,12 +397,9 @@ async def test_permanent_provider_failure_disables_session(
 @pytest.mark.parametrize("shadow", ["shadow", "active"], indirect=True)
 @pytest.mark.parametrize("error", [ProviderTransientError, TimeoutError, RuntimeError])
 async def test_provider_failure_cools_down_then_recovers_without_retrying_same_call(
-    shadow, turn, metadata, monkeypatch, error
+    shadow, turn, metadata, controlled_time, error
 ):
-    loop = plugin_mod.asyncio.get_running_loop()
-    started = loop.time()
-    clock = [started]
-    monkeypatch.setattr(loop, "time", lambda: clock[0])
+    started = controlled_time.now
     shadow.provider.evaluate.side_effect = error("private server response")
     assert await shadow.plugin.advance(turn, metadata=metadata) is None
     await wait_for(shadow.plugin._task)
@@ -411,11 +407,11 @@ async def test_provider_failure_cools_down_then_recovers_without_retrying_same_c
     assert record["suppression"] == "cooldown"
     assert record["cooldown_seconds"] == 5.0
     shadow.provider.evaluate.side_effect = lambda request, **kw: scored_answer(request)
-    clock[0] = started + 4.999
+    controlled_time.now = started + 4.999
     assert await shadow.plugin.advance(turn, metadata=replace(metadata, turn=1)) is None
     assert shadow.events[-1]["evaluation"]["reason"] == "provider_cooldown"
     shadow.provider.evaluate.assert_awaited_once()
-    clock[0] = started + 5.0
+    controlled_time.now = started + 5.0
     proposal = await shadow.plugin.advance(turn, metadata=replace(metadata, turn=2))
     await wait_for(shadow.plugin._task)
     assert (proposal is not None) == (shadow.plugin._mode == "active")
@@ -480,7 +476,7 @@ async def test_outer_deadline_bounds_a_structural_provider(
     shadow.provider.evaluate.side_effect = evaluate
     deadline = plugin_mod.asyncio.get_running_loop().time() + 0.02
     await shadow.plugin.advance(turn, metadata=replace(metadata, deadline=deadline))
-    await asyncio.wait_for(shadow.plugin._task, timeout=WAIT_TIMEOUT)
+    await wait_for(shadow.plugin._task)
     assert entered.is_set()
     assert shadow.provider.evaluate.call_args.kwargs["deadline"] == deadline
     assert calls(shadow)[0]["error"] == "TimeoutError"
@@ -502,7 +498,7 @@ async def test_late_answer_keeps_known_cost_evidence_but_is_not_interpreted(
         metadata, deadline=plugin_mod.asyncio.get_running_loop().time() + 0.02
     )
     await shadow.plugin.advance(turn, metadata=metadata)
-    await asyncio.wait_for(shadow.plugin._task, timeout=WAIT_TIMEOUT)
+    await wait_for(shadow.plugin._task)
     record = calls(shadow)[0]
     assert record["status"] == "error"
     assert record["error"] == "TimeoutError"
@@ -650,25 +646,18 @@ async def test_active_returns_only_a_bound_local_tap(scored_provider, turn, meta
 @pytest.mark.parametrize("shadow", ["active"], indirect=True)
 @pytest.mark.parametrize("host_deadline", [None, 2.0])
 async def test_proposal_expiry_is_captured_before_inference_and_trace_io(
-    scored_provider, turn, metadata, monkeypatch, host_deadline
+    scored_provider, turn, metadata, controlled_time, host_deadline
 ):
     active = scored_provider
-    loop = plugin_mod.asyncio.get_running_loop()
-    started = loop.time()
-    clock = [started]
-    monkeypatch.setattr(loop, "time", lambda: clock[0])
-    monkeypatch.setattr(
-        "physiclaw.decision.plugin.time.time",
-        lambda: turn.observation.observed_after,
-    )
+    started = controlled_time.now
 
     def write(event):
-        clock[0] += 0.25
+        controlled_time.now += 0.25
         active.events.append(event)
         return True
 
     def evaluate(request, **kwargs):
-        clock[0] += 0.25
+        controlled_time.now += 0.25
         return scored_answer(request)
 
     active.sink.write.side_effect = write
@@ -677,25 +666,18 @@ async def test_proposal_expiry_is_captured_before_inference_and_trace_io(
         metadata = replace(metadata, deadline=started + host_deadline)
     proposal = await active.plugin.advance(turn, metadata=metadata)
     assert proposal.expires_at == pytest.approx(started + (host_deadline or 10.0))
-    assert clock[0] == pytest.approx(started + 0.75)
+    assert controlled_time.now == pytest.approx(started + 0.75)
 
 
 @pytest.mark.parametrize("shadow", ["active"], indirect=True)
 async def test_wall_clock_cannot_extend_proposal_lifetime(
-    scored_provider, turn, metadata, monkeypatch
+    scored_provider, turn, metadata, controlled_time
 ):
     active = scored_provider
     active.plugin._timeout = 20.0
-    loop = plugin_mod.asyncio.get_running_loop()
-    clock = [loop.time()]
-    monkeypatch.setattr(loop, "time", lambda: clock[0])
-    monkeypatch.setattr(
-        "physiclaw.decision.plugin.time.time",
-        lambda: turn.observation.observed_after,
-    )
 
     def evaluate(request, **kwargs):
-        clock[0] += 11.0
+        controlled_time.now += 11.0
         return scored_answer(request)
 
     active.provider.evaluate.side_effect = evaluate
@@ -707,23 +689,16 @@ async def test_wall_clock_cannot_extend_proposal_lifetime(
 @pytest.mark.parametrize("shadow", ["shadow", "active"], indirect=True)
 @pytest.mark.parametrize("delay_in", ["projection_trace", "factory"])
 async def test_expired_view_skips_api_after_synchronous_work(
-    scored_provider, turn, metadata, monkeypatch, delay_in
+    scored_provider, turn, metadata, controlled_time, delay_in
 ):
     active = scored_provider
     active.plugin._timeout = 20.0
-    loop = plugin_mod.asyncio.get_running_loop()
-    clock = [loop.time()]
-    monkeypatch.setattr(loop, "time", lambda: clock[0])
-    monkeypatch.setattr(
-        "physiclaw.decision.plugin.time.time",
-        lambda: turn.observation.observed_after,
-    )
 
     if delay_in == "projection_trace":
 
         def write(event):
             if event["event"] == "decision_projection":
-                clock[0] += 11.0
+                controlled_time.now += 11.0
             active.events.append(event)
             return True
 
@@ -731,7 +706,7 @@ async def test_expired_view_skips_api_after_synchronous_work(
     else:
 
         def factory(*args, **kwargs):
-            clock[0] += 11.0
+            controlled_time.now += 11.0
             return active.provider
 
         active.factory.side_effect = factory
@@ -854,7 +829,7 @@ async def test_view_expiry_cancels_inference_without_cooling_down_fresh_views(
 
     async with asyncio.timeout(WAIT_TIMEOUT):
         assert await scored_provider.plugin.advance(turn, metadata=metadata) is None
-        await wait_for(scored_provider.plugin._task)
+        await scored_provider.plugin._task
     assert cancelled.is_set()
     record = calls(scored_provider)[0]
     assert record["status"] == "error"
@@ -994,20 +969,12 @@ async def test_active_cancellation_cannot_return_a_proposal(
 @pytest.mark.parametrize("shadow", ["active"], indirect=True)
 @pytest.mark.parametrize("swallow", [False, True])
 async def test_active_timeout_yields_even_if_provider_returns_late(
-    scored_provider, turn, metadata, swallow, monkeypatch, controlled_time
+    scored_provider, turn, metadata, swallow, controlled_time
 ):
-    loop = plugin_mod.asyncio.get_running_loop()
-    clock = [loop.time()]
-    monkeypatch.setattr(loop, "time", lambda: clock[0])
-    monkeypatch.setattr(
-        "physiclaw.decision.plugin.time.time",
-        lambda: turn.observation.observed_after,
-    )
-
     async def evaluate(request, **kw):
         # Expire the real asyncio timeout only after all preflight guards pass
         # and the provider is entered, independent of Windows clock resolution.
-        clock[0] = kw["deadline"] + 1.0
+        controlled_time.now = kw["deadline"] + 1.0
         controlled_time.expire()
         try:
             await asyncio.Event().wait()
@@ -1020,7 +987,7 @@ async def test_active_timeout_yields_even_if_provider_returns_late(
     assert (
         await scored_provider.plugin.advance(
             turn,
-            metadata=replace(metadata, deadline=clock[0] + 0.01),
+            metadata=replace(metadata, deadline=controlled_time.now + 0.01),
         )
         is None
     )

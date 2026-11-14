@@ -316,11 +316,7 @@ def test_failed_uv_list_does_not_trust_stdout(boundary):
     assert len(boundary.calls) == 1
 
 
-@settings(
-    deadline=None,
-    max_examples=30,
-    suppress_health_check=[HealthCheck.function_scoped_fixture],
-)
+@settings(max_examples=30, suppress_health_check=[HealthCheck.function_scoped_fixture])
 @given(
     spaces=st.sampled_from([" ", "  ", "\t"]),
     version=st.tuples(st.integers(0, 99), st.integers(0, 99), st.integers(0, 99)),

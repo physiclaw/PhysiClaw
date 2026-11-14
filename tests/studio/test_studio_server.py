@@ -13,7 +13,7 @@ import pytest
 from symlink_helpers import symlink_to
 
 from physiclaw.studio import server
-from tests.timing_helpers import WAIT_TIMEOUT, wait_for
+from tests.timing_helpers import wait_for
 
 
 class FakeSession:
@@ -356,7 +356,7 @@ async def test_regression_shutdown_joins_active_job_before_closing_session(mocke
             transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1:8058"
         ) as client:
             launched = await client.post("/api/step", json={"ref": "demo/flow"})
-            await asyncio.wait_for(started.wait(), WAIT_TIMEOUT)
+            await wait_for(started.wait())
 
     assert launched.status_code == 200
     assert cleanup_observed_on_close == [True]

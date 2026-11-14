@@ -12,7 +12,7 @@ from unittest.mock import patch
 import pytest
 import uvicorn
 
-from tests.timing_helpers import WAIT_TIMEOUT, ManualTimeouts
+from tests.timing_helpers import WAIT_TIMEOUT, ManualTimeouts, wait_for
 
 server_mod = importlib.import_module("physiclaw.cli.server")
 
@@ -73,16 +73,16 @@ def test_bridge_loop_detaches_reset_connection_before_wait_closed(bridge_server)
         client.setblocking(False)
         try:
             await loop.sock_connect(client, listener.sockets[0].getsockname())
-            transport = await asyncio.wait_for(accepted, WAIT_TIMEOUT)
+            transport = await wait_for(accepted)
             # A zero linger sends TCP RST, reproducing the phone disconnect.
             linger_format = "hh" if os.name == "nt" else "ii"
             client.setsockopt(
                 socket.SOL_SOCKET, socket.SO_LINGER, struct.pack(linger_format, 1, 0)
             )
             client.close()
-            await asyncio.wait_for(lost, WAIT_TIMEOUT)
+            await wait_for(lost)
             listener.close()
-            await asyncio.wait_for(listener.wait_closed(), WAIT_TIMEOUT)
+            await wait_for(listener.wait_closed())
             assert transport.is_closing()
             assert errors == []
         finally:
@@ -127,7 +127,7 @@ async def test_bridge_shutdown_bounds_drain_and_lifespan(
     bridge_server.lifespan.shutdown = mocker.AsyncMock(
         side_effect=hang if stuck == "lifespan" else None
     )
-    await asyncio.wait_for(bridge_server.shutdown(), WAIT_TIMEOUT)
+    await wait_for(bridge_server.shutdown())
 
     assert timeouts.delays == [
         server_mod.BRIDGE_SHUTDOWN_SECONDS,

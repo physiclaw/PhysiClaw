@@ -128,7 +128,6 @@ def test_regression_data_partition_reads_final_complete_record(bundle, prefix):
 
 
 @settings(
-    deadline=None,
     derandomize=True,
     max_examples=30,
     suppress_health_check=[HealthCheck.function_scoped_fixture],

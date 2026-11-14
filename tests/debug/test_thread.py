@@ -287,11 +287,7 @@ def test_peek_without_pending_answer_does_not_publish(mocker, bubbles, staged):
     write.assert_not_called()
 
 
-@settings(
-    deadline=None,
-    max_examples=30,
-    suppress_health_check=[HealthCheck.function_scoped_fixture],
-)
+@settings(max_examples=30, suppress_health_check=[HealthCheck.function_scoped_fixture])
 @given(
     bubbles=st.lists(
         st.builds(
