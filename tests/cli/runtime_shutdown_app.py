@@ -13,7 +13,6 @@ import socket
 import subprocess
 import sys
 import threading
-import time
 
 # Cold imports under subprocess coverage can be slow on shared CI runners.
 # This budget is only for startup; tests bound shutdown separately.
@@ -51,8 +50,9 @@ def child(base: str, mode: str) -> None:
 
     if mode == "unresponsive":
         print("CHILD_UNRESPONSIVE", flush=True)
-        while True:
-            time.sleep(1)
+        from threading import Event
+
+        Event().wait()
 
     owner = None
     real_close = mcp_tool.close_mcp

@@ -13,6 +13,7 @@ import pytest
 
 from physiclaw.cli import _assistive_touch_http as service
 from physiclaw.port.backends import darwin, linux, windows
+from tests.timing_helpers import WAIT_TIMEOUT
 
 PNG = b"\x89PNG\r\n\x1a\nimage"
 API = service.API_PATH
@@ -75,6 +76,11 @@ def test_connection_info_keeps_hostname_if_network_is_unavailable(mocker):
     }
 
 
+def join_server(worker):
+    worker.join(WAIT_TIMEOUT)
+    assert not worker.is_alive()
+
+
 @pytest.fixture
 def clients():
     state = service.TestSession()
@@ -88,7 +94,7 @@ def clients():
                 target=server.serve_forever, kwargs={"poll_interval": 0.01}
             )
             worker.start()
-            cleanup.callback(worker.join)
+            cleanup.callback(join_server, worker)
             cleanup.callback(server.shutdown)
 
             def request(
@@ -100,7 +106,9 @@ def clients():
                 chunked=False,
                 port=server.server_port,
             ):
-                connection = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+                connection = http.client.HTTPConnection(
+                    "127.0.0.1", port, timeout=WAIT_TIMEOUT
+                )
                 try:
                     connection.request(
                         method, path, body, headers or {}, encode_chunked=chunked

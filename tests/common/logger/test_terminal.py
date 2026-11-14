@@ -19,6 +19,7 @@ from physiclaw.common.logger.context import (
 )
 from physiclaw.common.logger.logger import _TaggedFormatter, logged, setup_logging
 from physiclaw.common.logger.structured import JsonLogFormatter
+from tests.timing_helpers import wait_for
 
 
 @pytest.fixture
@@ -488,13 +489,15 @@ async def test_log_context_is_isolated_between_tasks_and_restored_after_cancella
 
     try:
         cancelled = asyncio.create_task(worker("cancelled", cancel=True))
-        await asyncio.gather(worker("A"), worker("B"), gate.wait())
+        await wait_for(asyncio.gather(worker("A"), worker("B"), gate.wait()))
         cancelled.cancel()
         with pytest.raises(asyncio.CancelledError):
-            await cancelled
+            await wait_for(cancelled)
         assert restored == [{"session_id": "parent", "turn": 9}] * 3
         assert record_fields(record) == {"session_id": "parent", "turn": 9}
     finally:
+        cancelled.cancel()
+        await wait_for(asyncio.gather(cancelled, return_exceptions=True))
         reset_log_context(outer)
     assert "session_id" not in record_fields(record)
 

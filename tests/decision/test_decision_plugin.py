@@ -2,7 +2,6 @@
 
 import asyncio
 import json
-import time
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -25,7 +24,18 @@ from physiclaw.contract.turn import (
     TurnInput,
     TurnMetadata,
 )
+from physiclaw.decision import plugin as plugin_mod
 from physiclaw.decision.plugin import DecisionPlugin
+from tests.timing_helpers import WAIT_TIMEOUT, ManualTimeouts, wait_for
+
+
+@pytest.fixture(autouse=True)
+def controlled_time(monkeypatch):
+    """Observation age and provider budgets never depend on runner scheduling."""
+    timeouts = ManualTimeouts(now=100.0)
+    monkeypatch.setattr(plugin_mod, "asyncio", timeouts)
+    monkeypatch.setattr(plugin_mod, "time", SimpleNamespace(time=lambda: 1000.0))
+    return timeouts
 
 
 def answer(request):
@@ -70,7 +80,10 @@ def scored_answer(request, *, scores=None, selections=None):
 @pytest.fixture
 def turn(observation_blocks):
     return TurnInput(
-        replace(read_observation(observation_blocks()), observed_after=time.time()),
+        replace(
+            read_observation(observation_blocks()),
+            observed_after=plugin_mod.time.time(),
+        ),
         None,
         progress=ProgressSnapshot(
             "Open the app", (ProgressStep("Open the app", "in_progress"),)
@@ -118,7 +131,7 @@ async def shadow(mocker, monkeypatch, request):
         services=services,
         events=events,
     )
-    await plugin.aclose()
+    await wait_for(plugin.aclose())
 
 
 def calls(shadow):
@@ -131,7 +144,7 @@ async def test_shadow_preserves_request_identity_geometry_and_reported_usage(
     assert shadow.factory.call_count == 0
     assert await shadow.plugin.advance(turn, metadata=metadata) is None
     scheduled = shadow.events[-1]
-    await shadow.plugin._task
+    await wait_for(shadow.plugin._task)
     shadow.factory.assert_called_once_with(
         "test", "configured-model", require_images=True
     )
@@ -179,7 +192,7 @@ async def test_threshold_gate_is_trace_only_and_preserves_raw_proposal(
 
     shadow.provider.evaluate.side_effect = evaluate
     assert await shadow.plugin.advance(turn, metadata=metadata) is None
-    await shadow.plugin._task
+    await wait_for(shadow.plugin._task)
     record = calls(shadow)[0]
     assert record["interpretation"]["reason"] == "hypothetical_action"
     assert record["interpretation"]["action"]["tool"] == "tap"
@@ -205,7 +218,7 @@ async def test_shadow_requires_model_and_reports_bad_config_once(
     await plugin.session_setup(shadow.services)
     assert await plugin.advance(turn, metadata=metadata) is None
     assert await plugin.advance(turn, metadata=replace(metadata, turn=1)) is None
-    await plugin.aclose()
+    await wait_for(plugin.aclose())
     shadow.factory.assert_not_called()
     assert not calls(shadow)
     assert shadow.events == [
@@ -229,7 +242,7 @@ async def test_off_bypasses_all_decision_work_even_with_model_configured(
     plugin = DecisionPlugin()
     await plugin.session_setup(shadow.services)
     assert await plugin.advance(turn, metadata=metadata) is None
-    await plugin.aclose()
+    await wait_for(plugin.aclose())
     projector.assert_not_called()
     shadow.factory.assert_not_called()
     assert shadow.events == []
@@ -241,20 +254,20 @@ async def test_settings_are_captured_once_for_each_session(
     monkeypatch.setattr(config.CONFIG.decision, "mode", "off")
     monkeypatch.setattr(config.CONFIG.decision, "model", "other/new-model")
     monkeypatch.setattr(config.CONFIG.decision, "timeout_seconds", 20.0)
-    before = asyncio.get_running_loop().time()
+    before = plugin_mod.asyncio.get_running_loop().time()
     await shadow.plugin.advance(turn, metadata=metadata)
-    await shadow.plugin._task
+    await wait_for(shadow.plugin._task)
     shadow.factory.assert_called_once_with(
         "test", "configured-model", require_images=True
     )
     deadline = shadow.provider.evaluate.call_args.kwargs["deadline"]
-    assert before < deadline <= asyncio.get_running_loop().time() + 2.0
+    assert before < deadline <= plugin_mod.asyncio.get_running_loop().time() + 2.0
 
     fresh = DecisionPlugin()
     await fresh.session_setup(shadow.services)
     event_count = len(shadow.events)
     assert await fresh.advance(turn, metadata=metadata) is None
-    await fresh.aclose()
+    await wait_for(fresh.aclose())
     assert len(shadow.events) == event_count
     shadow.provider.evaluate.assert_awaited_once()
 
@@ -284,7 +297,9 @@ async def test_ineligible_work_never_constructs_provider(
     elif problem == "screenshot":
         turn = replace(turn, observation=replace(turn.observation, source="screenshot"))
     else:
-        metadata = replace(metadata, deadline=asyncio.get_running_loop().time() - 1)
+        metadata = replace(
+            metadata, deadline=plugin_mod.asyncio.get_running_loop().time() - 1
+        )
     assert await shadow.plugin.advance(turn, metadata=metadata) is None
     shadow.factory.assert_not_called()
     assert shadow.events[-1]["evaluation"]["status"] == "skipped"
@@ -298,7 +313,7 @@ async def test_missing_host_service_cannot_break_fallback(
     plugin = DecisionPlugin()
     await plugin.session_setup(replace(shadow.services, **{missing: None}))
     assert await plugin.advance(turn, metadata=metadata) is None
-    await plugin.aclose()
+    await wait_for(plugin.aclose())
     shadow.factory.assert_not_called()
 
 
@@ -314,19 +329,19 @@ async def test_busy_turns_are_not_queued_and_results_keep_original_turn(
 
     shadow.provider.evaluate.side_effect = evaluate
     assert await shadow.plugin.advance(turn, metadata=metadata) is None
-    await entered.wait()
+    await wait_for(entered.wait())
     original = shadow.plugin._task
     assert await shadow.plugin.advance(turn, metadata=replace(metadata, turn=1)) is None
     assert shadow.events[-1]["evaluation"] == {"status": "skipped", "reason": "busy"}
     assert shadow.plugin._task is original
     shadow.provider.evaluate.assert_awaited_once()
     release.set()
-    await original
+    await wait_for(original)
     assert calls(shadow)[0]["turn"] == 0
     # No queued request starts after the busy call finishes.
     shadow.provider.evaluate.assert_awaited_once()
     await shadow.plugin.advance(turn, metadata=replace(metadata, turn=2))
-    await shadow.plugin._task
+    await wait_for(shadow.plugin._task)
     assert [event["turn"] for event in calls(shadow)] == [0, 2]
     shadow.factory.assert_called_once()
 
@@ -336,7 +351,7 @@ async def test_factory_failure_is_not_retried_or_logged_with_secrets(
 ):
     shadow.factory.side_effect = RuntimeError("secret credentials")
     await shadow.plugin.advance(turn, metadata=metadata)
-    await shadow.plugin._task
+    await wait_for(shadow.plugin._task)
     await shadow.plugin.advance(turn, metadata=replace(metadata, turn=1))
     shadow.factory.assert_called_once()
     assert not calls(shadow)
@@ -349,7 +364,7 @@ async def test_provider_failure_does_not_retry_or_invent_zero_usage(
 ):
     shadow.provider.evaluate.side_effect = RuntimeError("private server response")
     await shadow.plugin.advance(turn, metadata=metadata)
-    await shadow.plugin._task
+    await wait_for(shadow.plugin._task)
     shadow.provider.evaluate.assert_awaited_once()
     record = calls(shadow)[0]
     assert record["status"] == "error"
@@ -370,13 +385,13 @@ async def test_permanent_provider_failure_disables_session(
 ):
     shadow.provider.evaluate.side_effect = error("private server response")
     assert await shadow.plugin.advance(turn, metadata=metadata) is None
-    await shadow.plugin._task
+    await wait_for(shadow.plugin._task)
     assert calls(shadow)[0]["suppression"] == "session"
     assert await shadow.plugin.advance(turn, metadata=replace(metadata, turn=1)) is None
     assert shadow.events[-1]["evaluation"]["reason"] == "provider_unavailable"
     shadow.provider.evaluate.assert_awaited_once()
     assert "private server response" not in json.dumps(shadow.events)
-    await shadow.plugin.aclose()
+    await wait_for(shadow.plugin.aclose())
     shadow.provider.aclose.assert_awaited_once()
 
 
@@ -385,13 +400,13 @@ async def test_permanent_provider_failure_disables_session(
 async def test_provider_failure_cools_down_then_recovers_without_retrying_same_call(
     shadow, turn, metadata, monkeypatch, error
 ):
-    loop = asyncio.get_running_loop()
+    loop = plugin_mod.asyncio.get_running_loop()
     started = loop.time()
     clock = [started]
     monkeypatch.setattr(loop, "time", lambda: clock[0])
     shadow.provider.evaluate.side_effect = error("private server response")
     assert await shadow.plugin.advance(turn, metadata=metadata) is None
-    await shadow.plugin._task
+    await wait_for(shadow.plugin._task)
     record = calls(shadow)[0]
     assert record["suppression"] == "cooldown"
     assert record["cooldown_seconds"] == 5.0
@@ -402,7 +417,7 @@ async def test_provider_failure_cools_down_then_recovers_without_retrying_same_c
     shadow.provider.evaluate.assert_awaited_once()
     clock[0] = started + 5.0
     proposal = await shadow.plugin.advance(turn, metadata=replace(metadata, turn=2))
-    await shadow.plugin._task
+    await wait_for(shadow.plugin._task)
     assert (proposal is not None) == (shadow.plugin._mode == "active")
     assert shadow.provider.evaluate.await_count == 2
     assert calls(shadow)[1]["status"] == "answered"
@@ -415,11 +430,11 @@ async def test_request_rejection_does_not_disable_the_next_valid_request(
 ):
     shadow.provider.evaluate.side_effect = ProviderRequestError("too many choices")
     assert await shadow.plugin.advance(turn, metadata=metadata) is None
-    await shadow.plugin._task
+    await wait_for(shadow.plugin._task)
     assert calls(shadow)[0]["suppression"] == "request"
     shadow.provider.evaluate.side_effect = lambda request, **kw: scored_answer(request)
     proposal = await shadow.plugin.advance(turn, metadata=replace(metadata, turn=1))
-    await shadow.plugin._task
+    await wait_for(shadow.plugin._task)
     assert (proposal is not None) == (shadow.plugin._mode == "active")
     assert shadow.provider.evaluate.await_count == 2
     assert calls(shadow)[1]["status"] == "answered"
@@ -441,7 +456,7 @@ async def test_malformed_or_mismatched_answers_are_trace_only(
         answer(request), **change
     )
     assert await shadow.plugin.advance(turn, metadata=metadata) is None
-    await shadow.plugin._task
+    await wait_for(shadow.plugin._task)
     record = calls(shadow)[0]
     if expected == "error":
         assert record["status"] == "error"
@@ -452,17 +467,20 @@ async def test_malformed_or_mismatched_answers_are_trace_only(
         assert record["threshold_gate"]["status"] == "not_applicable"
 
 
-async def test_outer_deadline_bounds_a_structural_provider(shadow, turn, metadata):
+async def test_outer_deadline_bounds_a_structural_provider(
+    shadow, turn, metadata, controlled_time
+):
     entered = asyncio.Event()
 
     async def evaluate(request, *, deadline):
         entered.set()
+        controlled_time.expire()
         await asyncio.Event().wait()
 
     shadow.provider.evaluate.side_effect = evaluate
-    deadline = asyncio.get_running_loop().time() + 0.02
+    deadline = plugin_mod.asyncio.get_running_loop().time() + 0.02
     await shadow.plugin.advance(turn, metadata=replace(metadata, deadline=deadline))
-    await asyncio.wait_for(shadow.plugin._task, timeout=1)
+    await asyncio.wait_for(shadow.plugin._task, timeout=WAIT_TIMEOUT)
     assert entered.is_set()
     assert shadow.provider.evaluate.call_args.kwargs["deadline"] == deadline
     assert calls(shadow)[0]["error"] == "TimeoutError"
@@ -470,18 +488,21 @@ async def test_outer_deadline_bounds_a_structural_provider(shadow, turn, metadat
 
 
 async def test_late_answer_keeps_known_cost_evidence_but_is_not_interpreted(
-    shadow, turn, metadata
+    shadow, turn, metadata, controlled_time
 ):
     async def evaluate(request, *, deadline):
         try:
+            controlled_time.expire()
             await asyncio.Event().wait()
         except asyncio.CancelledError:
             return answer(request)
 
     shadow.provider.evaluate.side_effect = evaluate
-    metadata = replace(metadata, deadline=asyncio.get_running_loop().time() + 0.02)
+    metadata = replace(
+        metadata, deadline=plugin_mod.asyncio.get_running_loop().time() + 0.02
+    )
     await shadow.plugin.advance(turn, metadata=metadata)
-    await asyncio.wait_for(shadow.plugin._task, timeout=1)
+    await asyncio.wait_for(shadow.plugin._task, timeout=WAIT_TIMEOUT)
     record = calls(shadow)[0]
     assert record["status"] == "error"
     assert record["error"] == "TimeoutError"
@@ -509,8 +530,8 @@ async def test_close_does_not_interpret_a_provider_that_swallows_cancellation(
 
     shadow.provider.evaluate.side_effect = evaluate
     await shadow.plugin.advance(turn, metadata=metadata)
-    await entered.wait()
-    await shadow.plugin.aclose()
+    await wait_for(entered.wait())
+    await wait_for(shadow.plugin.aclose())
     record = calls(shadow)[0]
     assert record["status"] == "cancelled"
     assert record["usage"] == {
@@ -538,9 +559,9 @@ async def test_close_cancels_pending_inference_before_closing_client(
     shadow.provider.evaluate.side_effect = evaluate
     shadow.provider.aclose.side_effect = lambda: order.append("closed")
     await shadow.plugin.advance(turn, metadata=metadata)
-    await entered.wait()
-    await shadow.plugin.aclose()
-    await shadow.plugin.aclose()
+    await wait_for(entered.wait())
+    await wait_for(shadow.plugin.aclose())
+    await wait_for(shadow.plugin.aclose())
     assert order == ["cancelled", "closed"]
     assert calls(shadow)[0]["status"] == "cancelled"
     assert await shadow.plugin.advance(turn, metadata=metadata) is None
@@ -564,12 +585,12 @@ async def test_cancellation_of_close_propagates_after_client_cleanup(
     shadow.provider.evaluate.side_effect = evaluate
     shadow.provider.aclose.side_effect = cleaned.set
     await shadow.plugin.advance(turn, metadata=metadata)
-    await entered.wait()
+    await wait_for(entered.wait())
     closing = asyncio.create_task(shadow.plugin.aclose())
-    await cancelling.wait()
+    await wait_for(cancelling.wait())
     closing.cancel()
     with pytest.raises(asyncio.CancelledError):
-        await closing
+        await wait_for(closing)
     assert cleaned.is_set()
     shadow.provider.aclose.assert_awaited_once()
 
@@ -578,7 +599,7 @@ async def test_close_before_background_start_has_no_fictitious_api_attempt(
     shadow, turn, metadata
 ):
     await shadow.plugin.advance(turn, metadata=metadata)
-    await shadow.plugin.aclose()
+    await wait_for(shadow.plugin.aclose())
     shadow.factory.assert_not_called()
     shadow.provider.evaluate.assert_not_called()
     assert not calls(shadow)
@@ -597,7 +618,7 @@ async def test_broken_trace_never_raises_or_restarts_inference(
     shadow.sink.write.side_effect = write
     assert await shadow.plugin.advance(turn, metadata=metadata) is None
     if shadow.plugin._task is not None:
-        await shadow.plugin._task
+        await wait_for(shadow.plugin._task)
     assert await shadow.plugin.advance(turn, metadata=replace(metadata, turn=1)) is None
     assert shadow.provider.evaluate.call_count == (0 if when == "projection" else 1)
 
@@ -632,7 +653,7 @@ async def test_proposal_expiry_is_captured_before_inference_and_trace_io(
     scored_provider, turn, metadata, monkeypatch, host_deadline
 ):
     active = scored_provider
-    loop = asyncio.get_running_loop()
+    loop = plugin_mod.asyncio.get_running_loop()
     started = loop.time()
     clock = [started]
     monkeypatch.setattr(loop, "time", lambda: clock[0])
@@ -665,7 +686,7 @@ async def test_wall_clock_cannot_extend_proposal_lifetime(
 ):
     active = scored_provider
     active.plugin._timeout = 20.0
-    loop = asyncio.get_running_loop()
+    loop = plugin_mod.asyncio.get_running_loop()
     clock = [loop.time()]
     monkeypatch.setattr(loop, "time", lambda: clock[0])
     monkeypatch.setattr(
@@ -690,7 +711,7 @@ async def test_expired_view_skips_api_after_synchronous_work(
 ):
     active = scored_provider
     active.plugin._timeout = 20.0
-    loop = asyncio.get_running_loop()
+    loop = plugin_mod.asyncio.get_running_loop()
     clock = [loop.time()]
     monkeypatch.setattr(loop, "time", lambda: clock[0])
     monkeypatch.setattr(
@@ -776,7 +797,8 @@ async def test_unknown_future_or_old_views_skip_inference(
     scored_provider, turn, metadata, age
 ):
     observation = replace(
-        turn.observation, observed_after=None if age is None else time.time() - age
+        turn.observation,
+        observed_after=None if age is None else plugin_mod.time.time() - age,
     )
     assert (
         await scored_provider.plugin.advance(
@@ -803,7 +825,7 @@ async def test_view_that_ages_during_inference_never_becomes_proposal(
 
     scored_provider.provider.evaluate.side_effect = evaluate
     assert await scored_provider.plugin.advance(turn, metadata=metadata) is None
-    await scored_provider.plugin._task
+    await wait_for(scored_provider.plugin._task)
     record = calls(scored_provider)[0]
     assert record["threshold_gate"]["status"] == "passed"
     assert record["view_issue"] == "stale_view"
@@ -812,25 +834,27 @@ async def test_view_that_ages_during_inference_never_becomes_proposal(
 
 @pytest.mark.parametrize("shadow", ["shadow", "active"], indirect=True)
 async def test_view_expiry_cancels_inference_without_cooling_down_fresh_views(
-    scored_provider, turn, metadata, monkeypatch
+    scored_provider, turn, metadata, monkeypatch, controlled_time
 ):
     monkeypatch.setattr("physiclaw.decision.plugin._MAX_VIEW_AGE_SECONDS", 0.05)
     turn = replace(
-        turn, observation=replace(turn.observation, observed_after=time.time())
+        turn,
+        observation=replace(turn.observation, observed_after=plugin_mod.time.time()),
     )
     cancelled = asyncio.Event()
 
     async def evaluate(request, **kwargs):
         try:
+            controlled_time.expire()
             await asyncio.Event().wait()
         finally:
             cancelled.set()
 
     scored_provider.provider.evaluate.side_effect = evaluate
 
-    async with asyncio.timeout(0.5):
+    async with asyncio.timeout(WAIT_TIMEOUT):
         assert await scored_provider.plugin.advance(turn, metadata=metadata) is None
-        await scored_provider.plugin._task
+        await wait_for(scored_provider.plugin._task)
     assert cancelled.is_set()
     record = calls(scored_provider)[0]
     assert record["status"] == "error"
@@ -842,24 +866,22 @@ async def test_view_expiry_cancels_inference_without_cooling_down_fresh_views(
 
 
 async def test_early_view_expiry_timer_does_not_impose_provider_cooldown(
-    shadow, turn, metadata, monkeypatch
+    shadow, turn, metadata, monkeypatch, controlled_time
 ):
     monkeypatch.setattr("physiclaw.decision.plugin._MAX_VIEW_AGE_SECONDS", 1.0)
     turn = replace(
-        turn, observation=replace(turn.observation, observed_after=time.time())
-    )
-    monkeypatch.setattr(
-        "physiclaw.decision.plugin.asyncio.timeout_at",
-        lambda deadline: asyncio.Timeout(asyncio.get_running_loop().time() - 1),
+        turn,
+        observation=replace(turn.observation, observed_after=plugin_mod.time.time()),
     )
 
     async def evaluate(request, **kwargs):
+        controlled_time.expire()
         await asyncio.Event().wait()
 
     shadow.provider.evaluate.side_effect = evaluate
 
     await shadow.plugin.advance(turn, metadata=metadata)
-    await shadow.plugin._task
+    await wait_for(shadow.plugin._task)
 
     record = calls(shadow)[0]
     assert record["reason"] == "stale_view"
@@ -877,7 +899,7 @@ def after_action(turn, proposal, *, outcome="changed", index=1):
                 id=f"observation-{index}",
                 data=observation.frame.data + str(index).encode(),
             ),
-            observed_after=time.time(),
+            observed_after=plugin_mod.time.time(),
         )
     events = turn.events
     if outcome != "missing":
@@ -959,10 +981,10 @@ async def test_active_cancellation_cannot_return_a_proposal(
     pending = asyncio.create_task(
         scored_provider.plugin.advance(turn, metadata=metadata)
     )
-    await entered.wait()
+    await wait_for(entered.wait())
     pending.cancel()
     with pytest.raises(asyncio.CancelledError):
-        await pending
+        await wait_for(pending)
     assert calls(scored_provider)[0]["status"] == "cancelled"
     assert scored_provider.plugin._pending is None
     assert scored_provider.plugin._retry_after == 0.0
@@ -972,9 +994,9 @@ async def test_active_cancellation_cannot_return_a_proposal(
 @pytest.mark.parametrize("shadow", ["active"], indirect=True)
 @pytest.mark.parametrize("swallow", [False, True])
 async def test_active_timeout_yields_even_if_provider_returns_late(
-    scored_provider, turn, metadata, swallow, monkeypatch
+    scored_provider, turn, metadata, swallow, monkeypatch, controlled_time
 ):
-    loop = asyncio.get_running_loop()
+    loop = plugin_mod.asyncio.get_running_loop()
     clock = [loop.time()]
     monkeypatch.setattr(loop, "time", lambda: clock[0])
     monkeypatch.setattr(
@@ -986,6 +1008,7 @@ async def test_active_timeout_yields_even_if_provider_returns_late(
         # Expire the real asyncio timeout only after all preflight guards pass
         # and the provider is entered, independent of Windows clock resolution.
         clock[0] = kw["deadline"] + 1.0
+        controlled_time.expire()
         try:
             await asyncio.Event().wait()
         except asyncio.CancelledError:
@@ -1070,6 +1093,6 @@ async def test_active_yields_when_real_trace_cannot_persist_evidence(
             1 if when == "response" else 0
         )
     finally:
-        await plugin.aclose()
+        await wait_for(plugin.aclose())
         trace._events = file
         trace.close()

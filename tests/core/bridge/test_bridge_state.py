@@ -32,12 +32,13 @@ Accepted equivalent / unreachable mutmut survivors:
 from __future__ import annotations
 
 import itertools
-import time
+from types import SimpleNamespace
 
 import pytest
 
 from physiclaw.core.bridge import state as state_mod
 from physiclaw.core.bridge.state import BridgeState
+from tests.timing_helpers import WAIT_TIMEOUT
 
 
 @pytest.fixture(autouse=True)
@@ -523,8 +524,8 @@ def test_take_pending_screenshot_returns_none_when_nothing_pending(
 def test_take_pending_screenshot_consumes_recent_upload(
     bs: BridgeState, mocker
 ) -> None:
-    mocker.patch("time.monotonic", side_effect=[10.0, 11.0])
-    cutoff = time.monotonic()
+    mocker.patch.object(state_mod, "time", SimpleNamespace(monotonic=lambda: 11.0))
+    cutoff = 10.0
     bs.receive_screenshot(b"early-upload")
 
     assert bs.take_pending_screenshot(received_after=cutoff) == b"early-upload"
@@ -535,9 +536,11 @@ def test_take_pending_screenshot_consumes_recent_upload(
 
 def test_take_pending_screenshot_rejects_upload_before_cutoff(
     bs: BridgeState,
+    mocker,
 ) -> None:
+    mocker.patch.object(state_mod, "time", SimpleNamespace(monotonic=lambda: 9.0))
     bs.receive_screenshot(b"stale")
-    cutoff = time.monotonic()
+    cutoff = 10.0
 
     # Received before the cutoff (e.g. before the square was shown) —
     # left pending, not consumed.
@@ -684,7 +687,7 @@ def test_simultaneous_screenshot_consumers_receive_image_only_once(bs):
 
     class ArrivalLock:
         def __enter__(self):
-            barrier.wait(timeout=2)
+            barrier.wait(timeout=WAIT_TIMEOUT)
             original.acquire()
 
         def __exit__(self, *_):
@@ -695,7 +698,10 @@ def test_simultaneous_screenshot_consumers_receive_image_only_once(bs):
     with ThreadPoolExecutor(max_workers=2) as pool:
         first = pool.submit(bs.take_pending_screenshot)
         second = pool.submit(bs.take_pending_screenshot)
-        results = [first.result(timeout=2), second.result(timeout=2)]
+        results = [
+            first.result(timeout=WAIT_TIMEOUT),
+            second.result(timeout=WAIT_TIMEOUT),
+        ]
 
     assert results.count(b"one") == 1
     assert results.count(None) == 1

@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import logging
 import threading
-import time
 from types import SimpleNamespace
 
 import numpy as np
@@ -14,6 +13,13 @@ import pytest
 
 from physiclaw.core.hardware import frame_reader as fr_mod
 from physiclaw.core.hardware.frame_reader import FrameReader
+
+
+@pytest.fixture(autouse=True)
+def fixed_frame_clock(monkeypatch):
+    monkeypatch.setattr(
+        fr_mod, "time", SimpleNamespace(monotonic=lambda: 100.0, time=lambda: 1100.0)
+    )
 
 
 def _frame(h: int = 4, w: int = 4) -> np.ndarray:
@@ -115,7 +121,7 @@ def test_changed_read_error_is_reported_during_an_existing_empty_frame_outage(
 
 def test_brief_read_error_reports_recovery_without_claiming_a_reconnect(mocker, caplog):
     r = _reader(raise_on_read=True)
-    r._frame_time = time.monotonic()
+    r._frame_time = fr_mod.time.monotonic()
 
     with caplog.at_level(logging.INFO, logger=fr_mod.__name__):
         _run_one_tick(r, mocker)
@@ -270,7 +276,7 @@ def test_loop_reopens_after_stale(mocker) -> None:
 
 def test_loop_fatal_after_long_drought(mocker) -> None:
     r = _reader()
-    r._first_fail_time = time.monotonic() - FrameReader.FATAL_AFTER_SECONDS - 1
+    r._first_fail_time = fr_mod.time.monotonic() - FrameReader.FATAL_AFTER_SECONDS - 1
     interrupt_spy = mocker.patch.object(fr_mod._thread, "interrupt_main")
     r._stopped.clear()
 
@@ -289,7 +295,7 @@ def test_loop_good_frame_resets_fail_clock() -> None:
         return (True, _frame())
 
     r = FrameReader(read_frame, lambda: None, label="test-cam")
-    r._first_fail_time = time.monotonic() - 30
+    r._first_fail_time = fr_mod.time.monotonic() - 30
     r._stopped.clear()
 
     r._loop()
@@ -346,7 +352,7 @@ def test_loop_backs_off_on_fail_path(mocker, raise_on_read) -> None:
     # Check the requested backoff without depending on the OS timer resolution.
     r = _reader(raise_on_read=raise_on_read)
     r.READER_BACKOFF_SECONDS = 0.05
-    r._frame_time = time.monotonic()  # not stale → no reopen
+    r._frame_time = fr_mod.time.monotonic()  # not stale → no reopen
 
     reads = 0
     original_read = r._read_frame

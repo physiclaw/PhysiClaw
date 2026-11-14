@@ -12,6 +12,7 @@ from symlink_helpers import symlink_to
 
 from physiclaw.common.listing import LISTING_HEADER
 from physiclaw.studio import mock
+from tests.timing_helpers import ObservedAsyncLock, wait_for
 
 JPEG = b"\xff\xd8\xff\xd9"
 
@@ -348,6 +349,7 @@ async def test_regression_replay_preserves_recorded_image_mime(tmp_path, suffix,
 
 async def test_regression_mock_serializes_manual_actions_with_driver(tmp_path):
     session = mock.MockSession(_frames(tmp_path, 2), "recorded")
+    session._lock = ObservedAsyncLock(session._lock)
     started, release = asyncio.Event(), asyncio.Event()
 
     async def driver(client):
@@ -355,13 +357,16 @@ async def test_regression_mock_serializes_manual_actions_with_driver(tmp_path):
         await release.wait()
 
     driving = asyncio.create_task(session.drive(driver))
-    await started.wait()
-
-    action = asyncio.create_task(session.act("tap", {}))
-    await asyncio.sleep(0)
-    completed_while_driving = action.done()
-    release.set()
-    await asyncio.gather(driving, action)
+    tasks = [driving]
+    try:
+        await wait_for(started.wait())
+        action = asyncio.create_task(session.act("tap", {}))
+        tasks.append(action)
+        await wait_for(session._lock.contended.wait())
+        completed_while_driving = action.done()
+    finally:
+        release.set()
+        await wait_for(asyncio.gather(*tasks))
 
     assert completed_while_driving is False
     assert session.busy is False

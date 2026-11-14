@@ -19,6 +19,7 @@ import pytest
 
 from physiclaw.port import processes as process_port
 from tests.cli.runtime_shutdown_app import STARTUP_TIMEOUT
+from tests.timing_helpers import WAIT_TIMEOUT
 
 pytestmark = pytest.mark.integration
 POSIX_SIGNAL = pytest.mark.skipif(
@@ -55,7 +56,7 @@ async def test_unconfigured_server_serves_mcp_after_hardware_ready_without_agent
             tools = await client.list_tools()
             assert any(tool["name"] == "finish" for tool in tools)
         interrupt(parent)
-        parent.wait(timeout=5)
+        parent.wait(timeout=WAIT_TIMEOUT)
 
     output = path.read_text(encoding="utf-8")
     assert parent.returncode == 0, output
@@ -133,7 +134,7 @@ def running(tmp_path, mode):
             if proc is not None:
                 if proc.poll() is None:
                     proc.kill()
-                proc.wait(timeout=5)
+                proc.wait(timeout=WAIT_TIMEOUT)
                 proc.stdin.close()
             # Do not leave a child behind even when a regression fails a test.
             match = re.search(r"CHILD_PID=(\d+)", path.read_text(encoding="utf-8"))
@@ -184,7 +185,7 @@ def wait_for(proc, path, text, *, timeout=STARTUP_TIMEOUT):
 
 
 def finished(proc, path, port):
-    proc.wait(timeout=8)
+    proc.wait(timeout=WAIT_TIMEOUT)
     output = path.read_text(encoding="utf-8")
     assert "Runtime child reaped" in output, output
     child = int(re.search(r"CHILD_PID=(\d+)", output)[1])
@@ -279,9 +280,9 @@ def test_repeated_interrupt_forces_exit_without_repeating_cleanup(tmp_path):
     with running(tmp_path, "tool") as (proc, path, port):
         wait_for(proc, path, "TOOL_STARTED")
         interrupt(proc)
-        wait_for(proc, path, "Requesting runtime exit", timeout=8)
+        wait_for(proc, path, "Requesting runtime exit", timeout=WAIT_TIMEOUT)
         interrupt(proc)
-        wait_for(proc, path, "Runtime exit forced (interrupt)", timeout=8)
+        wait_for(proc, path, "Runtime exit forced (interrupt)", timeout=WAIT_TIMEOUT)
         release_hardware(proc)
         output = finished(proc, path, port)
     assert "Runtime exit forced (interrupt)" in output
@@ -329,14 +330,14 @@ def test_no_runtime_server_and_standalone_runtime_keep_real_mcp_lifecycle(tmp_pa
             try:
                 wait_for(child, path, "REACT_DONE")
                 interrupt(child)
-                child.wait(timeout=5)
+                child.wait(timeout=WAIT_TIMEOUT)
             finally:
                 if child.poll() is None:
                     child.kill()
-                    child.wait(timeout=5)
+                    child.wait(timeout=WAIT_TIMEOUT)
                 child.stdin.close()
         interrupt(parent)
-        parent.wait(timeout=8)
+        parent.wait(timeout=WAIT_TIMEOUT)
     output = path.read_text(encoding="utf-8")
     assert child.returncode == 0, output
     assert "CLOSE_MCP_DONE" in output
@@ -360,6 +361,6 @@ def test_regression_listeners_cannot_be_stolen_during_spawn(tmp_path, mocker):
     with running(tmp_path, "external") as (parent, path, port):
         wait_for(parent, path, "MCP tools live")
         interrupt(parent)
-        parent.wait(timeout=5)
+        parent.wait(timeout=WAIT_TIMEOUT)
 
     assert parent.returncode == 0, path.read_text(encoding="utf-8")

@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from physiclaw.port.backends import darwin, linux, v4l2, windows
+from tests.timing_helpers import WAIT_TIMEOUT
 
 
 @pytest.fixture(autouse=True)
@@ -40,7 +41,7 @@ def metadata(mocker):
 
 
 def wait_queued(lock, count):
-    deadline = time.monotonic() + 5
+    deadline = time.monotonic() + WAIT_TIMEOUT
     while time.monotonic() < deadline:
         with lock._condition:
             if len(lock._waiting) == count:
@@ -73,7 +74,7 @@ def test_reader_cannot_reacquire_ahead_of_waiting_controls():
     with lock:
         order.append("reader")
     for thread in threads:
-        thread.join(timeout=5)
+        thread.join(timeout=WAIT_TIMEOUT)
         assert not thread.is_alive()
     assert order == [0, 1, 2, 3, 4, "reader"]
 
@@ -93,7 +94,7 @@ def test_expired_control_never_runs_later_or_blocks_the_queue():
 
     thread = threading.Thread(target=expired, daemon=True)
     thread.start()
-    thread.join(timeout=5)
+    thread.join(timeout=WAIT_TIMEOUT)
     lock.release()
     assert not thread.is_alive()
     assert len(errors) == 1

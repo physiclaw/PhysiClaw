@@ -8,6 +8,7 @@ import sys
 import threading
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -15,8 +16,20 @@ from physiclaw.common import config
 from physiclaw.common.logger import logger as logger_mod
 from physiclaw.common.logger.retention import purge_log_archives
 from physiclaw.port.locks import FileLockBusy, exclusive_file_lock
+from tests.timing_helpers import PROCESS_TIMEOUT, WAIT_TIMEOUT
 
 ROOT = Path(__file__).resolve().parents[3]
+
+
+@pytest.fixture(autouse=True)
+def fixed_retention_date(monkeypatch):
+    class FixedDateTime(dt.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return dt.datetime(2026, 8, 30, 12, tzinfo=tz)
+
+    # Only the handler sees this date; thread/process watchdogs keep real clocks.
+    monkeypatch.setattr(logger_mod, "dt", SimpleNamespace(datetime=FixedDateTime))
 
 
 @pytest.fixture
@@ -125,7 +138,7 @@ def test_long_running_handler_purges_at_date_change(sink, monkeypatch):
     old = path.parent / "archive" / "runtime.log.1"
     old.write_text("expired", encoding="utf-8")
     os.utime(old, (1, 1))
-    tomorrow = dt.datetime.now() + dt.timedelta(days=1)
+    tomorrow = logger_mod.dt.datetime.now() + dt.timedelta(days=1)
 
     class NextDay(dt.datetime):
         @classmethod
@@ -171,7 +184,7 @@ def test_busy_retention_does_not_disable_logging_at_startup(tmp_path, monkeypatc
 
 
 def test_file_count_stays_bounded_across_many_days(sink, monkeypatch):
-    day = dt.datetime.now()
+    day = logger_mod.dt.datetime.now()
 
     class CurrentDay(dt.datetime):
         @classmethod
@@ -225,7 +238,7 @@ def test_handler_generated_logging_runs_without_holding_its_lock(sink, monkeypat
 
         thread = threading.Thread(target=try_lock)
         thread.start()
-        thread.join(timeout=1)
+        thread.join(timeout=WAIT_TIMEOUT)
         assert not thread.is_alive()
 
     def deny_rotation(*args):
@@ -282,7 +295,7 @@ CONFIG.retention.log_backup_count = 128
 handler = _ServiceFileHandler(directory, 'runtime', 'runtime')
 handler.setFormatter(logging.Formatter('%(message)s'))
 (directory / ('ready-' + worker)).touch()
-deadline = time.monotonic() + 10
+deadline = time.monotonic() + 60
 while not (directory / 'start').exists():
     if time.monotonic() > deadline:
         raise TimeoutError('writer start barrier')
@@ -307,20 +320,20 @@ handler.close()
                     stderr=subprocess.PIPE,
                 )
             )
-        deadline = time.monotonic() + 10
+        deadline = time.monotonic() + 60
         while len(list(tmp_path.glob("ready-*"))) < 3:
             assert time.monotonic() < deadline, "writers failed to reach start barrier"
             time.sleep(0.01)
         (tmp_path / "start").touch()
         for process in processes:
-            stdout, stderr = process.communicate(timeout=15)
+            stdout, stderr = process.communicate(timeout=PROCESS_TIMEOUT)
             assert process.returncode == 0, stderr.decode(errors="replace")
             assert not stdout and not stderr
     finally:
         for process in processes:
             if process.poll() is None:
                 process.kill()
-                process.communicate()
+                process.communicate(timeout=WAIT_TIMEOUT)
 
     lines = []
     for path in [

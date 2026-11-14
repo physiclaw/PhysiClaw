@@ -16,6 +16,7 @@ import pytest
 from physiclaw.core.orchestration import gestures, observation, orchestrator, perception
 from physiclaw.core.orchestration.clipboard import ClipboardSyncError
 from physiclaw.core.orchestration.orchestrator import PhysiClaw
+from tests.timing_helpers import WAIT_TIMEOUT
 
 # ---------- Fixtures ----------
 
@@ -168,7 +169,7 @@ def test_become_ready_concurrent_requests_share_one_completed_tune(
         pc.rig.assert_locked()
         assert not pc.rig.ready
         tuning.set()
-        assert finish.wait(3)
+        assert finish.wait(WAIT_TIMEOUT)
         return perception.exposure.TuneResult("auto", None, True, "settled")
 
     def wait_for_lock(wait_seconds=0):
@@ -180,13 +181,16 @@ def test_become_ready_concurrent_requests_share_one_completed_tune(
     with ThreadPoolExecutor(max_workers=2) as pool:
         first = pool.submit(pc.become_ready)
         try:
-            assert tuning.wait(3)
+            assert tuning.wait(WAIT_TIMEOUT)
             mocker.patch.object(pc.rig, "acquire", side_effect=wait_for_lock)
             second = pool.submit(pc.become_ready)
-            assert waiting.wait(3)
+            assert waiting.wait(WAIT_TIMEOUT)
         finally:
             finish.set()
-        results = first.result(timeout=3), second.result(timeout=3)
+        results = (
+            first.result(timeout=WAIT_TIMEOUT),
+            second.result(timeout=WAIT_TIMEOUT),
+        )
 
     assert results == (True, True)
     assert pc.rig.ready

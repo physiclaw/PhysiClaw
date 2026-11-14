@@ -45,6 +45,7 @@ from physiclaw.provider.chat.history import (
     NO_CACHE_MARKERS,
     CacheMarkers,
 )
+from tests.timing_helpers import wait_for
 
 # ---------- a minimal concrete stub for inherited-behavior tests ----------
 
@@ -844,11 +845,11 @@ async def test_cancelled_request_is_accounted_without_suppressing_cancellation(
         if structured
         else stub.chat([], [])
     )
-    await entered.wait()
+    await wait_for(entered.wait())
     task.cancel()
     try:
         with pytest.raises(asyncio.CancelledError):
-            await task
+            await wait_for(task)
     finally:
         await stub.aclose()
 

@@ -12,6 +12,15 @@ from physiclaw.contract.decision import (
     DecisionQuestion,
     DecisionRequest,
 )
+from physiclaw.provider.decision import base as decision_base
+from tests.timing_helpers import ManualTimeouts
+
+
+@pytest.fixture(autouse=True)
+def decision_time(monkeypatch):
+    timeouts = ManualTimeouts(now=100.0)
+    monkeypatch.setattr(decision_base, "asyncio", timeouts)
+    return timeouts
 
 
 @pytest.fixture

@@ -17,6 +17,7 @@ from physiclaw.core.hardware import camera as camera_mod
 from physiclaw.core.hardware.camera import Camera
 from physiclaw.core.hardware.device import DeviceNotFound
 from physiclaw.port.backends import windows
+from tests.timing_helpers import WAIT_TIMEOUT
 
 
 class ObservedLock:
@@ -65,7 +66,9 @@ class WindowsDriver:
             self.calls.append((capture, operation, key, value))
             if (operation, key) == self.block:
                 self.entered.set()
-                assert self.resume.wait(3), "test did not release native-call barrier"
+                assert self.resume.wait(WAIT_TIMEOUT), (
+                    "test did not release native-call barrier"
+                )
             yield
         finally:
             self.native_lock.release()
@@ -262,16 +265,16 @@ def _interleave(rig, first, queued):
     waiting = Thread(target=invoke, args=(queued,), name="queued-control", daemon=True)
     try:
         active.start()
-        assert rig.driver.entered.wait(2)
+        assert rig.driver.entered.wait(WAIT_TIMEOUT)
         calls_before_queue = len(rig.driver.calls)
         waiting.start()
-        assert rig.gate.waiting["queued-control"].wait(2)
+        assert rig.gate.waiting["queued-control"].wait(WAIT_TIMEOUT)
         assert len(rig.driver.calls) == calls_before_queue
     finally:
         rig.driver.resume.set()
-        active.join(timeout=2)
+        active.join(timeout=WAIT_TIMEOUT)
         if waiting.ident is not None:
-            waiting.join(timeout=2)
+            waiting.join(timeout=WAIT_TIMEOUT)
     assert not active.is_alive() and not waiting.is_alive()
     assert errors == []
 

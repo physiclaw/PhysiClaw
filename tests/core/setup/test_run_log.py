@@ -26,6 +26,7 @@ from physiclaw.core.setup import calibration_handlers, run_log
 from physiclaw.core.setup.errors import ManualPositionRequired
 from physiclaw.core.setup.run_log import SetupRecorder, run_setup_step
 from tests.core.conftest import stream_request
+from tests.timing_helpers import WAIT_TIMEOUT, wait_for
 
 
 def events(recorder):
@@ -828,7 +829,7 @@ async def test_client_cancellation_does_not_close_server_worker_journal(recorder
 
     def physical_step():
         started.set()
-        assert release.wait(2)
+        assert release.wait(WAIT_TIMEOUT)
         return {"calibrated": True}
 
     def worker():
@@ -838,12 +839,14 @@ async def test_client_cancellation_does_not_close_server_worker_journal(recorder
             done.set()
 
     task = asyncio.create_task(asyncio.to_thread(worker))
-    assert await asyncio.to_thread(started.wait, 2)
-    task.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await task
-    release.set()
-    assert await asyncio.to_thread(done.wait, 2)
+    try:
+        assert await asyncio.to_thread(started.wait, WAIT_TIMEOUT)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await wait_for(task)
+    finally:
+        release.set()
+        assert await asyncio.to_thread(done.wait, WAIT_TIMEOUT)
 
     assert events(recorder)[-1]["event"] == "step.ended"
     assert events(recorder)[-1]["status"] == "succeeded"

@@ -10,6 +10,7 @@ import pytest
 
 from physiclaw.studio import session as session_mod
 from physiclaw.studio.session import StudioSession, view_reply
+from tests.timing_helpers import WAIT_TIMEOUT, ObservedAsyncLock, wait_for
 
 LISTING = (
     'listing (id [kind] "label" [left,top,right,bottom] conf):\n'
@@ -203,6 +204,7 @@ async def owned_session(mocker):
     first, second = OwnedClient(), OwnedClient()
     factory = mocker.patch.object(session_mod, "McpClient", side_effect=[first, second])
     session = StudioSession("http://fixture")
+    session._lock = ObservedAsyncLock(session._lock)
     try:
         yield SimpleNamespace(
             session=session, first=first, second=second, factory=factory
@@ -210,7 +212,11 @@ async def owned_session(mocker):
     finally:
         first.allow_close.set()
         second.allow_close.set()
-        await session.close()
+        first.allow_call.set()
+        second.allow_call.set()
+        first.allow_list.set()
+        second.allow_list.set()
+        await wait_for(session.close())
 
 
 async def test_regression_requests_and_close_share_one_connection_owner(owned_session):
@@ -266,14 +272,14 @@ async def test_regression_cancelled_action_waits_for_cleanup_before_unlock(
     client.allow_call.clear()
     client.allow_close.clear()
     action = asyncio.create_task(s.act("tap", {}))
-    await client.started.wait()
+    await wait_for(client.started.wait())
 
     action.cancel("stop action")
-    await asyncio.wait_for(client.close_started.wait(), 2)
+    await asyncio.wait_for(client.close_started.wait(), WAIT_TIMEOUT)
     busy_during_close = s.busy
     client.allow_close.set()
     with pytest.raises(asyncio.CancelledError, match="stop action"):
-        await action
+        await wait_for(action)
 
     assert busy_during_close is True
     assert client.closed is True
@@ -289,11 +295,11 @@ async def test_regression_cancelled_discovery_cleans_up_before_next_request(
     client = owned_session.first
     client.allow_list.clear()
     action = asyncio.create_task(s.act("peek", {}))
-    await client.list_started.wait()
+    await wait_for(client.list_started.wait())
 
     action.cancel()
     with pytest.raises(asyncio.CancelledError):
-        await action
+        await wait_for(action)
     result = await s.act("peek", {})
 
     assert client.closed is True
@@ -311,11 +317,11 @@ async def test_close_can_interrupt_an_inflight_driver(owned_session):
         return await mcp.call_tool("tap", {})
 
     action = asyncio.create_task(s.drive(job))
-    await client.started.wait()
+    await wait_for(client.started.wait())
 
-    await asyncio.wait_for(s.close(), 2)
+    await asyncio.wait_for(s.close(), WAIT_TIMEOUT)
     with pytest.raises(asyncio.CancelledError):
-        await asyncio.wait_for(action, 2)
+        await asyncio.wait_for(action, WAIT_TIMEOUT)
 
     assert client.closed is True
     assert client.calls == []
@@ -328,7 +334,7 @@ async def test_close_waits_for_cleanup_despite_repeated_cancellation(owned_sessi
     await s.act("peek", {})
     client.allow_close.clear()
     closing = asyncio.create_task(s.close())
-    await client.close_started.wait()
+    await wait_for(client.close_started.wait())
 
     closing.cancel("stop close")
     await asyncio.sleep(0)
@@ -337,7 +343,7 @@ async def test_close_waits_for_cleanup_despite_repeated_cancellation(owned_sessi
     finished_early = closing.done()
     client.allow_close.set()
     with pytest.raises(asyncio.CancelledError, match="stop again"):
-        await closing
+        await wait_for(closing)
     result = await s.act("peek", {})
 
     assert finished_early is False
@@ -352,13 +358,21 @@ async def test_new_action_waits_for_connection_teardown(owned_session):
     await s.act("peek", {})
     client.allow_close.clear()
     closing = asyncio.create_task(s.close())
-    await client.close_started.wait()
+    await wait_for(client.close_started.wait())
 
+    waiting = asyncio.Event()
+    stop_worker = s._stop_worker
+
+    async def observed_stop(worker):
+        waiting.set()
+        await stop_worker(worker)
+
+    s._stop_worker = observed_stop
     action = asyncio.create_task(s.act("tap", {}))
-    await asyncio.sleep(0)
+    await wait_for(waiting.wait())
     opened_before_close = owned_session.factory.call_count
     client.allow_close.set()
-    await asyncio.gather(closing, action)
+    await wait_for(asyncio.gather(closing, action))
 
     assert opened_before_close == 1
     assert client.closed is True
@@ -370,15 +384,15 @@ async def test_cancelled_action_waiting_for_rig_does_not_run_later(owned_session
     client = owned_session.first
     client.allow_call.clear()
     first = asyncio.create_task(s.act("peek", {}))
-    await client.started.wait()
+    await wait_for(client.started.wait())
     queued = asyncio.create_task(s.act("tap", {}))
-    await asyncio.sleep(0)
+    await wait_for(s._lock.contended.wait())
 
     queued.cancel()
     with pytest.raises(asyncio.CancelledError):
-        await queued
+        await wait_for(queued)
     client.allow_call.set()
-    await first
+    await wait_for(first)
 
     assert client.calls == [("peek", {})]
     assert s.state()["connected"] is True
@@ -396,11 +410,11 @@ async def test_cancelled_driver_cannot_keep_the_worker_alive(owned_session):
             return "driver swallowed cancellation"
 
     action = asyncio.create_task(s.drive(job))
-    await started.wait()
+    await wait_for(started.wait())
 
     action.cancel()
     with pytest.raises(asyncio.CancelledError):
-        await asyncio.wait_for(action, 2)
+        await asyncio.wait_for(action, WAIT_TIMEOUT)
 
     assert owned_session.first.closed is True
     assert s.state()["connected"] is False
@@ -408,8 +422,6 @@ async def test_cancelled_driver_cannot_keep_the_worker_alive(owned_session):
 
 
 async def test_close_finishes_when_driver_swallows_cancellation(owned_session):
-    from tests.timing_helpers import WAIT_TIMEOUT
-
     s = owned_session.session
     started = asyncio.Event()
 
@@ -432,7 +444,7 @@ async def test_close_finishes_when_driver_swallows_cancellation(owned_session):
         closing_completed = closing in finished
     finally:
         owned_session.first.owner.cancel()
-        await closing
+        await wait_for(closing)
 
     assert closing_completed is True
     assert result == "finished during shutdown"
@@ -502,8 +514,8 @@ async def test_close_before_worker_starts_does_not_hang_or_execute(owned_session
     action = asyncio.create_task(s.act("tap", {}))
     closing = asyncio.create_task(s.close())
     with pytest.raises(asyncio.CancelledError, match="MCP session closed"):
-        await asyncio.wait_for(action, 2)
-    await closing
+        await asyncio.wait_for(action, WAIT_TIMEOUT)
+    await wait_for(closing)
     opened_before_retry = owned_session.factory.call_count
     result = await s.act("peek", {})
 
@@ -521,7 +533,7 @@ async def test_job_error_racing_with_cancellation_preserves_cancellation(owned_s
 
     action = asyncio.create_task(s.drive(job))
     with pytest.raises(asyncio.CancelledError, match="cancel alongside failure"):
-        await action
+        await wait_for(action)
 
     assert owned_session.first.closed is True
 
@@ -541,7 +553,7 @@ async def test_job_error_after_cancellation_does_not_retain_connection(
 
     action = asyncio.create_task(s.drive(job))
     with pytest.raises(asyncio.CancelledError, match="cancel before failure"):
-        await action
+        await wait_for(action)
 
     assert owned_session.first.closed is True
     assert s.state()["connected"] is False

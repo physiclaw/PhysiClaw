@@ -19,6 +19,7 @@ from physiclaw.common import paths
 from physiclaw.common.listing import Screen, decode_elements
 from physiclaw.conductor.spec import reply
 from physiclaw.debug import thread as vthread
+from tests.timing_helpers import PROCESS_TIMEOUT, WAIT_TIMEOUT
 
 ASK = "准备测试。回复 确认 开始，或 取消。"
 YES = frozenset({"确认", "好的", "ok"})
@@ -147,7 +148,7 @@ from physiclaw.debug import thread
 from physiclaw.agent.hooks.debug import debug_wake
 barrier = paths.debug_dir() / 'stress-race'
 (barrier / ('ready-' + os.environ['HARNESS_WORKER'])).touch()
-deadline = time.monotonic() + 30
+deadline = time.monotonic() + 60
 while not (barrier / 'go').exists():
     assert time.monotonic() < deadline, 'parent did not release race barrier'
     time.sleep(.001)
@@ -164,7 +165,7 @@ while not (barrier / 'go').exists():
                     text=True,
                 )
             )
-        deadline = time.monotonic() + 20
+        deadline = time.monotonic() + 60
         while len(list(barrier.glob("ready-*"))) != len(processes):
             assert all(p.poll() is None for p in processes), "race worker exited"
             assert time.monotonic() < deadline, "race workers did not become ready"
@@ -172,7 +173,7 @@ while not (barrier / 'go').exists():
         (barrier / "go").touch()
         outputs = []
         for p in processes:
-            stdout, stderr = p.communicate(timeout=45)
+            stdout, stderr = p.communicate(timeout=PROCESS_TIMEOUT)
             assert p.returncode == 0, stderr
             outputs.append(stdout)
         return outputs
@@ -180,7 +181,7 @@ while not (barrier / 'go').exists():
         for p in processes:
             if p.poll() is None:
                 p.kill()
-            p.communicate(timeout=5)
+            p.communicate(timeout=WAIT_TIMEOUT)
 
 
 @pytest.mark.slow
@@ -275,18 +276,18 @@ with exclusive_file_lock(thread_path().with_suffix('.lock')):
         text=True,
     )
     try:
-        deadline = time.monotonic() + 10
+        deadline = time.monotonic() + 60
         while (
             not ready.exists() and child.poll() is None and time.monotonic() < deadline
         ):
             time.sleep(0.01)
         assert ready.exists(), "writer did not acquire the lock"
         child.kill()
-        child.wait(timeout=5)
+        child.wait(timeout=WAIT_TIMEOUT)
         assert vthread.thread_path().read_bytes() == before
         vthread.stage(["取消"])
         assert vthread.load().staged == ["确认", "取消"]
     finally:
         if child.poll() is None:
             child.kill()
-        child.communicate(timeout=5)
+        child.communicate(timeout=WAIT_TIMEOUT)

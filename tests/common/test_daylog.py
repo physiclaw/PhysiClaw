@@ -13,6 +13,12 @@ from freezegun import freeze_time
 from physiclaw.common import daylog, paths
 
 
+@pytest.fixture(autouse=True)
+def fixed_day():
+    with freeze_time("2026-08-30 12:00"):
+        yield
+
+
 def _today_file():
     return paths.memory_dir() / f"{dt.date.today().isoformat()}.md"
 

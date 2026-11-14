@@ -27,14 +27,16 @@ from physiclaw.contract.decision import (
 )
 from physiclaw.decision.policy import question_profile
 from physiclaw.provider import make_decision_provider
+from physiclaw.provider.decision import base as decision_base
 from physiclaw.provider.vendors.typesafe.decision import TypeSafeDecisionProvider
+from tests.timing_helpers import WAIT_TIMEOUT, wait_for
 
 URL = "https://api.typesafe.ai/v1/systemone"
 SECRET = "fixture-secret-not-a-real-key"
 
 
 def deadline(seconds=5):
-    return asyncio.get_running_loop().time() + seconds
+    return decision_base.asyncio.get_running_loop().time() + seconds
 
 
 def answer(choice="a1", *, model="jev-1.14.0"):
@@ -397,7 +399,7 @@ async def test_transport_error_no_retries_or_credential_leak(
 
 
 async def test_remaining_absolute_deadline_caps_entire_call(
-    provider, decision_request, respx_mock
+    provider, decision_request, respx_mock, decision_time
 ):
     started = asyncio.Event()
     attempts = []
@@ -405,17 +407,18 @@ async def test_remaining_absolute_deadline_caps_entire_call(
     async def blocked(request):
         attempts.append(request)
         started.set()
+        decision_time.expire()
         await asyncio.Event().wait()
 
     respx_mock.post(URL).mock(side_effect=blocked)
-    before = asyncio.get_running_loop().time()
+    before = decision_base.asyncio.get_running_loop().time()
     call_deadline = before + 0.1
     with pytest.raises(ProviderTransientError, match="timeout"):
         await provider.evaluate(decision_request, deadline=call_deadline)
     assert started.is_set()
     # respx records completed calls; a cancelled handler needs its own counter.
     assert len(attempts) == 1
-    assert asyncio.get_running_loop().time() - before < 2
+    assert decision_time.deadlines == [call_deadline]
     request_timeout = attempts[0].extensions["timeout"]
     # Compare the actual deadline interval: adding 0.1 can round upward.
     assert 0 < request_timeout["read"] <= call_deadline - before
@@ -449,10 +452,10 @@ async def test_cancellation_propagates_and_client_remains_usable(
 
     route = respx_mock.post(URL).mock(side_effect=blocked)
     task = asyncio.create_task(provider.evaluate(decision_request, deadline=deadline()))
-    await asyncio.wait_for(started.wait(), 2)
+    await asyncio.wait_for(started.wait(), WAIT_TIMEOUT)
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
-        await task
+        await wait_for(task)
     assert len(attempts) == 1
     route.respond(json=answer())
     assert (await provider.evaluate(decision_request, deadline=deadline())).answers[

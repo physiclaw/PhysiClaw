@@ -13,6 +13,7 @@ from importlib.util import find_spec
 import pytest
 
 from hardware import buildlog, scheme
+from tests.timing_helpers import PROCESS_TIMEOUT
 
 
 def invoke(tmp_path, *args, input=None, timeout=60):
@@ -177,7 +178,6 @@ def test_subprocess_timeout_retains_partial_diagnostics(
     from threading import Event
 
     from hardware.port import processes
-    from tests.timing_helpers import WAIT_TIMEOUT
 
     ready = tmp_path / "diagnostics-written"
     owned_process = processes.owned_process
@@ -185,7 +185,7 @@ def test_subprocess_timeout_retains_partial_diagnostics(
     @contextmanager
     def started_process(*args, **kwargs):
         with owned_process(*args, **kwargs) as owner:
-            deadline = time.monotonic() + WAIT_TIMEOUT
+            deadline = time.monotonic() + PROCESS_TIMEOUT
             while not ready.exists():
                 assert owner.process.poll() is None, "child exited before writing"
                 assert time.monotonic() < deadline, "child did not write diagnostics"
@@ -203,9 +203,9 @@ def test_subprocess_timeout_retains_partial_diagnostics(
                     sys.executable,
                     "-u",
                     "-c",
-                    "import time; from pathlib import Path; "
+                    "from threading import Event; from pathlib import Path; "
                     "print('partial diagnostics', flush=True); "
-                    f"Path({str(ready)!r}).touch(); time.sleep(30)",
+                    f"Path({str(ready)!r}).touch(); Event().wait()",
                 ],
                 timeout=0.5,
                 cancelled=Event() if cancellable else None,
@@ -241,7 +241,7 @@ def test_subprocess_collector_failure_stops_child_and_fails_run(
                     sys.executable,
                     "-u",
                     "-c",
-                    "import time; print('diagnostic'); time.sleep(30)",
+                    "from threading import Event; print('diagnostic'); Event().wait()",
                 ],
                 timeout=5,
             )

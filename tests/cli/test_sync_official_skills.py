@@ -40,6 +40,7 @@ from typer.testing import CliRunner
 
 from physiclaw.port import locks as file_lock
 from physiclaw.port.backends import windows
+from tests.timing_helpers import WAIT_TIMEOUT
 
 osk = importlib.import_module("physiclaw.cli.sync_official_skills")
 skills_mod = importlib.import_module("physiclaw.cli.skills")
@@ -984,7 +985,7 @@ def test_regression_overlapping_sync_cannot_replace_another_staging_tree(
     def get(url, **kwargs):
         if url == ZIP_URL:
             entered.set()
-            assert release.wait(5)
+            assert release.wait(WAIT_TIMEOUT)
         return real_get(url, **kwargs)
 
     def first_sync():
@@ -996,14 +997,13 @@ def test_regression_overlapping_sync_cannot_replace_another_staging_tree(
     mocker.patch.object(osk, "http_get", side_effect=get)
     worker = threading.Thread(target=first_sync)
     worker.start()
-    assert entered.wait(5)
-
     try:
+        assert entered.wait(WAIT_TIMEOUT)
         with pytest.raises(osk.SyncError, match="already running"):
             osk.sync()
     finally:
         release.set()
-        worker.join(5)
+        worker.join(WAIT_TIMEOUT)
 
     assert not worker.is_alive()
     assert errors == []

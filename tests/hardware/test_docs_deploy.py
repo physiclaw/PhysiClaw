@@ -16,6 +16,7 @@ import pytest
 from hardware.port.processes import owned_process
 from hardware.scheme import REPO_ROOT
 from scripts import docs_deploy
+from tests.timing_helpers import WAIT_TIMEOUT
 
 TAG = "physiclaw-hardware-v1.2"
 DEPLOYMENT_ID = "1234abcd-5678-90ab-cdef-1234567890ab"
@@ -72,7 +73,8 @@ def docs_hook(tmp_path, monkeypatch, status):
     finally:
         server.shutdown()
         server.server_close()
-        thread.join()
+        thread.join(WAIT_TIMEOUT)
+        assert not thread.is_alive()
 
 
 @pytest.mark.parametrize("status", [200, 202, 302, 404, 500])

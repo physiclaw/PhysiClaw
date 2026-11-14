@@ -10,6 +10,7 @@ import time
 import pytest
 
 from hardware.port.processes import owned_process
+from tests.timing_helpers import PROCESS_TIMEOUT
 
 
 @pytest.mark.parametrize("returncode", [130, -signal.SIGINT, 0xC000013A])
@@ -73,7 +74,8 @@ def test_ctrl_c_cleans_process_tree_and_saves_cancelled_result(
     control.mkdir()
     output = tmp_path / "output"
     worker = f"""
-import os, signal, time
+import os, signal
+from threading import Event
 from pathlib import Path
 signal.signal(signal.SIGINT, {"signal.SIG_IGN" if stubborn else "signal.default_int_handler"})
 signal.signal(signal.SIGTERM, {"signal.SIG_IGN" if stubborn else "signal.SIG_DFL"})
@@ -83,7 +85,11 @@ finished = Path({str(output)!r}, 'step', f'{{os.getpid()}}.step')
 finished.parent.mkdir(parents=True, exist_ok=True)
 finished.write_text('completed output')
 Path({str(control)!r}, f'{{os.getpid()}}.worker').write_text(str(os.getpid()))
-time.sleep(60)
+# Windows before Python 3.14 cannot interrupt an indefinite lock wait. Return
+# to Python periodically to deliver signals; only the owner can end this worker.
+idle = Event()
+while True:
+    idle.wait(0.1)
 """
     args = (
         ["--no-cache", "--batch-size", "1", "--jobs", "2"]
@@ -110,7 +116,12 @@ cli._DELEGATED['build'] = ['-u', '-c', {dispatcher!r}]
 raise SystemExit(cli.main(['build']))
 """
     expected_workers = 2 if mode == "dispatch" else 1
-    env = {**os.environ, "PHYSICLAW_HW_OUTPUT": str(output)}
+    cancel_marker = control / "cancel"
+    env = {
+        **os.environ,
+        "PHYSICLAW_HW_OUTPUT": str(output),
+        "PHYSICLAW_HW_CANCEL_FILE": str(cancel_marker),
+    }
     with owned_process(
         [sys.executable, "-u", "-c", wrapper],
         env=env,
@@ -133,13 +144,21 @@ raise SystemExit(cli.main(['build']))
                 signal.CTRL_BREAK_EVENT
             ) if os.name == "nt" else os.killpg(process.pid, signal.SIGINT)
             if stubborn:
-                time.sleep(0.05)
+                deadline = time.monotonic() + PROCESS_TIMEOUT
+                while not cancel_marker.exists():
+                    assert process.poll() is None, (
+                        "dispatcher exited before cancellation"
+                    )
+                    assert time.monotonic() < deadline, (
+                        "first interrupt was not handled"
+                    )
+                    time.sleep(0.01)
                 process.send_signal(
                     signal.CTRL_BREAK_EVENT
                 ) if os.name == "nt" else os.killpg(process.pid, signal.SIGINT)
             # The CLI allows 10s for dispatcher cleanup, then 1s for SIGTERM.
             # Leave scheduling headroom on busy CI runners.
-            terminal, _ = process.communicate(timeout=15)
+            terminal, _ = process.communicate(timeout=PROCESS_TIMEOUT)
             remaining = [
                 marker.stem
                 for marker in control.glob("*.worker")
@@ -190,7 +209,7 @@ raise SystemExit(cli.main(['build']))
         env=env,
         capture_output=True,
         text=True,
-        timeout=5,
+        timeout=PROCESS_TIMEOUT,
     )
     assert acquired.returncode == 0, acquired.stderr
     assert acquired.stdout.strip() == "released"
@@ -250,7 +269,7 @@ raise SystemExit(rc)
         env={**os.environ, "PHYSICLAW_HW_OUTPUT": str(tmp_path)},
         capture_output=True,
         text=True,
-        timeout=15,
+        timeout=PROCESS_TIMEOUT,
     )
     terminal = result.stdout + result.stderr
     assert result.returncode == 130, terminal
@@ -299,7 +318,7 @@ print('cancelled without deadlock')
         [sys.executable, "-c", script],
         capture_output=True,
         text=True,
-        timeout=5,
+        timeout=PROCESS_TIMEOUT,
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "cancelled without deadlock"
@@ -358,7 +377,7 @@ print('cancelled without leaking the waitpid lock')
         [sys.executable, "-c", script],
         capture_output=True,
         text=True,
-        timeout=5,
+        timeout=PROCESS_TIMEOUT,
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "cancelled without leaking the waitpid lock"
@@ -383,7 +402,7 @@ def test_ctrl_c_during_delegated_import_has_no_traceback(tmp_path):
         env=env,
         capture_output=True,
         text=True,
-        timeout=5,
+        timeout=PROCESS_TIMEOUT,
     )
     assert result.returncode == 130
     assert result.stderr.strip() == "CANCELLED"
@@ -395,9 +414,9 @@ def test_ctrl_c_during_delegated_import_has_no_traceback(tmp_path):
 def test_ctrl_c_stops_delegated_command_that_does_not_poll_marker(tmp_path, command):
     ready = tmp_path / "ready"
     (tmp_path / "uncooperative_stage.py").write_text(
-        "import os, time\nfrom pathlib import Path\n"
+        "import os\nfrom threading import Event\nfrom pathlib import Path\n"
         f"Path({str(ready)!r}).write_text(str(os.getpid()), encoding='utf-8')\n"
-        "time.sleep(60)\n",
+        "Event().wait()\n",
         encoding="utf-8",
     )
     script = f"""
@@ -428,7 +447,7 @@ raise SystemExit(cli.main([{command!r}]))
         stderr=subprocess.PIPE,
         text=True,
     ) as owner:
-        stdout, stderr = owner.process.communicate(timeout=15)
+        stdout, stderr = owner.process.communicate(timeout=PROCESS_TIMEOUT)
         assert owner.process.returncode == 130, stdout + stderr
         assert ready.exists()
         # Check before the harness cleans up the process group. A fixed delay

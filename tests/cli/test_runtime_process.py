@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from physiclaw.cli import runtime_process
-from tests.timing_helpers import WAIT_TIMEOUT
+from tests.timing_helpers import WAIT_TIMEOUT, wait_for
 
 
 class ControlPipe:
@@ -153,11 +153,11 @@ async def test_cancelled_async_stop_leaves_child_owned_for_fallback_close(clock)
     child.on_poll = started.set
     owner = runtime_process.ManagedRuntime(child)
     stopping = asyncio.create_task(owner.stop())
-    await started.wait()
+    await wait_for(started.wait())
 
     stopping.cancel()
     with pytest.raises(asyncio.CancelledError):
-        await stopping
+        await wait_for(stopping)
     owner.close()
 
     assert child.events == ["stdin.close", "poll", "poll", "poll", "terminate", "wait"]

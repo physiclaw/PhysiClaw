@@ -24,6 +24,8 @@ from physiclaw.provider import (
     provider_capabilities,
     provider_key_status,
 )
+from physiclaw.provider.decision import base as decision_base
+from tests.timing_helpers import WAIT_TIMEOUT, wait_for
 
 ROUTES = [
     ("liquid", "d1"),
@@ -44,7 +46,7 @@ async def provider(request, monkeypatch):
 
 
 def deadline():
-    return asyncio.get_running_loop().time() + 5
+    return decision_base.asyncio.get_running_loop().time() + 5
 
 
 def answer():
@@ -228,7 +230,7 @@ async def test_transport_errors_are_sanitized(provider, decision_request, respx_
 
 
 async def test_cancellation_and_deadline_do_not_retry(
-    provider, decision_request, respx_mock
+    provider, decision_request, respx_mock, decision_time
 ):
     entered = asyncio.Event()
     attempts = []
@@ -236,19 +238,22 @@ async def test_cancellation_and_deadline_do_not_retry(
     async def block(request):
         attempts.append(request)
         entered.set()
+        if len(attempts) == 2:
+            decision_time.expire()
         await asyncio.Event().wait()
 
     route = respx_mock.post(str(provider._client.base_url) + provider.ENDPOINT).mock(
         side_effect=block
     )
     task = asyncio.create_task(provider.evaluate(decision_request, deadline=deadline()))
-    await asyncio.wait_for(entered.wait(), 2)
+    await asyncio.wait_for(entered.wait(), WAIT_TIMEOUT)
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
-        await task
+        await wait_for(task)
     with pytest.raises(ProviderTransientError, match="timeout"):
         await provider.evaluate(
-            decision_request, deadline=asyncio.get_running_loop().time() + 0.05
+            decision_request,
+            deadline=decision_base.asyncio.get_running_loop().time() + 0.05,
         )
     assert len(attempts) == 2
     route.respond(json=answer())

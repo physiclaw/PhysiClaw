@@ -1,6 +1,5 @@
 """Shared API infrastructure must not merge inference capabilities/contexts."""
 
-import asyncio
 from dataclasses import replace
 
 import pytest
@@ -18,6 +17,7 @@ from physiclaw.contract.decision import (
 )
 from physiclaw.provider.chat.base import BaseChatProvider
 from physiclaw.provider.client.base import BaseAPIProvider
+from physiclaw.provider.decision import base as decision_base
 from physiclaw.provider.decision.base import BaseDecisionProvider
 from physiclaw.provider.vendors.typesafe.decision import TypeSafeDecisionProvider
 
@@ -59,7 +59,7 @@ async def provider(monkeypatch):
 
 
 def deadline():
-    return asyncio.get_running_loop().time() + 5
+    return decision_base.asyncio.get_running_loop().time() + 5
 
 
 async def test_shared_lifecycle_and_separate_capabilities(provider):

@@ -1,6 +1,5 @@
 """One shared observation, named questions, and no partial bundle acceptance."""
 
-import asyncio
 import base64
 import json
 from dataclasses import replace
@@ -17,6 +16,7 @@ from physiclaw.common.provider_errors import (
 from physiclaw.contract.decision import ActionCandidate, DecisionRequest
 from physiclaw.decision.policy import CONSERVATIVE_PROMPT, question_profile
 from physiclaw.provider import make_decision_provider
+from physiclaw.provider.decision import base as decision_base
 
 
 @pytest.fixture(
@@ -55,7 +55,7 @@ def url(provider):
 
 
 def deadline():
-    return asyncio.get_running_loop().time() + 5
+    return decision_base.asyncio.get_running_loop().time() + 5
 
 
 def reply(provider, request, *, phase="ROUTINE", target="b0"):

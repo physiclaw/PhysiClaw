@@ -5,6 +5,7 @@ import pytest
 
 from hardware import buildlog
 from hardware.documents import BuildError, pdf
+from tests.timing_helpers import WAIT_TIMEOUT
 
 
 def test_incomplete_pdf_is_retried_and_never_replaces_previous_file(
@@ -82,9 +83,9 @@ def test_pdf_cleanup_kills_helpers_after_browser_leader_exits(tmp_path):
     os.mkfifo(fifo)
     reader = os.open(fifo, os.O_RDONLY | os.O_NONBLOCK)
     helper = (
-        "import os, time; from pathlib import Path; "
+        "import os; from pathlib import Path; from threading import Event; "
         f"fd = os.open({str(fifo)!r}, os.O_WRONLY); os.write(fd, b'ready'); "
-        f"Path({str(ready)!r}).write_text('ready'); time.sleep(30)"
+        f"Path({str(ready)!r}).write_text('ready'); Event().wait()"
     )
     browser = tmp_path / "fake-chrome"
     browser.write_text(
@@ -111,7 +112,7 @@ def test_pdf_cleanup_kills_helpers_after_browser_leader_exits(tmp_path):
         assert os.read(reader, 100) == b"ready"
         # The helper owns the FIFO writer. EOF proves it exited, even on
         # systems that briefly retain an orphan's PID as a zombie.
-        assert select.select([reader], [], [], 2)[0] == [reader]
+        assert select.select([reader], [], [], WAIT_TIMEOUT)[0] == [reader]
         assert os.read(reader, 100) == b""
         events = [
             json.loads(line)

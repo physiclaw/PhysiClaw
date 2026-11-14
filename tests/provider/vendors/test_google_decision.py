@@ -1,6 +1,5 @@
 """Native Gemini Decisions wire contract and separation from Google chat."""
 
-import asyncio
 import base64
 import json
 import traceback
@@ -23,6 +22,7 @@ from physiclaw.provider import (
     make_decision_provider,
     provider_capabilities,
 )
+from physiclaw.provider.decision import base as decision_base
 from physiclaw.provider.vendors.google.chat import GoogleChatProvider
 from physiclaw.provider.vendors.google.decision import GoogleDecisionProvider
 
@@ -32,7 +32,7 @@ SECRET = "google-fixture-not-a-real-key"
 
 
 def deadline():
-    return asyncio.get_running_loop().time() + 5
+    return decision_base.asyncio.get_running_loop().time() + 5
 
 
 def answer(choice="a1"):

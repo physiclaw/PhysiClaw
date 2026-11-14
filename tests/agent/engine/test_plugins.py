@@ -196,7 +196,7 @@ async def test_default_stack_without_a_playbook_or_decision_uses_the_llm(mocker)
 
 @pytest.mark.parametrize("outcome", ["accepted", "low_probability", "timeout"])
 async def test_active_decision_uses_generic_arbitration_and_private_contexts(
-    observation_blocks, mocker, monkeypatch, outcome
+    observation_blocks, mocker, monkeypatch, outcome, decision_clock
 ):
     import asyncio
     import time
@@ -225,6 +225,7 @@ async def test_active_decision_uses_generic_arbitration_and_private_contexts(
 
     async def evaluate(request, *, deadline):
         if outcome == "timeout":
+            decision_clock.expire()
             await asyncio.Event().wait()
         selected = {"phase": "ROUTINE", "action_type": "tap", "target": "b1"}
         answers = {}

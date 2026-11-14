@@ -1436,6 +1436,7 @@ async def test_loop_closes_stuck_when_budget_exhausted(budget_clock, offset) -> 
 # ---------- log_external_stop ----------
 
 
+@freeze_time("2026-08-30 12:00", real_asyncio=True)
 def test_log_external_stop_writes_recovery_line(mem_paths) -> None:
     import datetime as dt
 

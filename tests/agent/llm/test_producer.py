@@ -7,6 +7,7 @@ from dataclasses import replace
 import httpx
 import pytest
 import respx
+from freezegun import freeze_time
 
 from physiclaw.agent.engine import assemble, builtin_tool, loop, policy
 from physiclaw.agent.engine.provenance import PluginBinding
@@ -418,6 +419,7 @@ def rate_limit(vendor, delay):
     "vendor,model", [VENDORS[0], ("google", "gemini-3-flash-preview")]
 )
 @respx.mock
+@freeze_time("2026-08-30 12:00", real_asyncio=True)
 async def test_retry_after_beyond_deadline_does_not_start_another_attempt(
     harness, vendor, model
 ):
@@ -483,6 +485,7 @@ async def test_failed_request_log_does_not_prevent_or_retry_generation(
 
 
 @respx.mock
+@freeze_time("2026-08-30 12:00", real_asyncio=True)
 async def test_retry_sleep_cannot_start_a_request_after_deadline(harness, monkeypatch):
     adapter, run, session, producer, sink = harness()
     run.deadline = time.monotonic() + 30

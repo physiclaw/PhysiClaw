@@ -28,6 +28,13 @@ from hypothesis import strategies as st
 
 from physiclaw.cli import _update_check as uc
 
+
+@pytest.fixture(autouse=True)
+def fixed_cache_date():
+    with freeze_time("2026-08-30 12:00"):
+        yield
+
+
 # ---------- _is_newer comparator ----------
 
 

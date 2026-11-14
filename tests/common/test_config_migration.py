@@ -14,6 +14,7 @@ from freezegun import freeze_time
 from symlink_helpers import symlink_to
 
 from physiclaw.common import config
+from tests.timing_helpers import PROCESS_TIMEOUT
 
 
 @pytest.fixture(autouse=True)
@@ -566,18 +567,20 @@ print('done', flush=True)
                 )
                 processes.append(process)
                 assert (
-                    reader.submit(process.stdout.readline).result(timeout=10).strip()
+                    reader.submit(process.stdout.readline)
+                    .result(timeout=PROCESS_TIMEOUT)
+                    .strip()
                     == expected
                 )
-            _, err = processes[0].communicate("\n", timeout=10)
+            _, err = processes[0].communicate("\n", timeout=PROCESS_TIMEOUT)
             assert processes[0].returncode == 0, err
-            _, err = processes[1].communicate(timeout=10)
+            _, err = processes[1].communicate(timeout=PROCESS_TIMEOUT)
             assert processes[1].returncode == 0, err
         finally:
             for process in processes:
                 if process.poll() is None:
                     process.kill()
-                process.communicate(timeout=10)
+                process.communicate(timeout=PROCESS_TIMEOUT)
 
     cfg = config.load()
     assert cfg.server.port == 9123

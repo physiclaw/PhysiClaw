@@ -21,6 +21,7 @@ import pytest
 from ruamel.yaml import YAML
 
 from scripts import check_package
+from tests.timing_helpers import PROCESS_TIMEOUT
 
 
 @pytest.fixture
@@ -441,7 +442,7 @@ def test_server_smoke_checks_http_and_always_stops(
             if mode == "exit":
                 sys.exit(2)
             if mode == "hang":
-                time.sleep(120)
+                threading.Event().wait()
             port = int(sys.argv[sys.argv.index("--port") + 1])
             if mode == "permission":
                 print(f"cannot listen on 0.0.0.0:{port + 1}: [Errno 10013] Access denied", flush=True)
@@ -573,7 +574,7 @@ def test_server_smoke_checks_http_and_always_stops(
                 Path(sys.executable),
                 tmp_path,
                 env,
-                timeout=0.2 if mode == "hang" else 10,
+                timeout=0.2 if mode == "hang" else PROCESS_TIMEOUT,
             )
         expected_attempts = (
             3 if mode.endswith("collision-exhausted") else 2 if collisions else 1

@@ -12,8 +12,8 @@ from __future__ import annotations
 
 import json
 import os
-import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -39,13 +39,12 @@ def test_write_creates_file_with_required_fields(physiclaw_home: Path) -> None:
     assert isinstance(state["started_at"], float)
 
 
-def test_write_records_started_at_close_to_current_time(physiclaw_home: Path) -> None:
-    before = time.time()
+def test_write_records_started_at_from_clock(physiclaw_home: Path, monkeypatch) -> None:
+    monkeypatch.setattr(runtime_state, "time", SimpleNamespace(time=lambda: 1234.5))
     runtime_state.write("h", 1)
-    after = time.time()
 
     state = json.loads(paths.runtime_state_file().read_text(encoding="utf-8"))
-    assert before <= state["started_at"] <= after
+    assert state["started_at"] == 1234.5
 
 
 def test_standalone_service_identity_is_removed_on_main_server_start():

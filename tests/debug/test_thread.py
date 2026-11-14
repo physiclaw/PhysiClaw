@@ -46,6 +46,7 @@ from physiclaw.conductor.spec.reply import INCOMING_LEFT
 from physiclaw.debug import thread as vthread
 from physiclaw.port import locks as file_lock
 from physiclaw.port.locks import exclusive_file_lock
+from tests.timing_helpers import WAIT_TIMEOUT
 
 
 def _render(bubbles) -> Screen:
@@ -100,7 +101,7 @@ def _overlap_writes(mocker, first, second):
     def publish(path, data):
         if getattr(local, "first", False):
             ready.set()
-            assert release.wait(3), "first writer was not released"
+            assert release.wait(WAIT_TIMEOUT), "first writer was not released"
         write(path, data)
         if not getattr(local, "first", False):
             competing.set()
@@ -126,12 +127,12 @@ def _overlap_writes(mocker, first, second):
     with ThreadPoolExecutor(max_workers=2) as pool:
         a = pool.submit(start_first)
         try:
-            assert ready.wait(3), "first writer never reached publication"
+            assert ready.wait(WAIT_TIMEOUT), "first writer never reached publication"
             b = pool.submit(second)
-            assert competing.wait(3), "second writer never entered"
+            assert competing.wait(WAIT_TIMEOUT), "second writer never entered"
         finally:
             release.set()
-        return a.result(timeout=3), b.result(timeout=3)
+        return a.result(timeout=WAIT_TIMEOUT), b.result(timeout=WAIT_TIMEOUT)
 
 
 @pytest.mark.parametrize(

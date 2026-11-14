@@ -23,6 +23,8 @@ from hypothesis import strategies as st
 from starlette.testclient import TestClient
 from typer.testing import CliRunner
 
+from tests.timing_helpers import WAIT_TIMEOUT
+
 studio_mod = importlib.import_module("physiclaw.cli.studio")
 
 BASE = "http://127.0.0.1:8048"
@@ -356,7 +358,7 @@ def test_studio_opens_browser_only_after_server_started(launched, mocker):
     def run(server):
         assert not opened.is_set()
         server.started = True
-        assert opened.wait(2)
+        assert opened.wait(WAIT_TIMEOUT)
 
     mocker.patch.object(uvicorn.Server, "run", autospec=True, side_effect=run)
 
@@ -383,10 +385,10 @@ def test_studio_browser_waits_through_unfinished_startup(launched, mocker):
 
     def run(server):
         type(server).started = property(started)
-        assert inspected.wait(2)
+        assert inspected.wait(WAIT_TIMEOUT)
         assert not opened.is_set()
         ready.set()
-        assert opened.wait(2)
+        assert opened.wait(WAIT_TIMEOUT)
 
     mocker.patch.object(uvicorn.Server, "run", autospec=True, side_effect=run)
     mocker.patch.object(
@@ -447,7 +449,7 @@ def test_studio_browser_failure_does_not_stop_server(launched, mocker):
 
     def run(server):
         server.started = True
-        assert attempted.wait(2)
+        assert attempted.wait(WAIT_TIMEOUT)
 
     mocker.patch.object(studio_mod.webbrowser, "open", side_effect=fail)
     mocker.patch.object(uvicorn.Server, "run", autospec=True, side_effect=run)

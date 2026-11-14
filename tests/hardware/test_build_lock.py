@@ -10,6 +10,7 @@ import pytest
 
 from hardware import build_lock as lock
 from hardware.port import locks
+from tests.timing_helpers import WAIT_TIMEOUT
 
 
 def test_separate_process_is_rejected_but_child_can_inherit(tmp_path, monkeypatch):
@@ -117,7 +118,7 @@ with build_lock():
         stderr=subprocess.PIPE,
     ) as holder:
         try:
-            deadline = time.monotonic() + 15
+            deadline = time.monotonic() + 60
             while not marker.exists():
                 assert holder.poll() is None, holder.communicate(timeout=1)
                 assert time.monotonic() < deadline, "lock holder did not start"
@@ -130,7 +131,7 @@ with build_lock():
                         assert "acquired" not in result.stdout
         finally:
             holder.kill()
-            holder.communicate(timeout=5)
+            holder.communicate(timeout=WAIT_TIMEOUT)
 
     result = contend(0)
     assert result.returncode == 0, result.stderr

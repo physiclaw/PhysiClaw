@@ -13,7 +13,7 @@ import importlib
 import logging
 import os
 import threading
-import time
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import cv2
@@ -26,6 +26,14 @@ from physiclaw.core.hardware.camera import (
     Camera,
     silenced_stderr,
 )
+
+
+@pytest.fixture(autouse=True)
+def fixed_frame_clock(monkeypatch):
+    monkeypatch.setattr(
+        fr_mod, "time", SimpleNamespace(monotonic=lambda: 100.0, time=lambda: 1100.0)
+    )
+
 
 # ---------- silenced_stderr ----------
 
@@ -489,7 +497,7 @@ def test_reconnect_verifies_frames_and_resets_drought(mocker) -> None:
     )
     reset = mocker.patch.object(camera_mod.platform, "camera_reset_controls")
     capture = mocker.patch.object(cv2, "VideoCapture", return_value=replacement)
-    cam._reader._first_fail_time = time.monotonic() - 30
+    cam._reader._first_fail_time = fr_mod.time.monotonic() - 30
 
     cam._reopen()
 
@@ -504,9 +512,9 @@ def test_reconnect_verifies_frames_and_resets_drought(mocker) -> None:
 def test_reconnect_rejects_empty_stream_then_recovers_on_next_attempt(mocker) -> None:
     from types import SimpleNamespace
 
-    now = time.monotonic()
+    now = fr_mod.time.monotonic()
     mocker.patch.object(
-        fr_mod, "time", SimpleNamespace(monotonic=lambda: now, time=time.time)
+        fr_mod, "time", SimpleNamespace(monotonic=lambda: now, time=fr_mod.time.time)
     )
     cam, _ = _ready_camera(mocker)
     empty = FakeVideoCapture(index=0)
@@ -514,7 +522,7 @@ def test_reconnect_rejects_empty_stream_then_recovers_on_next_attempt(mocker) ->
     good = FakeVideoCapture(index=0, read_results=[(True, recovered)])
     mocker.patch.object(cv2, "VideoCapture", side_effect=[empty, good])
     cam._reader.FRAME_WAIT_SECONDS = 0
-    fail_time = time.monotonic() - 30
+    fail_time = fr_mod.time.monotonic() - 30
     cam._reader._first_fail_time = fail_time
 
     cam._reopen()

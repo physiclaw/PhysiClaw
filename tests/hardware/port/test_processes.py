@@ -8,14 +8,15 @@ import pytest
 from hardware.port import processes
 from hardware.port.backends import posix
 from hardware.port.processes import owned_process
+from tests.timing_helpers import PROCESS_TIMEOUT, WAIT_TIMEOUT
 
 
 def test_cleanup_reaps_descendant_after_leader_exits(tmp_path):
     ready = tmp_path / "ready"
     release = tmp_path / "release"
     helper = (
-        "from pathlib import Path; import time; "
-        f"Path({str(ready)!r}).touch(); time.sleep(60)"
+        "from pathlib import Path; from threading import Event; "
+        f"Path({str(ready)!r}).touch(); Event().wait()"
     )
     script = (
         "import subprocess, sys, time; from pathlib import Path\n"
@@ -31,13 +32,13 @@ def test_cleanup_reaps_descendant_after_leader_exits(tmp_path):
         process = owner.process
         try:
             release.touch()
-            assert process.wait(timeout=10) == 0
+            assert process.wait(timeout=PROCESS_TIMEOUT) == 0
 
             owner.stop(timeout=0)
 
             # POSIX descendants may log KeyboardInterrupt during SIGINT.
             # The bounded EOF, rather than cancellation diagnostics, matters.
-            output, _ = process.communicate(timeout=5)
+            output, _ = process.communicate(timeout=WAIT_TIMEOUT)
             assert output == b""
         finally:
             owner.stop(timeout=0)
@@ -47,7 +48,11 @@ def test_body_failure_stops_child_and_closes_pipes():
     with (
         pytest.raises(ValueError, match="collection failed"),
         owned_process(
-            [sys.executable, "-c", "import time; time.sleep(60)"],
+            [
+                sys.executable,
+                "-c",
+                "from threading import Event; Event().wait()",
+            ],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         ) as owner,
@@ -70,7 +75,11 @@ def test_native_setup_failure_reaps_child_and_closes_pipes(mocker):
 
     with pytest.raises(OSError, match="native ownership failed"):
         with owned_process(
-            [sys.executable, "-c", "import time; time.sleep(60)"],
+            [
+                sys.executable,
+                "-c",
+                "from threading import Event; Event().wait()",
+            ],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         ):

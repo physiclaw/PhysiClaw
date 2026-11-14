@@ -1,6 +1,5 @@
 """Native OpenAI Decisions wire and strict separation from chat services."""
 
-import asyncio
 import base64
 import json
 import traceback
@@ -16,6 +15,7 @@ from physiclaw.common.provider_errors import (
 )
 from physiclaw.contract.dto import UserMessage
 from physiclaw.provider import make_chat_provider, make_decision_provider
+from physiclaw.provider.decision import base as decision_base
 
 URL = "https://api.openai.com/v1/decisions"
 CHAT_URL = "https://api.openai.com/v1/responses"
@@ -23,7 +23,7 @@ SECRET = "openai-fixture-not-a-real-key"
 
 
 def deadline():
-    return asyncio.get_running_loop().time() + 5
+    return decision_base.asyncio.get_running_loop().time() + 5
 
 
 def answer(choice="a1"):

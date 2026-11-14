@@ -811,7 +811,7 @@ def test_esptool_runner_streams_both_channels_before_child_exits(tmp_path):
 import sys, time
 from pathlib import Path
 print('Chip is ESP32')
-deadline = time.monotonic() + 5
+deadline = time.monotonic() + 60
 while not Path(sys.argv[1]).exists():
     if time.monotonic() > deadline:
         sys.exit(9)

@@ -16,6 +16,7 @@ import pytest
 from physiclaw.core.orchestration import perception as perception_mod
 from physiclaw.core.orchestration.perception import Perception
 from physiclaw.core.orchestration.rig import HardwareRig
+from tests.timing_helpers import WAIT_TIMEOUT
 
 # ---------- Fixtures ----------
 
@@ -832,7 +833,7 @@ def test_regression_retune_start_interrupt_keeps_running_worker_reserved(mocker,
 
     def delayed(_seconds):
         entered.set()
-        assert finish.wait(3)
+        assert finish.wait(WAIT_TIMEOUT)
 
     def start_then_interrupt(*, target, **kwargs):
         worker = native_thread(target=target, **kwargs)
@@ -840,7 +841,7 @@ def test_regression_retune_start_interrupt_keeps_running_worker_reserved(mocker,
 
         def start():
             worker.start()
-            assert entered.wait(3)
+            assert entered.wait(WAIT_TIMEOUT)
             raise KeyboardInterrupt("start interrupted")
 
         return MagicMock(start=start)
@@ -858,7 +859,7 @@ def test_regression_retune_start_interrupt_keeps_running_worker_reserved(mocker,
         per.on_quality_report(BLOWN_REPORT, streak=2)
     finally:
         finish.set()
-        workers[0].join(timeout=3)
+        workers[0].join(timeout=WAIT_TIMEOUT)
 
     thread.assert_called_once()
     assert not workers[0].is_alive()

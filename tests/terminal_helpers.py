@@ -12,6 +12,7 @@ import time
 from contextlib import contextmanager
 
 from physiclaw.common.terminal import ANSI_RE
+from tests.timing_helpers import PROCESS_TIMEOUT, WAIT_TIMEOUT
 
 
 class Terminal:
@@ -38,7 +39,7 @@ class Terminal:
                 data = b""
             self.output += self._decode.decode(data)
 
-    def expect(self, pattern, timeout=10):
+    def expect(self, pattern, timeout=PROCESS_TIMEOUT):
         deadline = time.monotonic() + timeout
         while True:
             match = re.search(
@@ -50,7 +51,7 @@ class Terminal:
             assert time.monotonic() < deadline, self.output
             self.read()
 
-    def wait(self, timeout=10):
+    def wait(self, timeout=PROCESS_TIMEOUT):
         deadline = time.monotonic() + timeout
         while (code := self.poll()) is None:
             assert time.monotonic() < deadline, self.output
@@ -97,7 +98,7 @@ def terminal_process(argv, *, env, columns=80):
             if process is not None:
                 if process.poll() is None:
                     process.kill()
-                process.wait(timeout=5)
+                process.wait(timeout=WAIT_TIMEOUT)
             os.close(master)
             os.close(slave)
 

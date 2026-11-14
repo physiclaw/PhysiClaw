@@ -34,6 +34,7 @@ from physiclaw.contract.dto import UserMessage
 from physiclaw.contract.observation import OBSERVATION_META
 from physiclaw.contract.plugin import PluginServices
 from physiclaw.decision.plugin import DecisionPlugin
+from tests.timing_helpers import WAIT_TIMEOUT
 
 
 def test_snapshot_is_detached_and_excludes_private_interpretation():
@@ -147,7 +148,7 @@ async def test_unusable_progress_cannot_break_existing_llm_workflow(content, moc
 
 @pytest.mark.parametrize("shadow_finishes", [False, True])
 async def test_real_workflow_and_requests_match_with_decision_off_and_shadow(
-    observation_blocks, mocker, monkeypatch, shadow_finishes
+    observation_blocks, mocker, monkeypatch, shadow_finishes, decision_clock
 ):
     responses = [
         _reply(
@@ -195,7 +196,7 @@ async def test_real_workflow_and_requests_match_with_decision_off_and_shadow(
         started, release, finished, cancelled = (asyncio.Event() for _ in range(4))
 
         async def evaluate(request, *, deadline):
-            assert deadline > asyncio.get_running_loop().time()
+            assert deadline > decision_clock.get_running_loop().time()
             started.set()
             try:
                 await release.wait()
@@ -230,10 +231,10 @@ async def test_real_workflow_and_requests_match_with_decision_off_and_shadow(
             )
             if mode == "shadow" and metadata.turn == 2:
                 # The LLM reaches its normal call while shadow inference waits.
-                await asyncio.wait_for(started.wait(), 1)
+                await asyncio.wait_for(started.wait(), WAIT_TIMEOUT)
                 if shadow_finishes:
                     release.set()
-                    await asyncio.wait_for(finished.wait(), 1)
+                    await asyncio.wait_for(finished.wait(), WAIT_TIMEOUT)
             return await original_chat(messages, tools, metadata=metadata)
 
         provider.respond = capture

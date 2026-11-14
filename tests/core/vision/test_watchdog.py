@@ -361,10 +361,9 @@ def test_watchdog_idle_fallback_during_work_hours() -> None:
 
 def test_watchdog_idle_fallback_outside_work_hours() -> None:
     w = Watchdog()
-    w.poll(_frame(), _fake_transforms())
-    w._last_wake = time.monotonic() - IDLE_INTERVAL - 100
-
     with freeze_time("2026-04-28 22:00:00"):
+        w.poll(_frame(), _fake_transforms())
+        w._last_wake = time.monotonic() - IDLE_INTERVAL - 100
         out = w.poll(_frame(), _fake_transforms())
 
     # Outside work hours — no idle wake.

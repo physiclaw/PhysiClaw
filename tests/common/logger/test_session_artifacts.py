@@ -20,6 +20,7 @@ from physiclaw.common.logger.session_artifacts import (
     image_filename,
     write_json_atomic,
 )
+from tests.timing_helpers import WAIT_TIMEOUT
 
 # ---------- append_stats ----------
 
@@ -62,7 +63,7 @@ def test_regression_atomic_json_writers_do_not_share_temporary_file(
     def simultaneous_replace(source, target):
         if source not in attempted:
             attempted.add(source)
-            rendezvous.wait(timeout=5)
+            rendezvous.wait(timeout=WAIT_TIMEOUT)
         return replace(source, target)
 
     mocker.patch.object(Path, "replace", simultaneous_replace)
@@ -70,8 +71,8 @@ def test_regression_atomic_json_writers_do_not_share_temporary_file(
     with ThreadPoolExecutor(max_workers=2) as pool:
         first = pool.submit(write_json_atomic, path, {"writer": 1})
         second = pool.submit(write_json_atomic, path, {"writer": 2})
-        first.result(timeout=5)
-        second.result(timeout=5)
+        first.result(timeout=WAIT_TIMEOUT)
+        second.result(timeout=WAIT_TIMEOUT)
 
     assert json.loads(path.read_text(encoding="utf-8")) in [
         {"writer": 1},
@@ -150,7 +151,7 @@ def test_regression_concurrent_image_saves_keep_both_frames(tmp_path, mocker) ->
 
     def simultaneous_open(path, mode="r", *args, **kwargs):
         if path.name == "same-tick.jpg" and mode in {"wb", "xb"}:
-            rendezvous.wait(timeout=5)
+            rendezvous.wait(timeout=WAIT_TIMEOUT)
         return open_file(path, mode, *args, **kwargs)
 
     mocker.patch.object(Path, "open", simultaneous_open)
@@ -160,8 +161,8 @@ def test_regression_concurrent_image_saves_keep_both_frames(tmp_path, mocker) ->
         second = pool.submit(
             artifacts.save_image, tmp_path, 1, "image/jpeg", "c2Vjb25k"
         )
-        first_name = first.result(timeout=5)
-        second_name = second.result(timeout=5)
+        first_name = first.result(timeout=WAIT_TIMEOUT)
+        second_name = second.result(timeout=WAIT_TIMEOUT)
 
     assert first_name != second_name
     assert (tmp_path / first_name).read_bytes() == b"first"

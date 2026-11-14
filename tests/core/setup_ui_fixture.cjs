@@ -74,7 +74,7 @@ async function createSetup({saved = true, language = 'en', initial = {}, respons
     ['/api/phone/home', () => ({status: 'ok'})],
     ['/api/ready', () => { status.ready = true; return {ok: true}; }],
   ]);
-  let now = Date.now();
+  let now = Date.parse("2026-08-30T12:00:00Z");
   const context = vm.createContext({
     document, window: {location: {origin}}, navigator: {language}, console, AbortController,
     localStorage: {getItem: () => null, setItem() {}},

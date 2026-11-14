@@ -105,6 +105,7 @@ def test_windows_contention_is_reported_before_entering_body(
             pytest.fail("busy lock entered")
 
 
+@freeze_time("2026-08-30 12:00")
 def test_lock_waits_until_competing_holder_releases(tmp_path, mocker):
     path = tmp_path / "operation.lock"
     holder = exclusive_file_lock(path)

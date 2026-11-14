@@ -12,6 +12,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.timing_helpers import WAIT_TIMEOUT
+
 
 @pytest.mark.slow
 def test_first_image_completes_before_control_pipe_eof(tmp_path):
@@ -60,7 +62,7 @@ def test_first_image_completes_before_control_pipe_eof(tmp_path):
             **kwargs,
         )
         try:
-            deadline = time.monotonic() + 30
+            deadline = time.monotonic() + 60
             while True:
                 text = output.read_text(encoding="utf-8")
                 if "IMAGE_VALIDATED" in text:
@@ -88,6 +90,6 @@ def test_first_image_completes_before_control_pipe_eof(tmp_path):
             # the assertion/deadline fails; never leave a test child behind.
             if proc.poll() is None:
                 proc.kill()
-            proc.wait(timeout=5)
+            proc.wait(timeout=WAIT_TIMEOUT)
             if proc.stdin is not None:
                 proc.stdin.close()

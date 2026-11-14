@@ -14,6 +14,7 @@ from unittest.mock import MagicMock, call
 import pytest
 
 from physiclaw.port.backends import windows
+from tests.timing_helpers import PROCESS_TIMEOUT, WAIT_TIMEOUT
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="requires Windows process handles")
@@ -27,13 +28,18 @@ def test_pid_alive_checks_exit_while_process_handle_remains_open(exit_code):
         ],
         stdin=subprocess.PIPE,
     ) as child:
-        assert windows.pid_alive(child.pid)
-        child.stdin.close()
-        assert child.wait(timeout=5) == exit_code
+        try:
+            assert windows.pid_alive(child.pid)
+            child.stdin.close()
+            assert child.wait(timeout=PROCESS_TIMEOUT) == exit_code
 
-        # Popen still owns its handle, so OpenProcess can also succeed after exit.
-        # Exit code 259 must not be confused with Windows' STILL_ACTIVE sentinel.
-        assert not windows.pid_alive(child.pid)
+            # Popen still owns its handle, so OpenProcess can succeed after exit.
+            # Exit code 259 is not Windows' STILL_ACTIVE sentinel here.
+            assert not windows.pid_alive(child.pid)
+        finally:
+            if child.poll() is None:
+                child.kill()
+            child.wait(timeout=WAIT_TIMEOUT)
 
 
 @pytest.mark.parametrize("value", [float("inf"), float("nan"), -1.0])

@@ -7,7 +7,7 @@ import json
 import os
 import subprocess
 import sys
-import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -16,6 +16,7 @@ from freezegun import freeze_time
 from physiclaw.common import paths
 from physiclaw.macros import stats
 from physiclaw.port.locks import exclusive_file_lock
+from tests.timing_helpers import PROCESS_TIMEOUT, WAIT_TIMEOUT
 
 
 def _record_ok(name: str = "demo", known: set[str] | None = None) -> None:
@@ -276,25 +277,42 @@ def test_stats_lock_io_failure_does_not_fail_a_completed_run(mocker) -> None:
     read.assert_not_called()
 
 
-def test_concurrent_processes_preserve_every_run_counter(tmp_path) -> None:
+def test_concurrent_processes_preserve_every_run_counter() -> None:
     program = """
-import sys, time
-from pathlib import Path
+import sys
+from contextlib import contextmanager
 from physiclaw.macros import stats
-directory, worker = Path(sys.argv[1]), sys.argv[2]
-original_load = stats.load
-def slow_load():
-    snapshot = original_load()
-    # Widen the read/write race; the whole pause must stay inside the lock.
-    time.sleep(0.01)
-    return snapshot
-stats.load = slow_load
-(directory / ('ready-' + worker)).touch()
-deadline = time.monotonic() + 10
-while not (directory / 'start').exists():
-    if time.monotonic() > deadline:
-        raise TimeoutError('stats writer start barrier')
-    time.sleep(0.005)
+from physiclaw.port import locks
+worker = sys.argv[1]
+# This test exercises atomicity; lock expiration has separate focused tests.
+stats._LOCK_TIMEOUT_SECONDS = float(sys.argv[2])
+if worker == 'success':
+    original_load = stats.load
+    first = True
+    def held_load():
+        global first
+        snapshot = original_load()
+        if first:
+            first = False
+            print('read', flush=True)
+            input()
+        return snapshot
+    stats.load = held_load
+else:
+    try_lock = locks._try_lock
+    reported = False
+    @contextmanager
+    def observed_lock(path):
+        global reported
+        try:
+            with try_lock(path):
+                yield
+        except locks.FileLockBusy:
+            if not reported:
+                print('waiting', flush=True)
+                reported = True
+            raise
+    locks._try_lock = observed_lock
 for _ in range(12):
     stats.record('shared', ok=worker == 'success', known_names={'shared'},
                  step=1, reason='guard_failed')
@@ -304,32 +322,36 @@ for _ in range(12):
         "PYTHONPATH": str(Path(__file__).resolve().parents[2] / "src"),
     }
     processes = []
-    try:
-        for worker in ("success", "abort"):
-            processes.append(
-                subprocess.Popen(
-                    [sys.executable, "-c", program, str(tmp_path), worker],
+    # Kill/reap before the reader executor exits so a failed readiness assertion
+    # cannot leave shutdown waiting forever on a blocked stdout.readline().
+    with ThreadPoolExecutor(max_workers=1) as reader:
+        try:
+            for worker, expected in (("success", "read"), ("abort", "waiting")):
+                process = subprocess.Popen(
+                    [sys.executable, "-c", program, worker, str(PROCESS_TIMEOUT)],
                     env=env,
+                    stdin=subprocess.PIPE,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
                 )
-            )
-        deadline = time.monotonic() + 10
-        while not all((tmp_path / f"ready-{w}").exists() for w in ("success", "abort")):
-            assert time.monotonic() < deadline, (
-                "stats writers did not reach the barrier"
-            )
-            time.sleep(0.005)
-        (tmp_path / "start").touch()
-        for process in processes:
-            _, errors = process.communicate(timeout=10)
-            assert process.returncode == 0, errors
-    finally:
-        for process in processes:
-            if process.poll() is None:
-                process.kill()
-                process.communicate(timeout=5)
+                processes.append(process)
+                assert (
+                    reader.submit(process.stdout.readline)
+                    .result(timeout=PROCESS_TIMEOUT)
+                    .strip()
+                    == expected
+                )
+            for index, process in enumerate(processes):
+                _, errors = process.communicate(
+                    "\n" if index == 0 else None, timeout=PROCESS_TIMEOUT
+                )
+                assert process.returncode == 0, errors
+        finally:
+            for process in processes:
+                if process.poll() is None:
+                    process.kill()
+                process.communicate(timeout=WAIT_TIMEOUT)
 
     saved = stats.load()["shared"]
     assert saved["total_runs"] == 24

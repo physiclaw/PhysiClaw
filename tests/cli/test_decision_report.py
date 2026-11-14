@@ -26,7 +26,7 @@ from physiclaw.decision.plugin import DecisionPlugin
 
 
 async def test_shadow_trace_to_blind_labels_cost_and_baseline(
-    monkeypatch, mocker, observation_blocks, tmp_path
+    monkeypatch, mocker, observation_blocks, tmp_path, decision_clock
 ):
     monkeypatch.setattr(config.CONFIG.decision, "mode", "shadow")
     monkeypatch.setattr(config.CONFIG.decision, "model", "test/native")

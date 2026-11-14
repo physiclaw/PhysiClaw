@@ -22,6 +22,13 @@ import tempfile
 from pathlib import Path
 
 import pytest
+from hypothesis import settings
+
+# These are correctness tests, not benchmarks. Inherit the active profile's
+# example count, database and health checks; only remove the implicit
+# per-example wall-clock assertion, including for tests without @settings.
+settings.register_profile("physiclaw", parent=settings(), deadline=None)
+settings.load_profile("physiclaw")
 
 
 def pytest_make_parametrize_id(config, val, argname):
@@ -198,3 +205,20 @@ def silenced_log() -> None:
         yield
     finally:
         physiclaw_logger.setLevel(prior_level)
+
+
+@pytest.fixture
+def decision_clock(monkeypatch):
+    import time
+
+    from freezegun import freeze_time
+
+    from physiclaw.decision import plugin
+    from tests.timing_helpers import ManualTimeouts
+
+    with freeze_time("2026-08-30 12:00", real_asyncio=True):
+        # Proposals cross into engine code that uses monotonic(), so both
+        # application clocks must share an epoch while the loop stays real.
+        timeouts = ManualTimeouts(now=time.monotonic())
+        monkeypatch.setattr(plugin, "asyncio", timeouts)
+        yield timeouts

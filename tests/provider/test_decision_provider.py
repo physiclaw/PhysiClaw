@@ -1,6 +1,5 @@
 """A second implementation must fit without TypeSafe-shaped scores or state."""
 
-import asyncio
 import json
 
 import pytest
@@ -24,6 +23,7 @@ from physiclaw.provider import (
     validate_chat_model_ref,
 )
 from physiclaw.provider.client.configuration import CredentialSpec
+from physiclaw.provider.decision import base as decision_base
 from physiclaw.provider.services import registry
 from physiclaw.provider.services.registry import (
     DecisionProviderSpec,
@@ -45,7 +45,7 @@ class FakeDecisionProvider:
         return DecisionCapabilities(images=model == "visual")
 
     async def evaluate(self, request, *, deadline):
-        assert deadline > asyncio.get_running_loop().time()
+        assert deadline > decision_base.asyncio.get_running_loop().time()
         return DecisionResult(
             request.id,
             {q.id: DecisionAnswer(q.candidates[1].id) for q in request.questions},
@@ -77,7 +77,7 @@ async def test_fake_provider_substitution(
     provider = make_decision_provider("fake", "text")
     assert provider.timeout == 42
     result = await provider.evaluate(
-        decision_request, deadline=asyncio.get_running_loop().time() + 1
+        decision_request, deadline=decision_base.asyncio.get_running_loop().time() + 1
     )
     result.validate_for(decision_request)
     assert result.answers["next_action"].selected_id == "a1"
@@ -156,7 +156,7 @@ async def test_model_ids_pass_through_and_api_rejection_never_switches_service(
     provider = make_decision_provider(vendor, model, require_images=with_image)
     request = image_decision_request if with_image else decision_request
     route = respx_mock.post(url).respond(404)
-    deadline = asyncio.get_running_loop().time() + 5
+    deadline = decision_base.asyncio.get_running_loop().time() + 5
     try:
         with pytest.raises(ProviderPermanentError, match="HTTP 404"):
             await provider.evaluate(request, deadline=deadline)

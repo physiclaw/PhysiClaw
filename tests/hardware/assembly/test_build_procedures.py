@@ -19,6 +19,7 @@ import pytest
 pytest.importorskip("build123d", reason="CAD group not installed")
 
 from hardware.assembly import build_procedures as bp
+from tests.timing_helpers import WAIT_TIMEOUT
 
 STEM = "frame_10_base"
 
@@ -102,7 +103,14 @@ def test_worker_timeout_returns_failure(tmp_path, monkeypatch):
     popen = subprocess.Popen
 
     def slow_worker(*args, **kwargs):
-        return popen([sys.executable, "-c", "import time; time.sleep(10)"], **kwargs)
+        return popen(
+            [
+                sys.executable,
+                "-c",
+                "from threading import Event; Event().wait()",
+            ],
+            **kwargs,
+        )
 
     monkeypatch.setattr(bp.subprocess, "Popen", slow_worker)
     monkeypatch.setattr(bp, "WORKER_TIMEOUT", 0.05)
@@ -261,7 +269,7 @@ def test_worker_collector_failure_records_exit_before_raising(tmp_path, monkeypa
                 sys.executable,
                 "-u",
                 "-c",
-                "import time; print('diagnostic'); time.sleep(30)",
+                "from threading import Event; print('diagnostic'); Event().wait()",
             ],
             **kwargs,
         ),
@@ -327,7 +335,7 @@ def test_worker_warnings_and_native_dumps_are_saved_per_run(
 
 def test_parallel_batches_are_bounded_and_awaited(tmp_path, monkeypatch):
     stems = [STEM, "frame_20_next", "frame_30_last", "frame_40_end"]
-    barrier = Barrier(2, timeout=5)
+    barrier = Barrier(2, timeout=WAIT_TIMEOUT)
     lock = Lock()
     active = peak = 0
     completed = []

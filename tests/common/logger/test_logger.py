@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from freezegun import freeze_time
 
 from physiclaw.common.logger import logger as logger_mod
 from physiclaw.common.logger.logger import (
@@ -774,6 +775,7 @@ def test_service_file_handler_keeps_same_file_across_midnight(tmp_path) -> None:
     assert list(tmp_path.glob("*.log")) == [tmp_path / "runtime.log"]
 
 
+@freeze_time("2026-08-30 12:00", real_asyncio=True)
 def test_service_file_handler_purges_old_archives_at_construction(tmp_path) -> None:
     import datetime as dt
     import os
