@@ -103,15 +103,15 @@ jobs:
           artifact-ids: ${{ needs.ci.outputs.artifact-id }}
           path: release-bundle
           merge-multiple: true
-      - name: Verify published checksums and Sigstore attestations for both files
+      - name: Verify published files, attestations and installation index
         run: uv run --no-project python scripts/check_package.py verify-pypi
       - name: Fresh install from PyPI
         env:
           RELEASE_VERSION: ${{ needs.ci.outputs.version }}
           PHYSICLAW_HOME: ${{ runner.temp }}/physiclaw-release-home
         run: |
-          uvx --from "physiclaw==$RELEASE_VERSION" --refresh-package physiclaw physiclaw --version
-          uvx --from "physiclaw==$RELEASE_VERSION" physiclaw --help
+          uvx --no-config --default-index https://pypi.org/simple --from "physiclaw==$RELEASE_VERSION" --refresh-package physiclaw physiclaw --version
+          uvx --no-config --default-index https://pypi.org/simple --from "physiclaw==$RELEASE_VERSION" physiclaw --help
 
   github-release:
     needs: [ci, verify]

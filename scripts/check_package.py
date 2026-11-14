@@ -2,6 +2,7 @@
 
 import argparse
 import hashlib
+import http.client
 import json
 import os
 import random
@@ -80,15 +81,22 @@ def filenames(version: str) -> set[str]:
     return {f"physiclaw-{version}-py3-none-any.whl", f"physiclaw-{version}.tar.gz"}
 
 
+def pypi_index(*, timeout: float = 30) -> dict:
+    request = urllib.request.Request(
+        "https://pypi.org/simple/physiclaw/",
+        headers={
+            "Accept": "application/vnd.pypi.simple.v1+json",
+            "Cache-Control": "no-cache",
+        },
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        return json.load(response)
+
+
 def select_upgrade_baseline(candidate: str) -> str:
     """Newest available stable release strictly older than this candidate."""
     candidate_key = release.version_key(candidate)
-    request = urllib.request.Request(
-        "https://pypi.org/simple/physiclaw/",
-        headers={"Accept": "application/vnd.pypi.simple.v1+json"},
-    )
-    with urllib.request.urlopen(request, timeout=30) as response:
-        index = json.load(response)
+    index = pypi_index()
     available = {
         item["filename"]
         for item in index["files"]
@@ -633,6 +641,56 @@ def published_files(version: str) -> dict[str, dict]:
         raise
 
 
+def wait_for_pypi_index(expected: dict[str, str], *, timeout: float = 300) -> None:
+    """Wait for installation metadata, without retrying conflicting release files."""
+    deadline = time.monotonic() + timeout
+    reason = "release files are missing"
+    while (remaining := deadline - time.monotonic()) > 0:
+        try:
+            index = pypi_index(timeout=min(30, remaining))
+        except urllib.error.HTTPError as error:
+            if error.code not in {404, 408, 429, 500, 502, 503, 504}:
+                raise
+            reason = f"HTTP {error.code}"
+        except (
+            urllib.error.URLError,
+            TimeoutError,
+            ConnectionError,
+            http.client.IncompleteRead,
+        ) as error:
+            reason = str(error)
+        else:
+            indexed = {item["filename"]: item for item in index["files"]}
+            for name in expected.keys() & indexed.keys():
+                item = indexed[name]
+                if (
+                    item["hashes"]["sha256"] != expected[name]
+                    or item.get("yanked", False) is not False
+                ):
+                    raise ValueError(f"PyPI index file differs or is yanked: {name}")
+            missing = expected.keys() - indexed.keys()
+            if not missing and time.monotonic() < deadline:
+                print("Verified PyPI installation index", flush=True)
+                return
+            reason = (
+                "missing " + ", ".join(sorted(missing))
+                if missing
+                else "response arrived after the deadline"
+            )
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        delay = min(10, remaining)
+        print(
+            f"Waiting for PyPI installation index ({reason}); retry in {delay:g}s",
+            flush=True,
+        )
+        time.sleep(delay)
+    raise TimeoutError(
+        f"PyPI installation index not ready after {timeout:g}s: {reason}"
+    )
+
+
 def verify_pypi(bundle: Path, *, allow_missing: bool = False) -> None:
     """Before retries, reject different existing files; after upload verify all bytes."""
     manifest = verify_local(bundle)
@@ -674,6 +732,9 @@ def verify_pypi(bundle: Path, *, allow_missing: bool = False) -> None:
             timeout=180,
         )
         print(f"Verified PyPI bytes and attestations: {name}", flush=True)
+    if not allow_missing:
+        # The release JSON endpoint can be ready before installers see the files.
+        wait_for_pypi_index(expected)
 
 
 def main() -> None:

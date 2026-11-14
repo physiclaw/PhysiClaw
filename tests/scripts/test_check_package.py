@@ -1,6 +1,7 @@
 """Release artifacts and retries must fail closed on missing or different bytes."""
 
 import hashlib
+import http.client
 import io
 import json
 import os
@@ -96,6 +97,7 @@ def test_upgrade_baseline_selects_latest_available_older_stable_release(
     def fetch(request, *, timeout):
         assert request.full_url == "https://pypi.org/simple/physiclaw/"
         assert request.get_header("Accept") == "application/vnd.pypi.simple.v1+json"
+        assert request.get_header("Cache-control") == "no-cache"
         assert timeout == 30
         return io.BytesIO(json.dumps(index).encode())
 
@@ -735,6 +737,16 @@ def pypi(bundle, monkeypatch, mocker):
         lambda url, **kw: io.BytesIO(data[url.rsplit("/", 1)[1]]),
     )
     monkeypatch.setattr(check_package.time, "sleep", lambda seconds: None)
+    mocker.patch.object(
+        check_package,
+        "pypi_index",
+        return_value={
+            "files": [
+                {"filename": name, "hashes": item["digests"], "yanked": False}
+                for name, item in entries.items()
+            ]
+        },
+    )
     verifier = mocker.patch.object(check_package.subprocess, "run")
     return entries, data, verifier
 
@@ -758,6 +770,7 @@ def test_partial_retry_verifies_existing_file_but_requires_complete_postcheck(
     entries.pop("physiclaw-1.2.3.tar.gz")
     check_package.verify_pypi(bundle, allow_missing=True)
     assert verifier.call_count == 1
+    check_package.pypi_index.assert_not_called()
     with pytest.raises(ValueError, match="both release files"):
         check_package.verify_pypi(bundle)
 
@@ -796,6 +809,143 @@ def test_retry_rejects_unverifiable_provenance(bundle, pypi):
     verifier.side_effect = subprocess.CalledProcessError(1, ["pypi-attestations"])
     with pytest.raises(subprocess.CalledProcessError):
         check_package.verify_pypi(bundle, allow_missing=True)
+
+
+def test_postpublication_waits_for_index_only_after_attestation_checks(
+    bundle, pypi, mocker
+):
+    _, _, verifier = pypi
+
+    def wait(expected):
+        assert verifier.call_count == 2
+        assert expected == check_package.verify_local(bundle)["files"]
+        raise TimeoutError("index unavailable")
+
+    mocker.patch.object(check_package, "wait_for_pypi_index", side_effect=wait)
+    with pytest.raises(TimeoutError, match="index unavailable"):
+        check_package.verify_pypi(bundle)
+
+
+@pytest.fixture
+def index_state(monkeypatch, mocker):
+    expected = {
+        "physiclaw-1.2.3-py3-none-any.whl": "a" * 64,
+        "physiclaw-1.2.3.tar.gz": "b" * 64,
+    }
+    state = SimpleNamespace(
+        expected=expected,
+        files=[
+            {"filename": name, "hashes": {"sha256": checksum}, "yanked": False}
+            for name, checksum in expected.items()
+        ],
+        now=0,
+        sleeps=[],
+    )
+
+    def sleep(seconds):
+        state.sleeps.append(seconds)
+        state.now += seconds
+
+    monkeypatch.setattr(
+        check_package,
+        "time",
+        SimpleNamespace(monotonic=lambda: state.now, sleep=sleep),
+    )
+    state.fetch = mocker.patch.object(
+        check_package, "pypi_index", return_value={"files": state.files}
+    )
+    return state
+
+
+def test_installation_index_waits_for_both_files(index_state):
+    state = index_state
+    state.fetch.side_effect = [
+        {"files": []},
+        {"files": state.files[:1]},
+        {"files": state.files},
+    ]
+    check_package.wait_for_pypi_index(state.expected, timeout=25)
+    assert state.sleeps == [10, 10]
+    assert [call.kwargs["timeout"] for call in state.fetch.call_args_list] == [
+        25,
+        15,
+        5,
+    ]
+
+
+@pytest.mark.parametrize("status", [404, 408, 429, 500, 502, 503, 504])
+def test_installation_index_retries_temporary_http_errors(index_state, status):
+    state = index_state
+    state.fetch.side_effect = [
+        urllib.error.HTTPError("https://pypi.org", status, "temporary", {}, None),
+        {"files": state.files},
+    ]
+    check_package.wait_for_pypi_index(state.expected)
+    assert state.sleeps == [10]
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        urllib.error.URLError("offline"),
+        TimeoutError("slow"),
+        ConnectionResetError(),
+        http.client.IncompleteRead(b"partial"),
+    ],
+)
+def test_installation_index_retries_connection_errors(index_state, error):
+    state = index_state
+    state.fetch.side_effect = [error, {"files": state.files}]
+    check_package.wait_for_pypi_index(state.expected)
+    assert state.sleeps == [10]
+
+
+@pytest.mark.parametrize("status", [400, 401, 403, 410])
+def test_installation_index_rejects_permanent_http_errors(index_state, status):
+    state = index_state
+    state.fetch.side_effect = urllib.error.HTTPError(
+        "https://pypi.org", status, "permanent", {}, None
+    )
+    with pytest.raises(urllib.error.HTTPError):
+        check_package.wait_for_pypi_index(state.expected)
+    assert state.sleeps == []
+
+
+@pytest.mark.parametrize("change", ["checksum", True, "", "withdrawn"])
+def test_installation_index_rejects_conflicts_even_when_partial(index_state, change):
+    state = index_state
+    item = state.files[0]
+    if change == "checksum":
+        item["hashes"]["sha256"] = "0" * 64
+    else:
+        item["yanked"] = change
+    state.fetch.return_value = {"files": [item]}
+    with pytest.raises(ValueError, match="differs or is yanked"):
+        check_package.wait_for_pypi_index(state.expected)
+    assert state.sleeps == []
+
+
+def test_installation_index_exhausts_one_deadline(index_state):
+    state = index_state
+    state.fetch.return_value = {"files": []}
+    with pytest.raises(TimeoutError, match="not ready after 25s.*physiclaw"):
+        check_package.wait_for_pypi_index(state.expected, timeout=25)
+    assert state.sleeps == [10, 10, 5]
+    assert state.fetch.call_count == 3
+
+
+def test_installation_index_cannot_succeed_after_deadline(index_state):
+    state = index_state
+
+    def fetch(**kwargs):
+        state.now += 6
+        return {"files": state.files}
+
+    state.fetch.side_effect = fetch
+    with pytest.raises(TimeoutError, match="not ready after 5s"):
+        check_package.wait_for_pypi_index(state.expected, timeout=5)
+    state.fetch.assert_called_once_with(timeout=5)
+    assert state.sleeps == []
 
 
 @pytest.mark.parametrize("status", [404, 403, 500])
@@ -841,6 +991,10 @@ def test_release_permissions_and_artifact_promotion_are_isolated():
     assert steps[1]["uses"].startswith("pypa/gh-action-pypi-publish@")
     assert steps[1]["with"]["attestations"] is True
     assert set(jobs["verify"]["needs"]) == {"ci", "publish"}
+    verification, install = jobs["verify"]["steps"][-2:]
+    assert verification["run"].endswith("scripts/check_package.py verify-pypi")
+    assert "--refresh-package physiclaw" in install["run"]
+    assert install["run"].count("--default-index https://pypi.org/simple") == 2
     assert jobs["github-release"]["needs"] == ["ci", "verify"]
 
 

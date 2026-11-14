@@ -36,6 +36,11 @@ Completion requires successful release CI, verified PyPI artifacts and a publish
 GitHub release with its wheel and source archive. Keep GitHub's hardware `latest`
 release unchanged.
 
+Post-publication verification uses a five-minute polling budget for both verified
+files to appear in PyPI's installation index before testing a fresh install. Missing
+index entries and transient network errors are retried; conflicting hashes,
+yanked files and invalid attestations fail verification.
+
 ## Configuration
 
 - Versions increase and use `X.Y.Z`, `X.Y.ZaN`, `X.Y.ZbN` or `X.Y.ZrcN`. Use patch
