@@ -478,6 +478,7 @@ async def test_outer_deadline_bounds_a_structural_provider(
     await shadow.plugin.advance(turn, metadata=replace(metadata, deadline=deadline))
     await wait_for(shadow.plugin._task)
     assert entered.is_set()
+    assert controlled_time.deadlines == [deadline]
     assert shadow.provider.evaluate.call_args.kwargs["deadline"] == deadline
     assert calls(shadow)[0]["error"] == "TimeoutError"
     assert calls(shadow)[0]["usage"]["input_tokens"] is None
@@ -830,6 +831,11 @@ async def test_view_expiry_cancels_inference_without_cooling_down_fresh_views(
     async with asyncio.timeout(WAIT_TIMEOUT):
         assert await scored_provider.plugin.advance(turn, metadata=metadata) is None
         await scored_provider.plugin._task
+    view_deadline = controlled_time.now + 0.05
+    assert controlled_time.deadlines == pytest.approx([view_deadline])
+    assert scored_provider.provider.evaluate.call_args.kwargs[
+        "deadline"
+    ] == pytest.approx(view_deadline)
     assert cancelled.is_set()
     record = calls(scored_provider)[0]
     assert record["status"] == "error"
@@ -858,6 +864,11 @@ async def test_early_view_expiry_timer_does_not_impose_provider_cooldown(
     await shadow.plugin.advance(turn, metadata=metadata)
     await wait_for(shadow.plugin._task)
 
+    assert controlled_time.deadlines == [controlled_time.now + 1.0]
+    assert (
+        shadow.provider.evaluate.call_args.kwargs["deadline"]
+        == controlled_time.now + 1.0
+    )
     record = calls(shadow)[0]
     assert record["reason"] == "stale_view"
     assert record["suppression"] == "request"
