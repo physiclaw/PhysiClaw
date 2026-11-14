@@ -72,6 +72,7 @@ def test_ctrl_c_cleans_process_tree_and_saves_cancelled_result(
     pytest.importorskip("build123d", reason="CAD dependencies required")
     control = tmp_path / "control"
     control.mkdir()
+    interrupt_handled = control / "interrupt-handled"
     output = tmp_path / "output"
     worker = f"""
 import os, signal
@@ -111,20 +112,27 @@ bp._view_indices = lambda stem, exploded: (0,)
 raise SystemExit(bp.main({args!r}))
 """
     wrapper = f"""
+import sys
+from pathlib import Path
 from hardware import __main__ as cli
+class ObservedCancellationEvent(cli.CancellationEvent):
+    def set(self):
+        super().set()
+        Path({str(interrupt_handled)!r}).touch()
+        # The parent releases this gate after sending any repeated interrupt.
+        sys.stdin.read(1)
+cli.CancellationEvent = ObservedCancellationEvent
 cli._DELEGATED['build'] = ['-u', '-c', {dispatcher!r}]
 raise SystemExit(cli.main(['build']))
 """
     expected_workers = 2 if mode == "dispatch" else 1
-    cancel_marker = control / "cancel"
-    env = {
-        **os.environ,
-        "PHYSICLAW_HW_OUTPUT": str(output),
-        "PHYSICLAW_HW_CANCEL_FILE": str(cancel_marker),
-    }
+    env = {**os.environ, "PHYSICLAW_HW_OUTPUT": str(output)}
+    # Release preparation may have its own cancellation scope.
+    env.pop("PHYSICLAW_HW_CANCEL_FILE", None)
     with owned_process(
         [sys.executable, "-u", "-c", wrapper],
         env=env,
+        stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -138,16 +146,16 @@ raise SystemExit(cli.main(['build']))
                         "Workers did not start: " + process.communicate(timeout=1)[0]
                     )
                 time.sleep(0.02)
-            # A terminal sends SIGINT to the entire foreground process group,
-            # reaching both the CLI wrapper and its dispatcher at once.
+            # The wrapper forwards cancellation to its privately owned tree.
             process.send_signal(
                 signal.CTRL_BREAK_EVENT
             ) if os.name == "nt" else os.killpg(process.pid, signal.SIGINT)
             if stubborn:
                 deadline = time.monotonic() + PROCESS_TIMEOUT
-                while not cancel_marker.exists():
+                # Observe the handler without changing the cancellation protocol.
+                while not interrupt_handled.exists():
                     assert process.poll() is None, (
-                        "dispatcher exited before cancellation"
+                        "wrapper exited before handling the first interrupt"
                     )
                     assert time.monotonic() < deadline, (
                         "first interrupt was not handled"
@@ -158,7 +166,7 @@ raise SystemExit(cli.main(['build']))
                 ) if os.name == "nt" else os.killpg(process.pid, signal.SIGINT)
             # The CLI allows 10s for dispatcher cleanup, then 1s for SIGTERM.
             # Leave scheduling headroom on busy CI runners.
-            terminal, _ = process.communicate(timeout=PROCESS_TIMEOUT)
+            terminal, _ = process.communicate(input="\n", timeout=PROCESS_TIMEOUT)
             remaining = [
                 marker.stem
                 for marker in control.glob("*.worker")
