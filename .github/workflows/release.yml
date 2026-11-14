@@ -20,6 +20,9 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
+          # Checkout's tag+SHA fallback replaces annotated tags with commits.
+          # Select the immutable commit directly so validation sees the real tag.
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
       - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
