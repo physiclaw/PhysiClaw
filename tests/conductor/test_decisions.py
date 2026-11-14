@@ -170,6 +170,66 @@ def test_load_without_a_wire_log_raises() -> None:
 
 
 @pytest.mark.parametrize(
+    "fields",
+    [
+        {"request": [None]},
+        {"request": {"role": "user"}},
+        {"allowed": 123},
+        {"allowed": [None]},
+        {"request": [{"role": []}]},
+        {"request": None},
+        {"request": [{"role": "user", "content": 42}]},
+        {"answer": []},
+        {"call": {}},
+        {"call": "unknown_call"},
+        {"call": ""},
+        {"call": None},
+        {"node": False},
+        {"confidence": "high"},
+        {"confidence": float("inf")},
+        {"confidence": float("nan")},
+        {"confidence": 10**400},
+        {"confidence": -0.1},
+        {"thinking": []},
+        {"args": []},
+    ],
+)
+def test_regression_invalid_micro_record_reports_path_before_provider_call(
+    fields, mocker
+):
+    _session([_micro_record(**fields)])
+    factory = mocker.patch("physiclaw.provider.make_chat_provider")
+
+    result = CliRunner().invoke(playbooks_app, ["micro", SID, "--model", "openai/test"])
+
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
+    assert "model.jsonl" in result.output and "micro record 1" in result.output
+    factory.assert_not_called()
+
+
+def test_regression_legacy_micro_record_without_allowed_answers_still_loads():
+    directory = _session([_micro_record(allowed=None)])
+
+    (recorded,) = decisions.load(directory)
+
+    assert recorded.allowed == ()
+
+
+def test_regression_micro_record_number_ignores_other_wire_events():
+    directory = _session(
+        [
+            {"kind": "request", "call": "micro"},
+            _micro_record(node="skipped"),
+            _micro_record(confidence="bad"),
+        ]
+    )
+
+    with pytest.raises(ValueError, match="micro record 2: confidence"):
+        decisions.load(directory, only="parse")
+
+
+@pytest.mark.parametrize(
     "reference", ["traversal", "absolute", "symlink", "images-link"]
 )
 def test_load_never_replays_files_outside_session_images(tmp_path, reference) -> None:

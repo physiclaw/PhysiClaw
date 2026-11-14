@@ -24,6 +24,8 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 from symlink_helpers import symlink_to
 
+from tests.timing_helpers import PROCESS_TIMEOUT
+
 FILESYSTEM_IMAGE = b"filesystem".ljust(0x30000, b"\xff")
 
 
@@ -849,7 +851,7 @@ def test_script_help_describes_builder_without_optional_dependencies(bundle, tmp
         cwd=tmp_path,
         capture_output=True,
         text=True,
-        timeout=10,
+        timeout=PROCESS_TIMEOUT,
     )
 
     assert result.returncode == 0, result.stderr
@@ -873,7 +875,7 @@ def test_make_firmware_runs_despite_existing_firmware_directory():
         cwd=repo,
         capture_output=True,
         text=True,
-        timeout=10,
+        timeout=PROCESS_TIMEOUT,
     )
 
     assert result.returncode == 0, result.stderr
@@ -1074,7 +1076,7 @@ def test_concurrent_build_is_rejected_before_cleaning_and_lock_releases(
             [sys.executable, "-S", str(script)],
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=PROCESS_TIMEOUT,
         )
         assert result.returncode != 0
         assert "Another firmware build" in result.stderr

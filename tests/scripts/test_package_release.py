@@ -12,6 +12,7 @@ from zipfile import ZipFile
 import pytest
 
 from scripts import release
+from tests.timing_helpers import PROCESS_TIMEOUT
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -121,7 +122,9 @@ def run_make(project, action, *options):
     ]
     if os.name == "nt":
         command.append("SHELL=cmd.exe")
-    return subprocess.run(command, env=env, capture_output=True, text=True, timeout=30)
+    return subprocess.run(
+        command, env=env, capture_output=True, text=True, timeout=PROCESS_TIMEOUT
+    )
 
 
 @pytest.mark.parametrize("action", ["release-start", "release", "publish"])
@@ -1132,7 +1135,7 @@ def release_remote(committed_project, tmp_path, monkeypatch, fake_gh_bin):
 
     def git(*args):
         result = subprocess.run(
-            ["git", *args], capture_output=True, text=True, timeout=30
+            ["git", *args], capture_output=True, text=True, timeout=PROCESS_TIMEOUT
         )
         assert result.returncode == 0, result.stdout + result.stderr
         return result.stdout.strip()

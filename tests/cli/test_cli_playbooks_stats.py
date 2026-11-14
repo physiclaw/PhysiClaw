@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import json
+
 import typer
 from typer.testing import CliRunner
 
@@ -62,3 +64,16 @@ def test_stats_last_zero_hides_recent_rows() -> None:
     result = runner.invoke(app, ["playbooks", "stats", "--last", "0"])
 
     assert "recent:" not in result.output
+
+
+def test_regression_stats_skip_damaged_rows_and_keep_valid_runs():
+    _record(outcome="completed", node=None, reason="")
+    with walklog.runs_file().open("a", encoding="utf-8") as stream:
+        stream.write(
+            json.dumps({"app": "demo", "playbook": "flow", "micros": "bad"}) + "\n"
+        )
+
+    result = runner.invoke(app, ["playbooks", "stats"])
+
+    assert result.exit_code == 0, result.output
+    assert "demo/flow: runs=1 completed=1" in result.output

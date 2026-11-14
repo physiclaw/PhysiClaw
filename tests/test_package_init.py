@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 import physiclaw
+from tests.timing_helpers import PROCESS_TIMEOUT
 
 
 def _load_package():
@@ -61,7 +62,7 @@ def test_package_import_works_without_loading_hardware_stack():
         env=env,
         capture_output=True,
         text=True,
-        timeout=10,
+        timeout=PROCESS_TIMEOUT,
     )
 
     assert result.returncode == 0, result.stderr

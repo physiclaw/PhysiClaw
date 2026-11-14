@@ -5,6 +5,7 @@ playbook, and mined for where walks escalate; the CLI's `stats` and
 
 import logging
 from collections import Counter
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -16,9 +17,24 @@ log = logging.getLogger(__name__)
 
 
 def load() -> list[dict]:
-    """Every recorded run, oldest first. Missing file → []; a line that
-    won't parse is skipped (fail-open read, like macro stats)."""
-    return list(iter_jsonl(runs_file()))
+    """Every valid run, oldest first. Missing file → []; malformed JSON,
+    counters, and outcome types are skipped (fail-open, like macro stats)."""
+    return list(_valid_rows(iter_jsonl(runs_file())))
+
+
+def _valid_rows(rows: Iterable[dict]) -> Iterator[dict]:
+    """Reject damaged counters/outcomes before any history consumer uses them."""
+    for row in rows:
+        counters = (row.get("micros"), row.get("rescues"))
+        if (
+            row.get("outcome") is not None and not isinstance(row["outcome"], str)
+        ) or any(
+            value is not None and (type(value) is not int or value < 0)
+            for value in counters
+        ):
+            log.warning("invalid run record skipped: %r", row)
+            continue
+        yield row
 
 
 @dataclass
@@ -58,7 +74,7 @@ def summarize(rows: list[dict]) -> dict[str, WalkStats]:
     Unknown outcome spellings (a future field, a hand-edit) count into
     `runs` only — the KPI never silently reclassifies them."""
     out: dict[str, WalkStats] = {}
-    for rec in rows:
+    for rec in _valid_rows(rows):
         key = f"{rec.get('app', '?')}/{rec.get('playbook', '?')}"
         st = out.setdefault(key, WalkStats())
         st.runs += 1
@@ -102,7 +118,7 @@ def escalation_sites(rows: list[dict], top: int = 3) -> list[EscalationSite]:
     counts: Counter = Counter()
     latest: dict = {}
     sessions: dict = {}
-    for r in rows:
+    for r in _valid_rows(rows):
         if r.get("outcome") not in ESCALATION_OUTCOMES:
             continue
         key = (

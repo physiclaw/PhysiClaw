@@ -9,6 +9,28 @@ from hardware.port import locks
 from hardware.port.backends import windows
 
 
+def test_help_does_not_forward_output_lock_and_restores_parent_environment(monkeypatch):
+    monkeypatch.setenv("PHYSICLAW_HW_LOCK_FD", "123")
+    monkeypatch.setenv("PHYSICLAW_HW_LOCK_HANDLE", "456")
+
+    with locks.without_output_lock_inheritance():
+        assert "PHYSICLAW_HW_LOCK_FD" not in os.environ
+        assert "PHYSICLAW_HW_LOCK_HANDLE" not in os.environ
+
+    assert os.environ["PHYSICLAW_HW_LOCK_FD"] == "123"
+    assert os.environ["PHYSICLAW_HW_LOCK_HANDLE"] == "456"
+
+
+def test_help_failure_restores_parent_output_lock_environment(monkeypatch):
+    monkeypatch.setenv("PHYSICLAW_HW_LOCK_HANDLE", "456")
+
+    with pytest.raises(ValueError, match="invalid help request"):
+        with locks.without_output_lock_inheritance():
+            raise ValueError("invalid help request")
+
+    assert os.environ["PHYSICLAW_HW_LOCK_HANDLE"] == "456"
+
+
 @pytest.mark.skipif(os.name != "nt", reason="Native Windows byte-range locks")
 @pytest.mark.parametrize("acquire", [locks.file_lock, locks.output_lock])
 def test_regression_empty_locked_file_reports_contention(tmp_path, acquire):

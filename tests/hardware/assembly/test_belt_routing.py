@@ -23,6 +23,7 @@ from hardware.assembly.procedures.belt_30_motor_b import BELT_EXPLODE, BE30Motor
 from hardware.assembly.projection import camera_view
 from hardware.parts.standard.belt import Belt, _expand_wraps, belt_thickness
 from hardware.scheme import REPO_ROOT
+from tests.timing_helpers import PROCESS_TIMEOUT
 
 
 def test_belt_import_does_not_load_assembly_procedures():
@@ -36,7 +37,7 @@ assert not any(name.startswith('hardware.assembly') for name in sys.modules)
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
-        timeout=30,
+        timeout=PROCESS_TIMEOUT,
     )
     assert result.returncode == 0, result.stdout + result.stderr
 

@@ -14,14 +14,80 @@ import sys
 import zipfile
 from pathlib import Path
 
+import pytest
+
 from physiclaw.agent.trace import RawLog, Trace
 from physiclaw.agent.trace.store import Images
 from physiclaw.common import config, paths
 from physiclaw.common.logger import bind_log_context, reset_log_context, setup_logging
 from physiclaw.contract.dto import ImageBlock, TextBlock
+from tests.timing_helpers import PROCESS_TIMEOUT
 
 ROOT = Path(__file__).resolve().parents[2]
 PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/n1sAAAAASUVORK5CYII="
+
+
+@pytest.fixture
+def unicode_session():
+    sid = "20261114-000000-abcdef"
+    directory = paths.sessions_dir() / sid
+    directory.mkdir(parents=True)
+    summary = {"sid": sid, "outcome": {"sentinel": "DONE", "recap": "中文 🦀"}}
+    (directory / "summary.json").write_text(json.dumps(summary), encoding="utf-8")
+    return sid, summary
+
+
+def _python_with_encoding_flags():
+    command = [sys.executable, "-X", f"utf8={sys.flags.utf8_mode}"]
+    if sys.flags.warn_default_encoding:
+        command += ["-X", "warn_default_encoding", "-W", "error::EncodingWarning"]
+    return command
+
+
+def _legacy_logs(sid, encoding, *options):
+    return subprocess.run(
+        [
+            *_python_with_encoding_flags(),
+            "-c",
+            f"import sys; assert sys.flags.utf8_mode == {sys.flags.utf8_mode}; "
+            "from physiclaw.cli import app; app()",
+            "logs",
+            sid,
+            *options,
+        ],
+        env={
+            **os.environ,
+            "PYTHONIOENCODING": encoding + ":strict",
+            "PHYSICLAW_DISABLE_UPDATE_CHECK": "1",
+        },
+        capture_output=True,
+        timeout=PROCESS_TIMEOUT,
+    )
+
+
+@pytest.mark.parametrize("encoding", ["cp1252", "cp936"])
+def test_regression_logs_json_preserves_unicode_with_legacy_encoding(
+    unicode_session, encoding
+):
+    sid, summary = unicode_session
+
+    result = _legacy_logs(sid, encoding, "--json")
+
+    assert result.returncode == 0, result.stderr
+    assert not result.stderr
+    assert json.loads(result.stdout) == summary
+
+
+@pytest.mark.parametrize("encoding", ["cp1252", "cp936"])
+def test_regression_human_logs_escape_unencodable_unicode(unicode_session, encoding):
+    sid, _ = unicode_session
+
+    result = _legacy_logs(sid, encoding)
+
+    assert result.returncode == 0, result.stderr
+    assert not result.stderr
+    assert "DONE" in result.stdout.decode(encoding)
+    assert "\\U0001f980" in result.stdout.decode(encoding)
 
 
 def test_logs_reads_and_exports_complete_session_after_service_rotation(
@@ -30,9 +96,7 @@ def test_logs_reads_and_exports_complete_session_after_service_rotation(
     monkeypatch.setenv("PYTHONIOENCODING", "gbk")
     # A conflicting inherited setting must not undo the mode being tested.
     monkeypatch.setenv("PYTHONUTF8", str(1 - sys.flags.utf8_mode))
-    python = [sys.executable, "-X", f"utf8={sys.flags.utf8_mode}"]
-    if sys.flags.warn_default_encoding:
-        python += ["-X", "warn_default_encoding", "-W", "error::EncodingWarning"]
+    python = _python_with_encoding_flags()
     check_flags = (
         "import sys\n"
         f"assert sys.flags.utf8_mode == {sys.flags.utf8_mode}\n"
@@ -186,7 +250,7 @@ for i in range(15):
             capture_output=True,
             text=True,
             encoding="utf-8",
-            timeout=15,
+            timeout=PROCESS_TIMEOUT,
         )
         assert server.returncode == 0, server.stderr
         assert not server.stdout
@@ -263,7 +327,7 @@ for i in range(15):
             capture_output=True,
             text=True,
             encoding="utf-8",
-            timeout=15,
+            timeout=PROCESS_TIMEOUT,
         )
         assert result.returncode == 0, result.stderr
         assert not result.stderr

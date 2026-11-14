@@ -18,6 +18,7 @@ from physiclaw.common import log_style, terminal
 from physiclaw.port.backends import windows
 from tests.terminal_fakes import Console
 from tests.terminal_helpers import terminal_process
+from tests.timing_helpers import PROCESS_TIMEOUT
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -312,7 +313,7 @@ def test_preview_script_exercises_the_real_json_contract_without_hardware():
         env=env,
         capture_output=True,
         text=True,
-        timeout=10,
+        timeout=PROCESS_TIMEOUT,
     )
     assert result.returncode == 0 and result.stdout == ""
     records = [json.loads(line) for line in result.stderr.splitlines()]

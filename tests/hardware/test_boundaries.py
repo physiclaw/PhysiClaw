@@ -8,6 +8,7 @@ from importlib.util import resolve_name
 import pytest
 
 from hardware.scheme import REPO_ROOT
+from tests.timing_helpers import PROCESS_TIMEOUT
 
 ROOT = REPO_ROOT / "hardware"
 
@@ -121,6 +122,6 @@ importlib.import_module(sys.argv[1])
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
-        timeout=30,
+        timeout=PROCESS_TIMEOUT,
     )
     assert result.returncode == 0, result.stdout + result.stderr

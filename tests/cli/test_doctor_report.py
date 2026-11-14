@@ -11,6 +11,7 @@ import pytest
 from physiclaw.cli._doctor_report import DoctorReport, error, info, ok, warn
 from physiclaw.common import terminal
 from tests.terminal_fakes import Console
+from tests.timing_helpers import PROCESS_TIMEOUT
 
 
 @pytest.fixture
@@ -150,7 +151,7 @@ def test_report_runs_with_real_redirected_stdout_and_strict_encoding(encoding):
         ],
         env=env,
         capture_output=True,
-        timeout=15,
+        timeout=PROCESS_TIMEOUT,
     )
 
     assert result.returncode == 0, result.stderr.decode(encoding, errors="replace")

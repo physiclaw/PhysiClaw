@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.timing_helpers import PROCESS_TIMEOUT
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -54,7 +56,7 @@ bash "$1" --version 0.11.0
             "PHYSICLAW_PYTHON": python_version or "",
             "UV_PYTHON": "3.11",  # Must not override the installer's selection.
         },
-        timeout=10,
+        timeout=PROCESS_TIMEOUT,
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert "EXPECTED_INSTALLED_CLI" in result.stdout
@@ -71,7 +73,7 @@ def test_bash_version_option_requires_a_value(args):
         capture_output=True,
         text=True,
         encoding="utf-8",
-        timeout=10,
+        timeout=PROCESS_TIMEOUT,
     )
 
     assert result.returncode == 2
@@ -140,7 +142,7 @@ exit $global:LASTEXITCODE
             "PHYSICLAW_PYTHON": python_version or "",
             "UV_PYTHON": "3.11",
         },
-        timeout=30,
+        timeout=PROCESS_TIMEOUT,
     )
 
     if install_exit:

@@ -7,6 +7,7 @@ import pytest
 
 from hardware.assembly import cache
 from hardware.scheme import REPO_ROOT
+from tests.timing_helpers import PROCESS_TIMEOUT
 
 
 @pytest.mark.parametrize(
@@ -107,7 +108,7 @@ assert 'hardware.assembly.annotation.generator' not in sys.modules
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
-        timeout=30,
+        timeout=PROCESS_TIMEOUT,
     )
     assert result.returncode == 0, result.stdout + result.stderr
 

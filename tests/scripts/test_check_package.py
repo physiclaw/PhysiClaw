@@ -1074,7 +1074,7 @@ def github_release_job(tmp_path):
             text=True,
             encoding="utf-8",
             capture_output=True,
-            timeout=30,
+            timeout=PROCESS_TIMEOUT,
         )
 
     return run, state, assets

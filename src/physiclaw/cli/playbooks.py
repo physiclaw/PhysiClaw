@@ -31,7 +31,6 @@ from physiclaw.common.paths import PACK_FILENAME
 from physiclaw.common.ready import START_HINT
 from physiclaw.conductor.bench import runs
 from physiclaw.conductor.drive import rehearsal, setup
-from physiclaw.conductor.spec.model import PlaybookError
 
 if TYPE_CHECKING:
     from physiclaw.conductor.bench import decisions
@@ -422,7 +421,7 @@ def step(
         typer.echo(
             json.dumps(
                 stepping.StepResult("reset", message, None).to_dict(),
-                ensure_ascii=False,
+                ensure_ascii=True,
             )
             if as_json
             else message
@@ -434,7 +433,7 @@ def step(
         except (SpecError, OSError, UnicodeError) as e:
             exit_error(str(e))
         if as_json:
-            typer.echo(json.dumps(pos.to_dict() if pos else None, ensure_ascii=False))
+            typer.echo(json.dumps(pos.to_dict() if pos else None, ensure_ascii=True))
         else:
             typer.echo(
                 pos.describe()
@@ -468,7 +467,7 @@ def step(
     except (RuntimeError, OSError, UnicodeError) as e:
         exit_error(str(e))
     typer.echo(
-        json.dumps(result.to_dict(), ensure_ascii=False) if as_json else result.message
+        json.dumps(result.to_dict(), ensure_ascii=True) if as_json else result.message
     )
 
 
@@ -499,8 +498,9 @@ def replay(
     """Replay the real walk over recorded screens — no phone, no model.
     Each screen is the result of the walk's next action; the report
     shows the node, the verdict it acted on, the tool, and where the
-    walk stopped. A session's screens come from its wire log; a
-    listing file is one screen. Writes nothing."""
+    walk stopped. A session's screens come from ordered tool results in
+    events.jsonl; a listing file is one screen. Older request-only captures
+    need explicit --listing files. Writes nothing."""
     from physiclaw.cli._sessions import resolve_sid
     from physiclaw.common.text import read_text
     from physiclaw.conductor.bench import corpus
@@ -514,7 +514,7 @@ def replay(
             screens = [read_text(p) for p in listings]
         else:
             assert session is not None  # the exactly-one check above
-            screens = corpus.session_listings(resolve_sid(session))
+            screens = corpus.session_listings(resolve_sid(session), deduplicate=False)
         program, _ = setup.arm(
             app,
             name,
@@ -522,7 +522,7 @@ def replay(
             emit_warn=lambda s: typer.echo(warn(s)),
             dry=True,
         )
-    except (OSError, UnicodeError, PlaybookError) as e:
+    except (OSError, ValueError) as e:
         exit_error(str(e))
     result = replay_mod.replay(
         program, screens, parse_inputs(outputs or [], flag="--output")
@@ -628,8 +628,8 @@ def micro(
         str | None,
         typer.Option(
             "--model",
-            help="provider/model to ask (default: [conductor] micro_model, "
-            "else the session model).",
+            help="provider/model to ask (default: [conductor] micro_model "
+            "when set, otherwise the recorded session model).",
         ),
     ] = None,
     think: Annotated[
@@ -654,6 +654,7 @@ def micro(
     level by this. Spends tokens; writes nothing."""
     from dataclasses import asdict
 
+    from physiclaw.agent.trace.store import load_summary
     from physiclaw.cli._sessions import resolve_sid
     from physiclaw.common import paths
     from physiclaw.common.config import CONFIG
@@ -672,11 +673,16 @@ def micro(
     d = paths.sessions_dir() / resolve_sid(session)
     try:
         records = decisions.load(d, only=only or None)
-    except OSError as e:
+    except (OSError, ValueError) as e:
         exit_error(str(e))
     if not records:
         exit_error("no recorded decision calls match")
-    ref = model or CONFIG.conductor.micro_model or CONFIG.agent.model
+    ref = model or CONFIG.conductor.micro_model
+    if not ref:
+        recorded_ref = (load_summary(d) or {}).get("model_ref")
+        if not isinstance(recorded_ref, str) or not recorded_ref:
+            exit_error("session has no recorded model; pass --model provider/model")
+        ref = recorded_ref
     try:
         pid, mid = parse_model_ref(ref)
         provider = make_chat_provider(pid, mid)
@@ -713,7 +719,7 @@ def micro(
                     }
                     for row in rows
                 ],
-                ensure_ascii=False,
+                ensure_ascii=True,
                 indent=2,
             )
         )

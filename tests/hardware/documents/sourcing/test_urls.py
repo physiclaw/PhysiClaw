@@ -23,6 +23,7 @@ from hardware.documents.sourcing import urls
 from hardware.scheme import REPO_ROOT
 from physiclaw.common.terminal import ANSI_RE
 from tests.terminal_helpers import terminal_process
+from tests.timing_helpers import PROCESS_TIMEOUT
 
 NOW = datetime(2026, 10, 22, 9, tzinfo=UTC)
 
@@ -772,14 +773,22 @@ def test_shared_history_is_locked_across_output_directories(tmp_path):
     }
     with urls.history_lock(path):
         rejected = subprocess.run(
-            command, env=env, capture_output=True, encoding="cp1252", timeout=20
+            command,
+            env=env,
+            capture_output=True,
+            encoding="cp1252",
+            timeout=PROCESS_TIMEOUT,
         )
         assert rejected.returncode != 0
         assert "URL history already in use" in rejected.stderr
         assert not rejected.stdout
         assert not path.exists()
     accepted = subprocess.run(
-        command, env=env, capture_output=True, encoding="cp1252", timeout=20
+        command,
+        env=env,
+        capture_output=True,
+        encoding="cp1252",
+        timeout=PROCESS_TIMEOUT,
     )
     assert accepted.returncode == 0, accepted.stderr
     assert urls.load_state(path)["round_index"] == 1
@@ -919,7 +928,7 @@ def test_real_make_target_automatically_records_marketplaces_and_rotates(
             },
             capture_output=True,
             encoding=encoding,
-            timeout=20,
+            timeout=PROCESS_TIMEOUT,
         )
 
     result = invoke()

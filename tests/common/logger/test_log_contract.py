@@ -13,6 +13,7 @@ from typer.testing import CliRunner
 
 from physiclaw.common import log_style
 from physiclaw.common.logger import setup_logging
+from tests.timing_helpers import PROCESS_TIMEOUT
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -370,7 +371,7 @@ def test_serial_diagnostics_use_shared_output_without_touching_hardware(
         ],
         capture_output=True,
         text=True,
-        timeout=10,
+        timeout=PROCESS_TIMEOUT,
     )
     assert result.returncode == 1 and result.stdout == ""
     records = [json.loads(line) for line in result.stderr.splitlines()]

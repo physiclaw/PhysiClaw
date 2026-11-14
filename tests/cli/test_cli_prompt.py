@@ -622,7 +622,15 @@ def test_cli_turn_output_uses_captured_catalog(tmp_path, mcp_schemas, command):
     assert "exactly two native tool calls" not in result.stdout
 
 
-@pytest.mark.parametrize("text", ["{}", "invalid", "[{}]"])
+@pytest.mark.parametrize(
+    "text",
+    [
+        "{}",
+        "invalid",
+        "[{}]",
+        '[{"name":"peek","input_schema":{"type":"object","properties":[]}}]',
+    ],
+)
 def test_cli_turn_output_bad_schemas_fail(tmp_path, text):
     path = tmp_path / "schemas.json"
     path.write_text(text, encoding="utf-8")

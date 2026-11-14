@@ -13,6 +13,7 @@ bug reports. Reviewing a session in the browser is the studio's:
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -26,6 +27,7 @@ from physiclaw.agent.trace.store import (
     stub_summary,
 )
 from physiclaw.cli._format import exit_error, info, section, warn
+from physiclaw.common.terminal import stream_text
 from physiclaw.common.text import iter_jsonl
 
 # Stored artifacts may be truncated or have fields from an older schema.
@@ -35,13 +37,13 @@ _FORMAT_ERRORS = (TypeError, ValueError, AttributeError, KeyError, OverflowError
 
 def _echo(text: str) -> None:
     """Keep model text printable without changing valid Unicode or JSON values."""
-    typer.echo(text.encode("utf-8", "backslashreplace").decode("utf-8"))
+    typer.echo(stream_text(text, sys.stdout))
 
 
 def _echo_json(value: Any) -> None:
     """Machine output must be valid JSON, even when stored data is damaged."""
     try:
-        text = json.dumps(value, ensure_ascii=False, indent=2, allow_nan=False)
+        text = json.dumps(value, ensure_ascii=True, indent=2, allow_nan=False)
     except ValueError as e:
         exit_error(f"cannot render log data as JSON: {e}")
     _echo(text)

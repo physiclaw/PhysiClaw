@@ -14,6 +14,7 @@ import sys
 import time
 from contextlib import contextmanager
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -79,12 +80,70 @@ def reserved_ports():
             try:
                 bridge.bind(("0.0.0.0", port + 1))
             except OSError as error:
-                if error.errno != errno.EADDRINUSE:
+                # A neighboring Windows port can be in an excluded range even
+                # when the ephemeral control port is available (WSAEACCES).
+                if error.errno != errno.EADDRINUSE and not (
+                    sys.platform == "win32"
+                    and getattr(error, "winerror", None) == 10013
+                ):
                     raise
                 continue
             yield port, (control, bridge)
             return
     raise AssertionError("no adjacent free ports")
+
+
+@pytest.mark.parametrize(
+    "code, winerror", [(errno.EADDRINUSE, None), (errno.EACCES, 10013)]
+)
+def test_regression_adjacent_port_selection_retries_unavailable_windows_ports(
+    mocker, code, winerror
+):
+    error = OSError(code, "unavailable port")
+    error.winerror = winerror
+    first_control = mocker.MagicMock()
+    first_bridge = mocker.MagicMock()
+    control = mocker.MagicMock()
+    bridge = mocker.MagicMock()
+    first_control.__enter__.return_value = first_control
+    first_bridge.__enter__.return_value = first_bridge
+    control.__enter__.return_value = control
+    bridge.__enter__.return_value = bridge
+    first_control.getsockname.return_value = ("127.0.0.1", 50000)
+    control.getsockname.return_value = ("127.0.0.1", 50002)
+    first_bridge.bind.side_effect = error
+    mocker.patch(f"{__name__}.sys", SimpleNamespace(platform="win32"))
+    mocker.patch(
+        f"{__name__}.socket",
+        SimpleNamespace(
+            socket=mocker.Mock(
+                side_effect=[first_control, first_bridge, control, bridge]
+            )
+        ),
+    )
+
+    with reserved_ports() as (port, listeners):
+        assert port == 50002
+        assert listeners == (control, bridge)
+
+    first_bridge.__exit__.assert_called_once()
+    bridge.bind.assert_called_once_with(("0.0.0.0", 50003))
+
+
+def test_regression_adjacent_port_selection_does_not_hide_unexpected_errors(mocker):
+    control, bridge = mocker.MagicMock(), mocker.MagicMock()
+    control.__enter__.return_value = control
+    bridge.__enter__.return_value = bridge
+    control.getsockname.return_value = ("127.0.0.1", 50000)
+    bridge.bind.side_effect = OSError(errno.EIO, "unexpected bind failure")
+    mocker.patch(
+        f"{__name__}.socket",
+        SimpleNamespace(socket=mocker.Mock(side_effect=[control, bridge])),
+    )
+
+    with pytest.raises(OSError, match="unexpected bind failure"):
+        with reserved_ports():
+            pytest.fail("unexpected bind error was swallowed")
 
 
 @contextmanager

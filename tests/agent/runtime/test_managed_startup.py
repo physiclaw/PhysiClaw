@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.timing_helpers import WAIT_TIMEOUT
+from tests.timing_helpers import PROCESS_TIMEOUT, WAIT_TIMEOUT
 
 
 @pytest.mark.slow
@@ -62,7 +62,7 @@ def test_first_image_completes_before_control_pipe_eof(tmp_path):
             **kwargs,
         )
         try:
-            deadline = time.monotonic() + 60
+            deadline = time.monotonic() + PROCESS_TIMEOUT
             while True:
                 text = output.read_text(encoding="utf-8")
                 if "IMAGE_VALIDATED" in text:
@@ -79,7 +79,7 @@ def test_first_image_completes_before_control_pipe_eof(tmp_path):
             # marker with communicate() would close stdin and hide the freeze.
             assert proc.stdin is not None and not proc.stdin.closed
             proc.stdin.close()
-            proc.wait(timeout=15)
+            proc.wait(timeout=PROCESS_TIMEOUT)
             text = output.read_text(encoding="utf-8")
             assert proc.returncode == 0, text
             assert "STOP_REQUESTED" in text and "CLEAN_EXIT" in text, text

@@ -3,6 +3,8 @@ the real walk over recorded screens, writing nothing."""
 
 from __future__ import annotations
 
+import json
+
 from conductor_fakes import (
     DONE,
     ELSEWHERE,
@@ -17,6 +19,7 @@ from conductor_fakes import (
 from typer.testing import CliRunner
 
 from physiclaw.cli.playbooks import playbooks_app
+from physiclaw.common import paths
 from physiclaw.conductor.bench import replay
 from physiclaw.conductor.walk import suspension, walklog
 
@@ -158,6 +161,31 @@ def test_replay_cli_reads_listing_files(tmp_path) -> None:
 
     assert out.exit_code == 0, out.output
     assert "completed:" in out.output and "run_macro" in out.output
+
+
+def test_regression_session_replay_preserves_repeated_screens():
+    flow = FLOW.replace("app.pages.results", "app.pages.home")
+    write_pack(playbooks={"flow": flow})
+    sid = "20261114-000000-abcdef"
+    directory = paths.sessions_dir() / sid
+    directory.mkdir(parents=True)
+    records = [
+        {"event": "tool_result", "text": HOME},
+        {"event": "tool_result", "text": HOME},
+        {"event": "tool_result", "text": DONE},
+    ]
+    (directory / "events.jsonl").write_text(
+        "\n".join(map(json.dumps, records)),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        playbooks_app, ["replay", "demo/flow", "-i", "keyword=milk", "--session", sid]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "completed:" in result.output
+    assert "handover:" not in result.output
 
 
 def test_a_replay_stops_at_an_acting_agent_it_cannot_answer() -> None:

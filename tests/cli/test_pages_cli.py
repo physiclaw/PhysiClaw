@@ -376,6 +376,31 @@ def test_calibrate_warns_when_negatives_also_match(pack, labeled_corpus):
     assert "impostors_read=1" in result.stdout and "INSEPARABLE" in result.stdout
 
 
+def test_regression_partial_calibration_preserves_skipped_declared_pages(
+    pack, labeled_corpus
+):
+    from physiclaw.conductor.spec.pages import LearnedPage
+
+    pack.write_text(
+        pack.read_text(encoding="utf-8")
+        + "  results: {description: Results, anchors: ['结算']}\n",
+        encoding="utf-8",
+    )
+    previous = LearnedPage(anchors={}, observations=3)
+    prints.save_learned("sample", {"results": previous, "removed": previous})
+
+    result = runner.invoke(
+        pages.pages_app, ["calibrate", "sample", str(labeled_corpus)]
+    )
+
+    assert result.exit_code == 0, result.output
+    learned = prints.load_learned("sample")
+    assert set(learned) == {"home", "results"}
+    assert "(2 pages)" in result.output
+    assert learned["results"] == previous
+    assert learned["home"].observations == 1
+
+
 def test_calibrate_unlabeled_corpus_warns_without_saving(pack, labeled_corpus):
     corpus.write_corpus(labeled_corpus, [corpus.CorpusItem("?", LISTING)])
 

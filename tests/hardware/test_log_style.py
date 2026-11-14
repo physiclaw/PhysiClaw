@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from hardware import buildlog, log_style
+from tests.timing_helpers import PROCESS_TIMEOUT
 
 
 class Terminal(io.StringIO):
@@ -362,7 +363,7 @@ def test_backend_runs_from_hardware_alone_without_site_packages(tmp_path):
         cwd=tmp_path,
         capture_output=True,
         text=True,
-        timeout=10,
+        timeout=PROCESS_TIMEOUT,
     )
     assert result.returncode == 0, result.stderr
     assert result.stderr == ""

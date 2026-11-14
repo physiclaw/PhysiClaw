@@ -13,10 +13,11 @@ from importlib.util import find_spec
 import pytest
 
 from hardware import buildlog, scheme
+from hardware.port import locks
 from tests.timing_helpers import PROCESS_TIMEOUT
 
 
-def invoke(tmp_path, *args, input=None, timeout=60):
+def invoke(tmp_path, *args, input=None, timeout=PROCESS_TIMEOUT):
     if args[0] == "manual":
         # Supply isolated figure fixtures; this test exercises the real CLI
         # without requiring an entire generated CAD assembly tree.
@@ -47,6 +48,27 @@ def invoke(tmp_path, *args, input=None, timeout=60):
         text=True,
         timeout=timeout,
     )
+
+
+@pytest.mark.parametrize(
+    "command", [[], ["parts"], ["build"], ["manual"], ["release", "verify"]]
+)
+def test_regression_help_remains_available_during_a_build(tmp_path, command):
+    with locks.output_lock(tmp_path / ".build.lock"):
+        result = invoke(tmp_path, *command, "--help")
+
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert "Hardware build already running" not in result.stderr
+    assert result.stdout
+
+
+@pytest.mark.parametrize("command", [["check"], ["parts", "--", "--help"]])
+def test_regression_build_still_requires_exclusive_output_lock(tmp_path, command):
+    with locks.output_lock(tmp_path / ".build.lock"):
+        result = invoke(tmp_path, *command)
+
+    assert result.returncode != 0
+    assert "Hardware build already running" in result.stderr
 
 
 @pytest.mark.parametrize("command", ["check", "manual", "sourcing", "drawing"])
@@ -243,7 +265,7 @@ def test_subprocess_collector_failure_stops_child_and_fails_run(
                     "-c",
                     "from threading import Event; print('diagnostic'); Event().wait()",
                 ],
-                timeout=5,
+                timeout=PROCESS_TIMEOUT,
             )
     output = capsys.readouterr()
     assert output.err == ""
@@ -309,7 +331,7 @@ def test_cad_exports_share_json_contract_with_real_geometry(tmp_path, command):
         env={**os.environ, "PHYSICLAW_HW_OUTPUT": str(tmp_path)},
         capture_output=True,
         text=True,
-        timeout=60,
+        timeout=PROCESS_TIMEOUT,
     )
     assert result.returncode == 0, result.stderr + result.stdout
     assert result.stderr == ""
@@ -337,7 +359,7 @@ def test_make_check_forwards_format_flags_without_recipe_noise(tmp_path):
         env={**os.environ, "PHYSICLAW_HW_OUTPUT": str(tmp_path)},
         capture_output=True,
         text=True,
-        timeout=30,
+        timeout=PROCESS_TIMEOUT,
     )
     assert result.returncode == 0, result.stderr + result.stdout
     events = [json.loads(line) for line in result.stdout.splitlines()]
@@ -362,7 +384,7 @@ def test_make_step_help_without_positional_or_stdin(tmp_path, flag):
         stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,
-        timeout=30,
+        timeout=PROCESS_TIMEOUT,
     )
     assert result.returncode == 0, result.stderr + result.stdout
     assert "usage:" in result.stdout

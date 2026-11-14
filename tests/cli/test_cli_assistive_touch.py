@@ -14,6 +14,7 @@ from physiclaw.cli import _assistive_touch_http as http
 from physiclaw.cli import _service_handoff as handoff
 from physiclaw.common import terminal
 from tests.terminal_fakes import Console
+from tests.timing_helpers import WAIT_TIMEOUT
 
 command = importlib.import_module("physiclaw.cli.assistive_touch")
 app = typer.Typer()
@@ -205,7 +206,9 @@ def test_real_command_serves_both_ports_and_releases_them_on_interrupt(mocker):
     )
 
     def request(number, method, path, body=None):
-        with closing(HTTPConnection("127.0.0.1", number, timeout=3)) as client:
+        with closing(
+            HTTPConnection("127.0.0.1", number, timeout=WAIT_TIMEOUT)
+        ) as client:
             client.request(method, path, body)
             response = client.getresponse()
             assert response.status == 200

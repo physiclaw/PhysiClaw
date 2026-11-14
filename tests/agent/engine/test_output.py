@@ -384,7 +384,7 @@ def test_catalog_rejects_non_object_root_schema(schema):
         ActionCatalog.compile(tools, [], max_scratchpad=32)
 
 
-@pytest.mark.parametrize("kind", ["future_type", ["string", "future_type"], {}])
+@pytest.mark.parametrize("kind", ["future_type", ["string", "future_type"], {}, [[]]])
 def test_catalog_rejects_unsupported_nested_types(kind):
     tools = [
         {
@@ -394,6 +394,19 @@ def test_catalog_rejects_unsupported_nested_types(kind):
     ]
 
     with pytest.raises(ValueError, match="unsupported schema type"):
+        ActionCatalog.compile(tools, [], max_scratchpad=32)
+
+
+@pytest.mark.parametrize("name", ["tap", "send_to_clipboard", "sequence"])
+@pytest.mark.parametrize("properties", [None, [], {}, {"actions": False}])
+def test_regression_sequence_rejects_malformed_gesture_schemas(
+    mcp_schemas, name, properties
+):
+    tools = deepcopy(mcp_schemas)
+    tool = next(tool for tool in tools if tool["name"] == name)
+    tool["input_schema"]["properties"] = properties
+
+    with pytest.raises(ValueError, match="schema"):
         ActionCatalog.compile(tools, [], max_scratchpad=32)
 
 

@@ -57,11 +57,6 @@ _DELEGATED: dict[str, list[str]] = {
 def _parts(argv: list[str]) -> int:
     """Export part STEPs — the legacy default behaviour. Imported lazily so
     non-geometry subcommands (manual, sourcing, drawing) don't need ``--group cad``."""
-    from hardware.parts.base import export_all
-    from hardware.parts.export_custom import ALL_PARTS as CUSTOM_PARTS
-    from hardware.parts.export_standard import ALL_PARTS as STANDARD_PARTS
-    from hardware.scheme import STEP_DIR
-
     parser = argparse.ArgumentParser(prog="python -m hardware")
     parser.add_argument(
         "--custom", action="store_true", help="export custom parts (default)"
@@ -69,6 +64,12 @@ def _parts(argv: list[str]) -> int:
     parser.add_argument("--standard", action="store_true", help="export standard parts")
     buildlog.add_arguments(parser)
     args = parser.parse_args(argv)
+
+    from hardware.parts.base import export_all
+    from hardware.parts.export_custom import ALL_PARTS as CUSTOM_PARTS
+    from hardware.parts.export_standard import ALL_PARTS as STANDARD_PARTS
+    from hardware.scheme import STEP_DIR
+
     export_custom = args.custom or not args.standard
     parts = (STANDARD_PARTS if args.standard else []) + (
         CUSTOM_PARTS if export_custom else []

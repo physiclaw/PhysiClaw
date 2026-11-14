@@ -11,6 +11,8 @@ import pytest
 from coverage import CoverageData
 from ruamel.yaml import YAML
 
+from tests.timing_helpers import PROCESS_TIMEOUT
+
 WORKFLOWS = Path(__file__).resolve().parents[1] / ".github" / "workflows"
 
 
@@ -200,7 +202,7 @@ def test_coverage_combination_reads_every_downloaded_platform_file(tmp_path):
         env=environment,
         capture_output=True,
         text=True,
-        timeout=15,
+        timeout=PROCESS_TIMEOUT,
     )
 
     assert result.returncode == 0, result.stdout + result.stderr

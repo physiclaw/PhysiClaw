@@ -5,6 +5,8 @@ import py_compile
 import subprocess
 import sys
 
+from tests.timing_helpers import PROCESS_TIMEOUT
+
 
 def stale_bytecode(path, original, edited):
     path.write_text(original, encoding="utf-8")
@@ -27,7 +29,7 @@ def run(root, *args):
         env=env,
         capture_output=True,
         text=True,
-        timeout=30,
+        timeout=PROCESS_TIMEOUT,
     )
     assert result.returncode == 0, result.stdout + result.stderr
     return result.stdout.strip()

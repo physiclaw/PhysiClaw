@@ -185,11 +185,14 @@ def calibrate(
         typer.echo(_report_line(r))
     if mined:
         try:
-            prints.save_learned(app, mined)
+            previous = prints.load_learned(app)
+            learned = {name: page for name, page in previous.items() if name in decls}
+            learned.update(mined)
+            prints.save_learned(app, learned)
         except (OSError, ValueError) as e:
             exit_error(str(e))
         typer.echo(
-            f"saved learned/pages/{prints.learned_file(app).name} ({len(mined)} pages)"
+            f"saved learned/pages/{prints.learned_file(app).name} ({len(learned)} pages)"
         )
 
 

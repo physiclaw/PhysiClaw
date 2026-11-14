@@ -13,6 +13,7 @@ import pytest
 
 from physiclaw.core.hardware import frame_reader as fr_mod
 from physiclaw.core.hardware.frame_reader import FrameReader
+from tests.timing_helpers import WAIT_TIMEOUT
 
 
 @pytest.fixture(autouse=True)
@@ -316,7 +317,7 @@ def test_start_stop_lifecycle() -> None:
 
     r.start()
     try:
-        assert r.wait_frames(1, timeout=2.0)
+        assert r.wait_frames(1, timeout=WAIT_TIMEOUT)
         assert r.alive
     finally:
         r.stop()
@@ -330,7 +331,7 @@ def test_healthy_requires_running_thread_and_recent_frame() -> None:
 
     r.start()
     try:
-        assert r.wait_frames(1, timeout=2.0)
+        assert r.wait_frames(1, timeout=WAIT_TIMEOUT)
         assert r.healthy()
     finally:
         r.stop()

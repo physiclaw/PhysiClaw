@@ -20,9 +20,11 @@ from typing import Any
 from physiclaw.common.logger.session_artifacts import mime_for, resolve_image
 from physiclaw.common.text import iter_jsonl
 from physiclaw.conductor.micro.answers import parse_reply
+from physiclaw.conductor.micro.calltable import SPECS
 from physiclaw.conductor.micro.moves import move_key, reply_args
 from physiclaw.contract.chat import SessionChatProvider
 from physiclaw.contract.dto import (
+    THINKING_LEVELS,
     USAGE_CALL_MICRO,
     ContentBlock,
     ImageBlock,
@@ -71,27 +73,63 @@ class Row:
 def load(session_dir: Path, only: str | None = None) -> list[Recorded]:
     """Every micro record in a session's wire log, in order — or only
     those whose call or node is `only`, judged before any frame is read.
+    Malformed matching records raise ValueError.
     A record from before the log kept the caller's reading (no
     `allowed`) still loads — its replies can be asked, not judged."""
     path = session_dir / "model.jsonl"
     if not path.exists():
         raise FileNotFoundError(f"no model.jsonl for session {session_dir.name!r}")
     frames: dict[Path, ImageBlock | None] = {}
-    return [
-        Recorded(
-            call=str(rec.get("call") or ""),
-            node=str(rec.get("node") or ""),
-            allowed=tuple(rec.get("allowed") or ()),
-            messages=tuple(_messages(rec.get("request") or [], session_dir, frames)),
-            answer=rec.get("answer"),
-            confidence=rec.get("confidence"),
-            thinking=rec.get("thinking"),
-            args=rec.get("args"),
-        )
-        for rec in iter_jsonl(path, '"micro"')
-        if rec.get("kind") == "micro"
-        and (only is None or only in (rec.get("call"), rec.get("node")))
-    ]
+    records = []
+    micro_records = (
+        rec for rec in iter_jsonl(path, '"micro"') if rec.get("kind") == "micro"
+    )
+    for index, rec in enumerate(micro_records, 1):
+        if only is not None and only not in (rec.get("call"), rec.get("node")):
+            continue
+        try:
+            call = rec.get("call")
+            if not isinstance(call, str) or call not in SPECS:
+                raise ValueError(f"unsupported micro call {call!r}")
+            for key in ("node", "answer"):
+                if rec.get(key) is not None and not isinstance(rec[key], str):
+                    raise ValueError(f"{key} must be text or null")
+            confidence = rec.get("confidence")
+            if confidence is not None and (
+                type(confidence) not in (int, float) or not 0 <= confidence <= 1
+            ):
+                raise ValueError("confidence must be a number between 0 and 1")
+            if (
+                rec.get("thinking") is not None
+                and rec["thinking"] not in THINKING_LEVELS
+            ):
+                raise ValueError("thinking must be a supported level or null")
+            if rec.get("args") is not None and not isinstance(rec["args"], dict):
+                raise ValueError("args must be an object or null")
+            allowed = rec.get("allowed")
+            if allowed is None:
+                allowed = []
+            if not isinstance(allowed, list) or not all(
+                isinstance(answer, str) for answer in allowed
+            ):
+                raise ValueError("allowed must be a list of strings")
+            records.append(
+                Recorded(
+                    call=call,
+                    node=rec.get("node") or "",
+                    allowed=tuple(allowed),
+                    messages=tuple(
+                        _messages(rec.get("request", []), session_dir, frames)
+                    ),
+                    answer=rec.get("answer"),
+                    confidence=confidence,
+                    thinking=rec.get("thinking"),
+                    args=rec.get("args"),
+                )
+            )
+        except ValueError as error:
+            raise ValueError(f"{path}: micro record {index}: {error}") from error
+    return records
 
 
 def _messages(
@@ -106,9 +144,15 @@ def _messages(
     across them. `leaf_blocks` also reads a record from before the log
     kept its own shape."""
     out: list[Message] = []
+    if not isinstance(request, list):
+        raise ValueError("request must be a list of messages")
     for m in request:
-        role = str(m.get("role") or "user")
+        if not isinstance(m, dict) or not isinstance(m.get("role", "user"), str):
+            raise ValueError("request messages must be objects with a string role")
+        role = m.get("role") or "user"
         content = m.get("content")
+        if content is not None and not isinstance(content, (str, list)):
+            raise ValueError("message content must be text, blocks, or null")
         if isinstance(content, str) or role != "user":
             out.append(
                 message_of(

@@ -33,19 +33,24 @@ class CorpusItem:
     listing: str
 
 
-def session_listings(sid: str) -> list[str]:
-    """Every distinct listing text in one recorded session, in first-seen
+def session_listings(sid: str, *, deduplicate: bool = True) -> list[str]:
+    """A session's listings, optionally distinct, in first-seen
     order — the tool results' own record when the session kept it, else
     (a session recorded before the trace kept them) the wire log's
-    requests."""
+    requests. Replay disables deduplication and requires ordered tool results:
+    request histories repeat prior context and cannot reconstruct a timeline."""
     d = paths.sessions_dir() / sid
     events, wire_log = d / "events.jsonl", d / "model.jsonl"
     if events.exists():
-        found = _screens(_result_texts(events))
+        found = _screens(_result_texts(events), deduplicate=deduplicate)
         if found:
             return found
     if not wire_log.exists():
         raise FileNotFoundError(f"no events.jsonl or model.jsonl for session {sid!r}")
+    if not deduplicate:
+        raise ValueError(
+            "session has no ordered tool results; replay with --listing files instead"
+        )
     # The SYSTEM prompt quotes the listing header verbatim in doctrine,
     # so system messages must not extract as screens.
     return _screens(
@@ -53,13 +58,16 @@ def session_listings(sid: str) -> list[str]:
     )
 
 
-def _screens(texts: Iterable[str]) -> list[str]:
-    """The screens among `texts`, deduped in first-seen order."""
-    seen: dict[str, None] = {}
+def _screens(texts: Iterable[str], *, deduplicate: bool = True) -> list[str]:
+    """The screens among `texts`, optionally unique in first-seen order."""
+    seen: set[str] = set()
+    screens = []
     for text in texts:
-        if text not in seen and is_screen(text):
-            seen[text] = None
-    return list(seen)
+        if (not deduplicate or text not in seen) and is_screen(text):
+            if deduplicate:
+                seen.add(text)
+            screens.append(text)
+    return screens
 
 
 def _result_texts(path: Path) -> Iterator[str]:

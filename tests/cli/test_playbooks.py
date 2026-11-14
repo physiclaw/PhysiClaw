@@ -246,22 +246,26 @@ def test_step_status_without_state_is_readable(args, expected):
     assert expected in result.stdout
 
 
-def test_step_status_json_preserves_position(mocker):
+@pytest.mark.parametrize("encoding", ["cp1252", "cp936"])
+def test_step_status_json_preserves_position(mocker, encoding):
     position = stepping.Position(
         "demo", "flow", 1, "choose", {"term": "茶"}, {}, False, None, None
     )
     mocker.patch("physiclaw.debug.stepping.status", return_value=position)
 
-    result = runner.invoke(
+    result = CliRunner(charset=encoding).invoke(
         app, ["playbooks", "step", "demo/flow", "--status", "--json"]
     )
 
     assert result.exit_code == 0
-    assert json.loads(result.stdout) == position.to_dict()
+    assert json.loads(result.stdout_bytes) == position.to_dict()
 
 
-def test_step_json_keeps_progress_off_stdout_and_forwards_flags(playbook_mcp, mocker):
-    outcome = stepping.StepResult("paused", "choose next", None)
+@pytest.mark.parametrize("encoding", ["cp1252", "cp936"])
+def test_step_json_keeps_progress_off_stdout_and_forwards_flags(
+    playbook_mcp, mocker, encoding
+):
+    outcome = stepping.StepResult("paused", "选择 🦀", None)
 
     async def step(*args, **kwargs):
         kwargs["emit"]("progress")
@@ -272,7 +276,7 @@ def test_step_json_keeps_progress_off_stdout_and_forwards_flags(playbook_mcp, mo
         "physiclaw.debug.stepping.step", new=mocker.AsyncMock(side_effect=step)
     )
 
-    result = runner.invoke(
+    result = CliRunner(charset=encoding).invoke(
         app,
         [
             "playbooks",
@@ -299,7 +303,7 @@ def test_step_json_keeps_progress_off_stdout_and_forwards_flags(playbook_mcp, mo
     )
 
     assert result.exit_code == 0, result.output
-    assert json.loads(result.stdout) == outcome.to_dict()
+    assert json.loads(result.stdout_bytes) == outcome.to_dict()
     assert "progress" in result.stderr and "warning" in result.stderr
     driver.assert_awaited_once_with(
         "demo",
@@ -360,7 +364,7 @@ def test_replay_resolves_session_before_loading_screens(mocker):
     assert result.exit_code == 0
     assert "stopped: no more screens" in result.output
     resolve.assert_called_once_with("suffix")
-    screens.assert_called_once_with("full-session")
+    screens.assert_called_once_with("full-session", deduplicate=False)
     replay.assert_called_once_with("program", ["screen"], {})
 
 
@@ -406,8 +410,14 @@ def test_replay_lists_turns_and_reports_terminal_outcome(tmp_path, mocker):
     replay.assert_called_once_with("program", ["screen"], {"pick.answer": "yes"})
 
 
-def test_micro_json_forwards_options_and_closes_provider(micro_session):
-    result = runner.invoke(
+@pytest.mark.parametrize("encoding", ["cp1252", "cp936"])
+def test_micro_json_forwards_options_and_closes_provider(micro_session, encoding):
+    from physiclaw.conductor.bench.decisions import Row
+
+    micro_session.reply = replace(micro_session.reply, args={"text": "中文 🦀"})
+    micro_session.ask.return_value = Row(micro_session.recorded, (micro_session.reply,))
+
+    result = CliRunner(charset=encoding).invoke(
         app,
         [
             "playbooks",
@@ -426,7 +436,7 @@ def test_micro_json_forwards_options_and_closes_provider(micro_session):
     )
 
     assert result.exit_code == 0, result.output
-    assert json.loads(result.stdout) == [
+    assert json.loads(result.stdout_bytes) == [
         {
             "call": "move",
             "node": "choose",
@@ -520,3 +530,45 @@ def test_micro_rejects_invalid_options_before_loading(micro_session, args):
 
     assert result.exit_code == 2
     micro_session.load.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "options, configured, expected",
+    [
+        ([], "", "recorded"),
+        ([], "openai/configured", "configured"),
+        (["--model", "openai/explicit"], "openai/configured", "explicit"),
+    ],
+)
+def test_regression_micro_model_fallback_uses_recording(
+    micro_session, monkeypatch, options, configured, expected
+):
+    from physiclaw.common import config, paths
+
+    directory = paths.sessions_dir() / "recorded-session"
+    directory.mkdir(parents=True)
+    (directory / "summary.json").write_text(
+        '{"model_ref":"openai/recorded"}', encoding="utf-8"
+    )
+    monkeypatch.setattr(config.CONFIG.conductor, "micro_model", configured)
+    monkeypatch.setattr(config.CONFIG.agent, "model", "openai/current-task")
+
+    result = runner.invoke(app, ["playbooks", "micro", "session", *options, "--json"])
+
+    assert result.exit_code == 0, result.output
+    micro_session.factory.assert_called_once_with("openai", expected)
+
+
+def test_regression_micro_missing_recorded_model_requires_explicit_override(
+    micro_session, monkeypatch
+):
+    from physiclaw.common import config
+
+    monkeypatch.setattr(config.CONFIG.conductor, "micro_model", "")
+    monkeypatch.setattr(config.CONFIG.agent, "model", "openai/current-task")
+
+    result = runner.invoke(app, ["playbooks", "micro", "session"])
+
+    assert result.exit_code == 1
+    assert "--model" in result.output
+    micro_session.factory.assert_not_called()

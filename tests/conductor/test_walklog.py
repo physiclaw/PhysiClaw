@@ -220,6 +220,30 @@ def test_escalation_sites_empty_without_escalations() -> None:
     assert runs.escalation_sites(rows) == []
 
 
+@pytest.mark.parametrize(
+    "damaged",
+    [
+        {"micros": "bad"},
+        {"micros": float("inf")},
+        {"rescues": -1},
+        {"micros": True},
+        {"outcome": []},
+    ],
+)
+def test_regression_malformed_run_rows_do_not_hide_valid_history(damaged, caplog):
+    rows = [
+        {"app": "demo", "playbook": "flow", "outcome": "handover", **damaged},
+        {"app": "demo", "playbook": "flow", "outcome": "completed", "micros": 2},
+    ]
+
+    stats = runs.summarize(rows)["demo/flow"]
+    sites = runs.escalation_sites(rows)
+
+    assert (stats.runs, stats.completed, stats.micros) == (1, 1, 2)
+    assert sites == []
+    assert "invalid run record" in caplog.text
+
+
 def test_record_lines_are_valid_json_per_line() -> None:
     _record()
     _record(outcome="completed", node=None, reason="")

@@ -22,7 +22,12 @@ import tempfile
 from pathlib import Path
 
 import pytest
+from freezegun import configure
 from hypothesis import settings
+
+# Pytest 9 moved its reporting clocks out of _pytest.runner. Keep them real
+# while fixtures freeze application time, including during setup/teardown.
+configure(extend_ignore_list=["_pytest.timing"])
 
 # These are correctness tests, not benchmarks. Inherit the active profile's
 # example count, database and health checks; only remove the implicit

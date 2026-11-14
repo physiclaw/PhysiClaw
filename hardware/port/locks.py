@@ -1,5 +1,6 @@
 """Stable OS lock files and explicit lock inheritance for owned children."""
 
+import os
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -34,3 +35,17 @@ def child_inheritance() -> Iterator[dict[str, Any]]:
     """Limit inheritable handles to the protected process-creation window."""
     with _native.child_inheritance() as options:
         yield options
+
+
+@contextmanager
+def without_output_lock_inheritance() -> Iterator[None]:
+    """Run read-only help without forwarding a live or stale output lease."""
+    inherited = {
+        key: os.environ.pop(key)
+        for key in ("PHYSICLAW_HW_LOCK_FD", "PHYSICLAW_HW_LOCK_HANDLE")
+        if key in os.environ
+    }
+    try:
+        yield
+    finally:
+        os.environ.update(inherited)

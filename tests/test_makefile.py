@@ -10,6 +10,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.timing_helpers import PROCESS_TIMEOUT
+
 ROOT = Path(__file__).resolve().parents[1]
 pytestmark = pytest.mark.slow  # Native make/Python startup is not a unit-test budget.
 
@@ -148,7 +150,7 @@ def make_project(tmp_path, request):
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=30,
+            timeout=PROCESS_TIMEOUT,
         )
         records = [
             json.loads(line.removeprefix("MAKE_CAPTURE="))

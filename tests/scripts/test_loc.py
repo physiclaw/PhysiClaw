@@ -13,6 +13,7 @@ from rich.console import Console
 from symlink_helpers import symlink_to
 
 from scripts import loc
+from tests.timing_helpers import PROCESS_TIMEOUT
 
 
 def git(root, *args, input_data=None):
@@ -282,7 +283,7 @@ def test_loc_in_checkout_with_spaces(repo, launcher, checkout_name):
         command,
         cwd=checkout,
         capture_output=True,
-        timeout=30,
+        timeout=PROCESS_TIMEOUT,
         env={**os.environ, "PYTHONIOENCODING": "utf-8", "NO_COLOR": "1"},
     )
 

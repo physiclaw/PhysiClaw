@@ -1,7 +1,7 @@
 """Tests for corpus extraction, validation, and the labeled-corpus round trip.
 
-Mutation review accepts diagnostic-decoration changes, the unused dedupe-dict
-values, and removing dataclass freezing (this module never mutates items).
+Mutation review accepts diagnostic-decoration changes and removing dataclass
+freezing (this module never mutates items).
 """
 
 from __future__ import annotations
@@ -89,6 +89,16 @@ def test_session_listings_extracts_deduped_in_order() -> None:
 def test_session_listings_missing_session_raises() -> None:
     with pytest.raises(FileNotFoundError):
         corpus.session_listings("nope")
+
+
+def test_regression_timeline_rejects_legacy_request_history_without_tool_results():
+    sid = "20261114-000000-abcdef"
+    _write_wire(
+        sid, [{"kind": "request", "messages": [{"role": "user", "content": LISTING_A}]}]
+    )
+
+    with pytest.raises(ValueError, match="ordered tool results.*--listing"):
+        corpus.session_listings(sid, deduplicate=False)
 
 
 def test_corpus_round_trip(tmp_path) -> None:

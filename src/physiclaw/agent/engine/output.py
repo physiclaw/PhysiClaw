@@ -65,9 +65,14 @@ def _check_schema(schema: dict | bool) -> None:
     types = schema.get("type", [])
     if isinstance(types, str):
         types = [types]
-    if not isinstance(types, list) or any(t not in _TYPES for t in types):
+    if not isinstance(types, list) or any(
+        not isinstance(t, str) or t not in _TYPES for t in types
+    ):
         raise ValueError("unsupported schema type")
-    for child in schema.get("properties", {}).values():
+    properties = schema.get("properties", {})
+    if not isinstance(properties, dict):
+        raise ValueError("schema properties must be an object")
+    for child in properties.values():
         _check_schema(child)
     for key in ("items", "additionalProperties"):
         if key in schema:
@@ -113,12 +118,15 @@ class ActionCatalog:
                 if name not in tools:
                     continue
                 schema = tools[name]["input_schema"]
-                if name in gv.PRESS_TOOLS:
-                    argument_schema = schema["properties"]["bbox"]
-                elif name == gv.SEND_TO_CLIPBOARD:
-                    argument_schema = schema["properties"]["text"]
-                else:
-                    argument_schema = schema
+                try:
+                    if name in gv.PRESS_TOOLS:
+                        argument_schema = schema["properties"]["bbox"]
+                    elif name == gv.SEND_TO_CLIPBOARD:
+                        argument_schema = schema["properties"]["text"]
+                    else:
+                        argument_schema = schema
+                except (KeyError, TypeError) as error:
+                    raise ValueError(f"invalid {name} schema for sequence") from error
                 branches.append(
                     {
                         "type": "object",
@@ -132,9 +140,12 @@ class ActionCatalog:
                 )
             if not branches:
                 raise ValueError("sequence requires eligible gesture schemas")
-            tools[gv.SEQUENCE]["input_schema"]["properties"]["actions"]["items"] = {
-                "oneOf": branches
-            }
+            try:
+                tools[gv.SEQUENCE]["input_schema"]["properties"]["actions"]["items"] = {
+                    "oneOf": branches
+                }
+            except (KeyError, TypeError) as error:
+                raise ValueError("invalid sequence actions schema") from error
         for tool in tools.values():
             _check_schema(tool["input_schema"])
         return cls(tuple(freeze_mapping(t) for t in tools.values()), max_scratchpad)

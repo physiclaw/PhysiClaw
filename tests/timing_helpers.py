@@ -10,6 +10,12 @@ deadline crosses module boundaries, those application clocks share an epoch.
 ManualTimeouts preserves real asyncio cancellation and TimeoutError conversion.
 
 WAIT_TIMEOUT and PROCESS_TIMEOUT are hang watchdogs, never speed assertions.
+Use WAIT_TIMEOUT for real worker/I/O readiness and PROCESS_TIMEOUT for child
+startup, command completion and interpreter shutdown; optional imports and
+coverage initialization count toward a child's budget. Shorter values belong
+only to tests of an actual timeout after the operation has become ready.
+These budgets are project policy, not pytest defaults. Increasing a watchdog
+does not establish readiness or fix a race; observe the operation's state.
 Keep real timeout integration tests for empty waits, held native locks, process
 termination and delayed HTTP responses. Polling external processes/files is
 valid when bounded by a real monotonic watchdog and paired with owned cleanup.
@@ -18,7 +24,9 @@ isolation; readiness and lock-order tests instead observe the actual operation.
 Deliberately blocked fakes/children stay blocked until their owner releases or
 cancels them. Hypothesis correctness tests inherit deadline=None in conftest.
 
-References: https://docs.pytest.org/en/stable/explanation/flaky.html and
+References: https://docs.pytest.org/en/stable/explanation/flaky.html,
+https://docs.pytest.org/en/stable/how-to/fixtures.html#safe-teardowns,
+https://docs.pytest.org/en/stable/how-to/monkeypatch.html and
 https://docs.python.org/3.12/library/asyncio-task.html#asyncio.Timeout.
 """
 
