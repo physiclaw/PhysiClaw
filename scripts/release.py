@@ -193,7 +193,6 @@ class Release:
         # the semantic change before writing or running any release commands.
         if tomllib.loads(updated) != expected:
             raise ReleaseError("Couldn't update [project].version in pyproject.toml")
-        # This also enforces tool.uv.required-version before editing any files.
         self.run("uv", "lock", "--check")
         lock = Path("uv.lock")
         original_project, original_lock = path.read_bytes(), lock.read_bytes()
@@ -214,7 +213,8 @@ class Release:
             if tomllib.loads(lock.read_text(encoding="utf-8")) != expected_lock:
                 raise ReleaseError(
                     "Version bump changed dependencies or lockfile metadata; "
-                    "update and commit the lockfile separately before releasing"
+                    "retry with CI's uv version (see RELEASING.md), or update "
+                    "and commit the lockfile separately before releasing"
                 )
         except (ReleaseError, OSError, ValueError, KeyboardInterrupt):
             path.write_bytes(original_project)
@@ -345,13 +345,7 @@ class Release:
     def github(self, endpoint: str, *options: str):
         """Use the local reviewer's gh credentials, always against github.com."""
         result = self.run(
-            "gh",
-            "api",
-            "--hostname",
-            "github.com",
-            endpoint,
-            *options,
-            capture=True,
+            "gh", "api", "--hostname", "github.com", endpoint, *options, capture=True
         )
         return json.loads(result.stdout)
 

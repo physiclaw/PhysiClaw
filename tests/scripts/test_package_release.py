@@ -68,11 +68,13 @@ def commands(project, mocker):
             output = "a" * 40 + "\n"
         elif command == ("uv", "lock"):
             path = Path("uv.lock")
-            locked = tomllib.loads(path.read_text())["package"][0]["version"]
+            text = path.read_text(encoding="utf-8")
+            locked = tomllib.loads(text)["package"][0]["version"]
             path.write_text(
-                path.read_text().replace(
+                text.replace(
                     f'version = "{locked}"', f'version = "{release.read_version()}"'
-                )
+                ),
+                encoding="utf-8",
             )
         elif command[:4] == ("gh", "api", "--hostname", "github.com"):
             output = json.dumps({"workflow_runs": [successful_ci("a" * 40)]})
@@ -247,20 +249,23 @@ def test_failed_bump_restores_files_without_staging(project, commands, failure):
             lock = Path("uv.lock")
             if failure == "metadata":
                 lock.write_text(
-                    lock.read_text().replace(
+                    lock.read_text(encoding="utf-8").replace(
                         "version = 1\n", "version = 1\nrevision = 999\n", 1
-                    )
+                    ),
+                    encoding="utf-8",
                 )
             if failure == "dependencies":
                 lock.write_text(
-                    lock.read_text() + '\ndependencies = [{ name = "unexpected" }]\n'
+                    lock.read_text(encoding="utf-8")
+                    + '\ndependencies = [{ name = "unexpected" }]\n',
+                    encoding="utf-8",
                 )
             if failure == "lock":
                 return subprocess.CompletedProcess(args, 7, "Failed to resolve")
             if failure == "interrupt":
                 raise KeyboardInterrupt
             if failure == "invalid":
-                Path("uv.lock").write_text("version = [broken")
+                Path("uv.lock").write_text("version = [broken", encoding="utf-8")
             return subprocess.CompletedProcess(args, 0, "")
         return original(args, **kwargs)
 
@@ -274,7 +279,10 @@ def test_failed_bump_restores_files_without_staging(project, commands, failure):
 
 def test_bump_rejects_missing_project_in_lockfile(project, commands, capsys):
     lock = project / "uv.lock"
-    lock.write_text(lock.read_text().replace('"physiclaw"', '"other"'))
+    lock.write_text(
+        lock.read_text(encoding="utf-8").replace('"physiclaw"', '"other"'),
+        encoding="utf-8",
+    )
     before = (project / "pyproject.toml").read_bytes()
     assert release.main(["bump"]) == 1
     assert "current version" in capsys.readouterr().err
@@ -405,7 +413,10 @@ def test_bump_accepts_prerelease_progression_on_release_branch(
         f'[project]\nname = "physiclaw"\nversion = "{current}"\n', encoding="utf-8"
     )
     lock = project / "uv.lock"
-    lock.write_text(lock.read_text().replace('"0.8.4"', f'"{current}"'))
+    lock.write_text(
+        lock.read_text(encoding="utf-8").replace('"0.8.4"', f'"{current}"'),
+        encoding="utf-8",
+    )
     monkeypatch.setenv("VERSION", new)
     original = commands.side_effect
 
@@ -943,7 +954,7 @@ def test_native_make_enters_python_workflow(project, action, error):
     assert "CreateProcess" not in result.stderr
     assert "Traceback" not in result.stderr
     assert release.read_version() == "0.8.4"
-    assert 'version = "0.8.4"' in (project / "uv.lock").read_text()
+    assert 'version = "0.8.4"' in (project / "uv.lock").read_text(encoding="utf-8")
     assert not (project / ".venv").exists()
 
 
@@ -1005,7 +1016,7 @@ def test_native_make_bump_commits_version_and_lockfile(committed_project):
 
 def test_native_bump_rejects_incompatible_uv_without_editing(committed_project):
     project = committed_project
-    with (project / "pyproject.toml").open("a") as source:
+    with (project / "pyproject.toml").open("a", encoding="utf-8") as source:
         source.write('\n[tool.uv]\nrequired-version = ">=999.0.0"\n')
     subprocess.run(["git", "add", "pyproject.toml"], check=True)
     subprocess.run(["git", "commit", "--quiet", "-m", "require a newer uv"], check=True)
@@ -1021,8 +1032,72 @@ def test_native_bump_rejects_incompatible_uv_without_editing(committed_project):
     assert subprocess.check_output(["git", "status", "--porcelain"], text=True) == ""
 
 
+@pytest.fixture(scope="session")
+def fake_gh_bin(tmp_path_factory):
+    # Keep native release preflight offline while exercising its real gh process.
+    # Only the main-CI endpoint is implemented; unexpected calls fail closed.
+    cli = tmp_path_factory.mktemp("release cli")
+    source = dedent("""\
+            import json
+            import subprocess
+            import sys
+
+            assert sys.argv[1:4] == ['api', '--hostname', 'github.com']
+            head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+            assert sys.argv[4] == (
+                'repos/physiclaw/PhysiClaw/actions/workflows/ci.yml/runs'
+                f'?event=push&branch=main&head_sha={head}&per_page=1'
+            )
+            print(json.dumps({'workflow_runs': [{
+                'head_sha': head, 'head_branch': 'main', 'event': 'push',
+                'path': '.github/workflows/ci.yml',
+                'status': 'completed', 'conclusion': 'success',
+            }]}))
+            """)
+    # Let uv generate a native console launcher, including gh.exe on Windows.
+    # A .cmd shim would send the query's ampersands through cmd.exe parsing.
+    dist = "release_cli_fixture-0.0.0.dist-info"
+    files = {
+        "release_cli_fixture.py": "def main():\n" + indent(source, "    "),
+        f"{dist}/METADATA": "Metadata-Version: 2.1\nName: release-cli-fixture\nVersion: 0.0.0\n",
+        f"{dist}/WHEEL": "Wheel-Version: 1.0\nRoot-Is-Purelib: true\nTag: py3-none-any\n",
+        f"{dist}/entry_points.txt": "[console_scripts]\ngh = release_cli_fixture:main\n",
+    }
+    files[f"{dist}/RECORD"] = "".join(
+        f"{name},,\n" for name in [*files, f"{dist}/RECORD"]
+    )
+    wheel = cli / "release_cli_fixture-0.0.0-py3-none-any.whl"
+    with ZipFile(wheel, "w") as archive:
+        for name, content in files.items():
+            archive.writestr(name, content)
+    environment = cli / "venv"
+    env = {**os.environ, "UV_CACHE_DIR": str(cli / "cache"), "UV_OFFLINE": "1"}
+    subprocess.run(
+        ["uv", "venv", "--python", sys.executable, str(environment)],
+        check=True,
+        env=env,
+    )
+    bin_dir = environment / ("Scripts" if os.name == "nt" else "bin")
+    python = bin_dir / ("python.exe" if os.name == "nt" else "python")
+    subprocess.run(
+        [
+            "uv",
+            "pip",
+            "install",
+            "--python",
+            str(python),
+            "--no-deps",
+            "--no-index",
+            str(wheel),
+        ],
+        check=True,
+        env=env,
+    )
+    return bin_dir
+
+
 @pytest.fixture
-def release_remote(committed_project, tmp_path, monkeypatch):
+def release_remote(committed_project, tmp_path, monkeypatch, fake_gh_bin):
     project = committed_project
     bare = tmp_path / "origin.git"
     transport = tmp_path / "local_ssh.py"
@@ -1053,67 +1128,7 @@ def release_remote(committed_project, tmp_path, monkeypatch):
         "GIT_SSH_COMMAND",
         f'"{Path(sys.executable).as_posix()}" "{transport.as_posix()}" "{bare.as_posix()}"',
     )
-    # Keep native release preflight offline while exercising its real gh process.
-    # Only the main-CI endpoint is implemented; unexpected calls fail closed.
-    cli = tmp_path / "cli"
-    cli.mkdir()
-    fake_gh = cli / "gh.py"
-    fake_gh.write_text(
-        dedent("""\
-            import json
-            import subprocess
-            import sys
-
-            assert sys.argv[1:4] == ['api', '--hostname', 'github.com']
-            head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
-            assert sys.argv[4] == (
-                'repos/physiclaw/PhysiClaw/actions/workflows/ci.yml/runs'
-                f'?event=push&branch=main&head_sha={head}&per_page=1'
-            )
-            print(json.dumps({'workflow_runs': [{
-                'head_sha': head, 'head_branch': 'main', 'event': 'push',
-                'path': '.github/workflows/ci.yml',
-                'status': 'completed', 'conclusion': 'success',
-            }]}))
-            """),
-        encoding="utf-8",
-    )
-    # Let uv generate a native console launcher, including gh.exe on Windows.
-    # A .cmd shim would send the query's ampersands through cmd.exe parsing.
-    dist = "release_cli_fixture-0.0.0.dist-info"
-    files = {
-        "release_cli_fixture.py": "def main():\n" + indent(fake_gh.read_text(), "    "),
-        f"{dist}/METADATA": "Metadata-Version: 2.1\nName: release-cli-fixture\nVersion: 0.0.0\n",
-        f"{dist}/WHEEL": "Wheel-Version: 1.0\nRoot-Is-Purelib: true\nTag: py3-none-any\n",
-        f"{dist}/entry_points.txt": "[console_scripts]\ngh = release_cli_fixture:main\n",
-    }
-    files[f"{dist}/RECORD"] = "".join(
-        f"{name},,\n" for name in [*files, f"{dist}/RECORD"]
-    )
-    wheel = cli / "release_cli_fixture-0.0.0-py3-none-any.whl"
-    with ZipFile(wheel, "w") as archive:
-        for name, content in files.items():
-            archive.writestr(name, content)
-    environment = cli / "venv"
-    subprocess.run(
-        ["uv", "venv", "--python", sys.executable, str(environment)], check=True
-    )
-    bin_dir = environment / ("Scripts" if os.name == "nt" else "bin")
-    python = bin_dir / ("python.exe" if os.name == "nt" else "python")
-    subprocess.run(
-        [
-            "uv",
-            "pip",
-            "install",
-            "--python",
-            str(python),
-            "--no-deps",
-            "--no-index",
-            str(wheel),
-        ],
-        check=True,
-    )
-    monkeypatch.setenv("PATH", str(bin_dir) + os.pathsep + os.environ["PATH"])
+    monkeypatch.setenv("PATH", str(fake_gh_bin) + os.pathsep + os.environ["PATH"])
 
     def git(*args):
         result = subprocess.run(

@@ -828,6 +828,7 @@ def test_release_permissions_and_artifact_promotion_are_isolated():
     assert jobs["publish"]["permissions"] == {"id-token": "write"}
     assert jobs["publish"]["environment"]["name"] == "pypi"
     assert set(jobs["publish"]["needs"]) == {"ci", "prepublish"}
+    assert jobs["prepublish"]["needs"] == "ci"
     assert "github.event_name == 'push'" in jobs["prepublish"]["if"]
     assert "workflow_call" in ci["on"]
     assert ci["jobs"]["package"]["uses"] == "./.github/workflows/package.yml"
@@ -838,6 +839,7 @@ def test_release_permissions_and_artifact_promotion_are_isolated():
     assert steps[0]["with"]["artifact-ids"] == "${{ needs.ci.outputs.artifact-id }}"
     assert steps[1]["uses"].startswith("pypa/gh-action-pypi-publish@")
     assert steps[1]["with"]["attestations"] is True
+    assert set(jobs["verify"]["needs"]) == {"ci", "publish"}
     assert jobs["github-release"]["needs"] == ["ci", "verify"]
 
 
