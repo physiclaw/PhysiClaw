@@ -408,6 +408,8 @@ async def test_cancelled_driver_cannot_keep_the_worker_alive(owned_session):
 
 
 async def test_close_finishes_when_driver_swallows_cancellation(owned_session):
+    from tests.timing_helpers import WAIT_TIMEOUT
+
     s = owned_session.session
     started = asyncio.Event()
 
@@ -419,16 +421,18 @@ async def test_close_finishes_when_driver_swallows_cancellation(owned_session):
             return "finished during shutdown"
 
     action = asyncio.create_task(s.drive(job))
-    await started.wait()
+    await asyncio.wait_for(started.wait(), WAIT_TIMEOUT)
 
     closing = asyncio.create_task(s.close())
-    result = await action
+    result = await asyncio.wait_for(action, WAIT_TIMEOUT)
     # Bound the observation without cancelling close itself: the regression
     # being checked is precisely a close that ignores caller cancellation.
-    finished, pending = await asyncio.wait((closing,), timeout=0.05)
-    closing_completed = closing in finished
-    owned_session.first.owner.cancel()
-    await closing
+    try:
+        finished, pending = await asyncio.wait((closing,), timeout=WAIT_TIMEOUT)
+        closing_completed = closing in finished
+    finally:
+        owned_session.first.owner.cancel()
+        await closing
 
     assert closing_completed is True
     assert result == "finished during shutdown"

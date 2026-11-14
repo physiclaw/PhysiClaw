@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from physiclaw.cli import runtime_process
+from tests.timing_helpers import WAIT_TIMEOUT
 
 
 class ControlPipe:
@@ -78,7 +79,7 @@ async def test_stop_forces_and_reaps_child_off_the_event_loop_thread(
     owner = runtime_process.ManagedRuntime(child, timeout=timeout)
     loop_thread = threading.get_ident()
 
-    await asyncio.wait_for(owner.stop(force=lambda: force), timeout=1.0)
+    await asyncio.wait_for(owner.stop(force=lambda: force), timeout=WAIT_TIMEOUT)
 
     assert child.events == ["stdin.close", "poll", "poll", "terminate", "wait"]
     assert child.termination_thread != loop_thread

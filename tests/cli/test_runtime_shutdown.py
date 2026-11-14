@@ -162,6 +162,11 @@ def interrupt(proc, sig=None):
     proc.stdin.flush()
 
 
+def release_hardware(proc):
+    proc.stdin.write(b"r")
+    proc.stdin.flush()
+
+
 def wait_for(proc, path, text, *, timeout=STARTUP_TIMEOUT):
     deadline = time.monotonic() + timeout
     while True:
@@ -216,6 +221,9 @@ def test_managed_exit_keeps_services_alive_for_cleanup(tmp_path, mode, marker, s
     with running(tmp_path, mode) as (proc, path, port):
         wait_for(proc, path, marker)
         interrupt(proc, sig)
+        if mode == "tool":
+            wait_for(proc, path, "Runtime stop requested")
+            release_hardware(proc)
         output = finished(proc, path, port)
     assert proc.returncode == 0, output
     assert not any(error in output for error in (*TARGET_ERRORS, "cancel scope")), (
@@ -273,6 +281,8 @@ def test_repeated_interrupt_forces_exit_without_repeating_cleanup(tmp_path):
         interrupt(proc)
         wait_for(proc, path, "Requesting runtime exit", timeout=8)
         interrupt(proc)
+        wait_for(proc, path, "Runtime exit forced (interrupt)", timeout=8)
+        release_hardware(proc)
         output = finished(proc, path, port)
     assert "Runtime exit forced (interrupt)" in output
     assert output.count("Runtime child reaped") == 1

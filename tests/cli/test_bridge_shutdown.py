@@ -12,6 +12,8 @@ from unittest.mock import patch
 import pytest
 import uvicorn
 
+from tests.timing_helpers import WAIT_TIMEOUT, ManualTimeouts
+
 server_mod = importlib.import_module("physiclaw.cli.server")
 
 
@@ -25,12 +27,12 @@ def bridge_server(mocker):
         server.started = True
         if server.config.host == "0.0.0.0":
             entered.set()
-            deadline = time.monotonic() + 2
+            deadline = time.monotonic() + WAIT_TIMEOUT
             while not server.should_exit:
                 assert time.monotonic() < deadline, "bridge was never stopped"
                 time.sleep(0.001)
         else:
-            assert entered.wait(1), "bridge was never started"
+            assert entered.wait(WAIT_TIMEOUT), "bridge was never started"
 
     with patch.object(uvicorn.Server, "run", run):
         server_mod._serve(
@@ -71,16 +73,16 @@ def test_bridge_loop_detaches_reset_connection_before_wait_closed(bridge_server)
         client.setblocking(False)
         try:
             await loop.sock_connect(client, listener.sockets[0].getsockname())
-            transport = await asyncio.wait_for(accepted, 1)
+            transport = await asyncio.wait_for(accepted, WAIT_TIMEOUT)
             # A zero linger sends TCP RST, reproducing the phone disconnect.
             linger_format = "hh" if os.name == "nt" else "ii"
             client.setsockopt(
                 socket.SOL_SOCKET, socket.SO_LINGER, struct.pack(linger_format, 1, 0)
             )
             client.close()
-            await asyncio.wait_for(lost, 1)
+            await asyncio.wait_for(lost, WAIT_TIMEOUT)
             listener.close()
-            await asyncio.wait_for(listener.wait_closed(), 1)
+            await asyncio.wait_for(listener.wait_closed(), WAIT_TIMEOUT)
             assert transport.is_closing()
             assert errors == []
         finally:
@@ -102,9 +104,16 @@ async def test_bridge_shutdown_bounds_drain_and_lifespan(
     caplog,
 ):
     cancelled = asyncio.Event()
+    timeouts = ManualTimeouts()
+    mocker.patch.object(server_mod, "asyncio", timeouts)
+    mocker.patch.object(uvicorn.server, "asyncio", timeouts)
 
     async def hang():
         try:
+            # The drain and outer shutdown budgets exercise different paths.
+            # Start cancellation at the intended await, not after a tiny sleep
+            # that can elapse before a loaded runner enters this coroutine.
+            timeouts.expire(1 if stuck == "listener" else 0)
             await asyncio.Future()
         finally:
             cancelled.set()
@@ -118,11 +127,12 @@ async def test_bridge_shutdown_bounds_drain_and_lifespan(
     bridge_server.lifespan.shutdown = mocker.AsyncMock(
         side_effect=hang if stuck == "lifespan" else None
     )
-    bridge_server.config.timeout_graceful_shutdown = 0.02
-    mocker.patch.object(server_mod, "BRIDGE_SHUTDOWN_SECONDS", 0.3)
+    await asyncio.wait_for(bridge_server.shutdown(), WAIT_TIMEOUT)
 
-    await asyncio.wait_for(bridge_server.shutdown(), 1)
-
+    assert timeouts.delays == [
+        server_mod.BRIDGE_SHUTDOWN_SECONDS,
+        server_mod.BRIDGE_DRAIN_SECONDS,
+    ]
     assert cancelled.is_set()
     listener.close.assert_called_once()
     bridge_server.lifespan.shutdown.assert_awaited_once()
@@ -190,9 +200,7 @@ def test_bridge_run_exits_after_peer_reset_and_cleans_up(
             await send({"type": "http.response.body", "body": b"ok"})
 
     bridge_server.config.app = app
-    bridge_server.config.timeout_graceful_shutdown = 0.05
     bridge_server.started = bridge_server.should_exit = False
-    mocker.patch.object(server_mod, "BRIDGE_SHUTDOWN_SECONDS", 0.4)
 
     with socket.socket() as listener:
         listener.bind(("127.0.0.1", 0))
@@ -207,9 +215,13 @@ def test_bridge_run_exits_after_peer_reset_and_cleans_up(
         worker = threading.Thread(target=run, daemon=True)
         worker.start()
         try:
-            with socket.create_connection(listener.getsockname(), timeout=2) as peer:
+            with socket.create_connection(
+                listener.getsockname(), timeout=WAIT_TIMEOUT
+            ) as peer:
                 peer.sendall(b"GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
-                assert request_started.wait(2), "bridge never served the request"
+                assert request_started.wait(WAIT_TIMEOUT), (
+                    "bridge never served the request"
+                )
                 linger_format = "hh" if os.name == "nt" else "ii"
                 peer.setsockopt(
                     socket.SOL_SOCKET,
@@ -218,7 +230,7 @@ def test_bridge_run_exits_after_peer_reset_and_cleans_up(
                 )
         finally:
             bridge_server.should_exit = True
-            worker.join(timeout=2)
+            worker.join(timeout=WAIT_TIMEOUT)
 
     assert not worker.is_alive(), "bridge thread outlived its shutdown budget"
     assert errors == []

@@ -846,38 +846,52 @@ def test_acquire_with_wait_outlasts_short_contention(rig) -> None:
     # The TOOL path waits out background contention (exposure retune,
     # watchdog frame) instead of dying busy — the immediate form still
     # raises, so background work keeps failing open.
-    import threading
-    import time
+    from concurrent.futures import ThreadPoolExecutor
 
+    from tests.timing_helpers import WAIT_TIMEOUT, ObservedLock
+
+    rig._lock = ObservedLock(rig._lock)
     rig.acquire()
+    with pytest.raises(RuntimeError, match="busy"):
+        rig.acquire()
+    rig._lock.contended.clear()
 
-    def _release_soon():
-        time.sleep(0.05)
+    def acquire_and_release():
+        rig.acquire(wait_seconds=WAIT_TIMEOUT)
         rig.release()
 
-    t = threading.Thread(target=_release_soon)
-    t.start()
-    with pytest.raises(RuntimeError, match="busy"):
-        rig.acquire()  # immediate form: loses the race, as designed
-    rig.acquire(wait_seconds=2.0)  # bounded wait: wins it
-    rig.release()
-    t.join()
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        waiter = pool.submit(acquire_and_release)
+        try:
+            assert rig._lock.contended.wait(WAIT_TIMEOUT)
+        finally:
+            rig.release()
+        waiter.result(timeout=WAIT_TIMEOUT)
 
 
 def test_engaged_waits_for_the_lock(rig, mocker) -> None:
     # The TOOL sites pass a wait; fail-open callers keep the immediate
     # default (engaged() with no wait still raises busy instantly).
-    import threading
-    import time
+    from concurrent.futures import ThreadPoolExecutor
+
+    from tests.timing_helpers import WAIT_TIMEOUT, ObservedLock
 
     mocker.patch.object(rig, "require_hardware")
     mocker.patch.object(rig, "park")
+    rig._lock = ObservedLock(rig._lock)
     rig.acquire()
-    t = threading.Thread(target=lambda: (time.sleep(0.05), rig.release()))
-    t.start()
-    with rig.engaged(wait_seconds=2.0):
-        pass  # acquired despite the initial holder
-    t.join()
+
+    def engage():
+        with rig.engaged(wait_seconds=WAIT_TIMEOUT):
+            pass
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        waiter = pool.submit(engage)
+        try:
+            assert rig._lock.contended.wait(WAIT_TIMEOUT)
+        finally:
+            rig.release()
+        waiter.result(timeout=WAIT_TIMEOUT)
 
 
 def test_regression_shutdown_reports_disconnected_and_rejects_further_work(
@@ -902,13 +916,15 @@ def test_regression_shutdown_closes_camera_that_finishes_connecting_late(
     import threading
     from concurrent.futures import ThreadPoolExecutor
 
+    from tests.timing_helpers import WAIT_TIMEOUT
+
     rig = HardwareRig()
     opening, finish = threading.Event(), threading.Event()
     camera = cam_double()
 
     def open_camera(*args, **kwargs):
         opening.set()
-        assert finish.wait(2)
+        assert finish.wait(WAIT_TIMEOUT)
         return camera
 
     def connect():
@@ -920,12 +936,12 @@ def test_regression_shutdown_closes_camera_that_finishes_connecting_late(
     with ThreadPoolExecutor(max_workers=1) as pool:
         future = pool.submit(connect)
         try:
-            assert opening.wait(2)
+            assert opening.wait(WAIT_TIMEOUT)
             rig.shutdown(lock_timeout=0)
         finally:
             finish.set()
         with pytest.raises(RuntimeError, match="shut down"):
-            future.result(timeout=2)
+            future.result(timeout=WAIT_TIMEOUT)
 
     assert rig.cam is None
     camera.close.assert_called_once()
@@ -934,6 +950,8 @@ def test_regression_shutdown_closes_camera_that_finishes_connecting_late(
 def test_regression_engaged_rechecks_devices_after_waiting_for_lock(rig, wire_rig):
     import threading
     from concurrent.futures import ThreadPoolExecutor
+
+    from tests.timing_helpers import WAIT_TIMEOUT
 
     wire_rig(rig)
     checked = threading.Event()
@@ -951,7 +969,7 @@ def test_regression_engaged_rechecks_devices_after_waiting_for_lock(rig, wire_ri
             return original.pct_to_grbl_mm(*args)
 
     def gesture():
-        with rig.engaged(wait_seconds=2):
+        with rig.engaged(wait_seconds=WAIT_TIMEOUT):
             return "entered"
 
     rig.calibration = CalibrationDuringWait()
@@ -959,10 +977,10 @@ def test_regression_engaged_rechecks_devices_after_waiting_for_lock(rig, wire_ri
     with ThreadPoolExecutor(max_workers=1) as pool:
         with rig.locked():
             future = pool.submit(gesture)
-            assert checked.wait(2)
+            assert checked.wait(WAIT_TIMEOUT)
             rig.disconnect_camera()
         with pytest.raises(RuntimeError, match="Hardware not set up"):
-            future.result(timeout=2)
+            future.result(timeout=WAIT_TIMEOUT)
 
     rig.arm.rapid_to.assert_not_called()
 

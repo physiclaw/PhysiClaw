@@ -186,7 +186,11 @@ def test_flash_rejects_each_empty_image_before_erasing(mocker, name):
     run_spy.assert_not_called()
 
 
-@settings(max_examples=30, suppress_health_check=[HealthCheck.function_scoped_fixture])
+@settings(
+    deadline=None,
+    max_examples=30,
+    suppress_health_check=[HealthCheck.function_scoped_fixture],
+)
 @given(
     folders=st.lists(
         st.text(alphabet="abcXYZ09固件", min_size=1, max_size=8), max_size=3

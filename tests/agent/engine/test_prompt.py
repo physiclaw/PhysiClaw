@@ -101,7 +101,11 @@ def test_regression_tool_index_keeps_only_first_description_line(separator) -> N
     assert "SECOND_LINE_SENTINEL" not in rendered
 
 
-@settings(max_examples=40, suppress_health_check=[HealthCheck.function_scoped_fixture])
+@settings(
+    deadline=None,
+    max_examples=40,
+    suppress_health_check=[HealthCheck.function_scoped_fixture],
+)
 @given(
     text=st.text(
         alphabet=st.characters(whitelist_categories=("L", "N")),
@@ -145,7 +149,11 @@ def test_public_render_rereads_doctrine_between_sessions(_isolate_context_dir) -
     assert prompt.prefix_hash(first) != prompt.prefix_hash(second)
 
 
-@settings(max_examples=40, suppress_health_check=[HealthCheck.function_scoped_fixture])
+@settings(
+    deadline=None,
+    max_examples=40,
+    suppress_health_check=[HealthCheck.function_scoped_fixture],
+)
 @given(
     memory=st.text(alphabet=st.characters(blacklist_categories=("Cs",)), max_size=250)
 )

@@ -21,6 +21,7 @@ import numpy as np
 import pytest
 
 from physiclaw.core.hardware import camera as camera_mod
+from physiclaw.core.hardware import frame_reader as fr_mod
 from physiclaw.core.hardware.camera import (
     Camera,
     silenced_stderr,
@@ -501,6 +502,12 @@ def test_reconnect_verifies_frames_and_resets_drought(mocker) -> None:
 
 
 def test_reconnect_rejects_empty_stream_then_recovers_on_next_attempt(mocker) -> None:
+    from types import SimpleNamespace
+
+    now = time.monotonic()
+    mocker.patch.object(
+        fr_mod, "time", SimpleNamespace(monotonic=lambda: now, time=time.time)
+    )
     cam, _ = _ready_camera(mocker)
     empty = FakeVideoCapture(index=0)
     recovered = _frame()
@@ -515,7 +522,7 @@ def test_reconnect_rejects_empty_stream_then_recovers_on_next_attempt(mocker) ->
     assert empty.released
     assert cam._reader.fresh_frame() is None
     assert cam._reader._first_fail_time == fail_time
-    assert time.monotonic() - cam._reader._frame_time < 1
+    assert cam._reader._frame_time == now
 
     cam._reopen()
 
@@ -1094,20 +1101,33 @@ def test_focus_setters_hold_cap_lock(mocker) -> None:
 
 
 def test_wait_frames_returns_when_reader_publishes(mocker) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    from tests.timing_helpers import WAIT_TIMEOUT
+
     vc = FakeVideoCapture(index=0, read_results=[(True, _frame())] * 200)
     cam = _open_camera_no_thread(mocker, vc=vc)
+    waiting = threading.Event()
+    original_wait = cam._reader._cond.wait
+
+    def wait(timeout):
+        waiting.set()
+        return original_wait(timeout)
+
+    mocker.patch.object(cam._reader._cond, "wait", side_effect=wait)
 
     def publish(n: int) -> None:
+        assert waiting.wait(WAIT_TIMEOUT)
         for _ in range(n):
-            time.sleep(0.01)
             cam._reader.publish(_frame())
 
-    t = threading.Thread(target=publish, args=(3,))
-    t.start()
-    try:
-        assert cam.wait_frames(3, timeout=2.0) is True
-    finally:
-        t.join(timeout=1.0)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        publisher = pool.submit(publish, 3)
+        try:
+            assert cam.wait_frames(3, timeout=WAIT_TIMEOUT) is True
+        finally:
+            waiting.set()
+        publisher.result(timeout=WAIT_TIMEOUT)
 
 
 def test_wait_frames_times_out_without_publisher(mocker) -> None:
@@ -1622,6 +1642,8 @@ def test_regression_control_queued_during_close_does_not_touch_driver(
 
 
 def test_regression_interrupted_thread_start_does_not_release_during_read(mocker):
+    from tests.timing_helpers import WAIT_TIMEOUT
+
     blocked, release = threading.Event(), threading.Event()
     vc = FakeVideoCapture(index=0)
     frame = _frame(1080, 1920)
@@ -1635,13 +1657,13 @@ def test_regression_interrupted_thread_start_does_not_release_during_read(mocker
         if reads <= 16:  # Initial warmup, then a blocked background read.
             return True, frame
         blocked.set()
-        assert release.wait(1)
+        assert release.wait(WAIT_TIMEOUT)
         return False, None
 
     def interrupted_start(thread):
         threads.append(thread)
         real_start(thread)
-        assert blocked.wait(1)
+        assert blocked.wait(WAIT_TIMEOUT)
         raise KeyboardInterrupt("startup interrupted")
 
     mocker.patch.object(cv2, "VideoCapture", return_value=vc)
@@ -1656,7 +1678,7 @@ def test_regression_interrupted_thread_start_does_not_release_during_read(mocker
         released_during_read = vc.released
     finally:
         release.set()
-        threads[0].join(timeout=1)
+        threads[0].join(timeout=WAIT_TIMEOUT)
         vc.release()
 
     assert not released_during_read

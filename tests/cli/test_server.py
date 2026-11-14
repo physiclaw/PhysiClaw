@@ -19,6 +19,8 @@ import pytest
 import typer
 from typer.testing import CliRunner
 
+from tests.timing_helpers import WAIT_TIMEOUT
+
 server_mod = importlib.import_module("physiclaw.cli.server")
 
 runner = CliRunner()
@@ -1204,10 +1206,21 @@ def _serving_pair(mocker, mode="normal"):
     class Server:
         def __init__(self, config):
             self.config = config
-            self.started = False
+            self._started = False
+            self.startup_observed = threading.Event()
             self.stopped = threading.Event()
             self.sockets = []
             created.append(self)
+
+        @property
+        def started(self):
+            if not self._started:
+                self.startup_observed.set()
+            return self._started
+
+        @started.setter
+        def started(self, value):
+            self._started = value
 
         @property
         def should_exit(self):
@@ -1227,27 +1240,34 @@ def _serving_pair(mocker, mode="normal"):
                 if mode == "bridge-return":
                     return
                 if mode == "delayed-bridge":
-                    deps["bringup_completed"].wait(0.05)
+                    assert self.startup_observed.wait(WAIT_TIMEOUT)
+                    assert not deps["bringup_completed"].is_set()
                 self.started = True
-                assert self.stopped.wait(4), "bridge was never stopped"
+                assert self.stopped.wait(WAIT_TIMEOUT), "bridge was never stopped"
                 return
-            assert bridge_entered.wait(2), "bridge was never started"
+            assert bridge_entered.wait(WAIT_TIMEOUT), "bridge was never started"
             if mode == "control-startup":
                 return
             if mode == "interrupt-startup":
                 raise KeyboardInterrupt
             if mode == "delayed-control":
-                deps["bringup_completed"].wait(0.05)
-            self.started = True
+                assert self.startup_observed.wait(WAIT_TIMEOUT)
+                assert not deps["bringup_completed"].is_set()
             if mode == "stopping":
                 self.should_exit = True
-                deps["bringup_completed"].wait(0.05)
+            self.started = True
             if mode == "wait-ready":
-                assert deps["ready_probed"].wait(2), "ready watcher never started"
+                assert deps["ready_probed"].wait(WAIT_TIMEOUT), (
+                    "ready watcher never started"
+                )
             if mode in {"wait-bringup", "delayed-control", "delayed-bridge"}:
-                assert deps["bringup_completed"].wait(2), "bringup was never started"
+                assert deps["bringup_completed"].wait(WAIT_TIMEOUT), (
+                    "bringup was never started"
+                )
             if mode.startswith("bridge-") or mode == "startup-error":
-                assert self.stopped.wait(2), "control never learned the bridge failed"
+                assert self.stopped.wait(WAIT_TIMEOUT), (
+                    "control never learned the bridge failed"
+                )
             if mode == "control-error":
                 raise OSError("control serving broke")
             if mode == "interrupt":
@@ -1592,7 +1612,7 @@ def test_server_return_cancels_pending_ready_watcher(mocker):
     mocker.patch("physiclaw.common.ready.check_ready_once", side_effect=probe)
 
     server_mod.server(port=8048, no_runtime=True, no_setup_hardware=True)
-    threads[-1].join(timeout=1)
+    threads[-1].join(timeout=WAIT_TIMEOUT)
 
     assert len(threads) == 3
     assert threads[-1].daemon

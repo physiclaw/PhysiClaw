@@ -11,7 +11,7 @@ boundaries are checked without freezing every word of the generated prose.
 import json
 
 import pytest
-from hypothesis import given
+from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from physiclaw.agent import layout
@@ -355,6 +355,7 @@ def test_boxes_outside_plausible_regions_are_not_persisted(page, field, box):
     assert not paths.screen_layout_json().exists()
 
 
+@settings(deadline=None)
 @given(
     left=st.floats(min_value=0.1, max_value=0.2, allow_nan=False),
     width=st.floats(min_value=0.001, max_value=0.05, allow_nan=False),

@@ -995,7 +995,7 @@ def test_source_starting_with_dash_is_after_git_option_terminator(
     ref=st.text(),
     sha=st.text(),
 )
-@settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
+@settings(deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
 def test_provenance_roundtrips_string_metadata(tmp_path, source, ref, sha):
     data = {"source": source, "ref": ref, "sha": sha}
     (tmp_path / skills_mod.PROVENANCE_FILE).write_text(

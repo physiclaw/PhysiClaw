@@ -394,12 +394,10 @@ def test_ctrl_c_during_delegated_import_has_no_traceback(tmp_path):
 @pytest.mark.parametrize("command", ["manual", "release"])
 def test_ctrl_c_stops_delegated_command_that_does_not_poll_marker(tmp_path, command):
     ready = tmp_path / "ready"
-    written = tmp_path / "written-after-cancellation"
     (tmp_path / "uncooperative_stage.py").write_text(
-        "import time\nfrom pathlib import Path\n"
-        f"Path({str(ready)!r}).touch()\n"
-        "time.sleep(3)\n"
-        f"Path({str(written)!r}).touch()\n",
+        "import os, time\nfrom pathlib import Path\n"
+        f"Path({str(ready)!r}).write_text(str(os.getpid()), encoding='utf-8')\n"
+        "time.sleep(60)\n",
         encoding="utf-8",
     )
     script = f"""
@@ -431,7 +429,9 @@ raise SystemExit(cli.main([{command!r}]))
         text=True,
     ) as owner:
         stdout, stderr = owner.process.communicate(timeout=15)
-
-    assert owner.process.returncode == 130, stdout + stderr
-    assert ready.exists()
-    assert not written.exists(), "delegated command kept working after Ctrl+C"
+        assert owner.process.returncode == 130, stdout + stderr
+        assert ready.exists()
+        # Check before the harness cleans up the process group. A fixed delay
+        # before writing a marker can finish before a loaded runner sends SIGINT.
+        child_pid = int(ready.read_text(encoding="utf-8"))
+        assert not _running(child_pid), "delegated command survived Ctrl+C"

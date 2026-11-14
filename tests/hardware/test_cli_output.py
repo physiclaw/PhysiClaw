@@ -172,8 +172,29 @@ def test_subprocess_stdout_and_stderr_are_saved_without_corrupting_json(
 def test_subprocess_timeout_retains_partial_diagnostics(
     tmp_path, monkeypatch, cancellable
 ):
+    import time
+    from contextlib import contextmanager
     from threading import Event
 
+    from hardware.port import processes
+    from tests.timing_helpers import WAIT_TIMEOUT
+
+    ready = tmp_path / "diagnostics-written"
+    owned_process = processes.owned_process
+
+    @contextmanager
+    def started_process(*args, **kwargs):
+        with owned_process(*args, **kwargs) as owner:
+            deadline = time.monotonic() + WAIT_TIMEOUT
+            while not ready.exists():
+                assert owner.process.poll() is None, "child exited before writing"
+                assert time.monotonic() < deadline, "child did not write diagnostics"
+                time.sleep(0.01)
+            yield owner
+
+    # Python startup (including coverage imports) must not consume the timeout
+    # intended to interrupt a child that has already produced partial output.
+    monkeypatch.setattr(processes, "owned_process", started_process)
     monkeypatch.setattr(scheme, "OUTPUT_DIR", tmp_path)
     with pytest.raises(SystemExit, match="1"):
         with buildlog.command("Hardware subprocess"):
@@ -182,7 +203,9 @@ def test_subprocess_timeout_retains_partial_diagnostics(
                     sys.executable,
                     "-u",
                     "-c",
-                    "import time; print('partial diagnostics'); time.sleep(30)",
+                    "import time; from pathlib import Path; "
+                    "print('partial diagnostics', flush=True); "
+                    f"Path({str(ready)!r}).touch(); time.sleep(30)",
                 ],
                 timeout=0.5,
                 cancelled=Event() if cancellable else None,

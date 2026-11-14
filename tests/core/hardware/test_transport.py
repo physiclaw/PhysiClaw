@@ -310,8 +310,12 @@ def test_send_serializes_against_concurrent_sender() -> None:
     command stream — the transport lock forces one wire interaction at a
     time."""
     import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    from tests.timing_helpers import WAIT_TIMEOUT, ObservedLock
 
     order: list[str] = []
+    reading = threading.Event()
 
     class _SlowSerial(_FakeSerial):
         def write(self, data: bytes) -> int:
@@ -322,7 +326,8 @@ def test_send_serializes_against_concurrent_sender() -> None:
             # First reader parks until the main thread releases it.
             evt = events.popleft() if events else None
             if evt is not None:
-                evt.wait(timeout=2.0)
+                reading.set()
+                assert evt.wait(timeout=WAIT_TIMEOUT)
             order.append("read")
             return super().read(n)
 
@@ -330,25 +335,20 @@ def test_send_serializes_against_concurrent_sender() -> None:
     gate = threading.Event()
     events.append(gate)
     t = SerialTransport(_SlowSerial([b"ok\n", b"ok\n"]))
+    t._lock = ObservedLock(t._lock)
 
-    first = threading.Thread(target=lambda: t.send("G0 X1 Y1"))
-    first.start()
-    # Give the first send time to enter the locked region and park.
-    for _ in range(100):
-        if order and order[0].startswith("write"):
-            break
-        first.join(timeout=0.01)
-
-    second = threading.Thread(target=lambda: t.send("G0 X2 Y2"))
-    second.start()
-    second.join(timeout=0.05)
-    assert second.is_alive()  # blocked on the transport lock
-    assert len([o for o in order if o.startswith("write")]) == 1
-
-    gate.set()
-    first.join(timeout=2.0)
-    second.join(timeout=2.0)
-    assert not second.is_alive()
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(t.send, "G0 X1 Y1")
+        try:
+            assert reading.wait(WAIT_TIMEOUT)
+            second = pool.submit(t.send, "G0 X2 Y2")
+            assert t._lock.contended.wait(WAIT_TIMEOUT)
+            assert not second.done()
+            assert len([o for o in order if o.startswith("write")]) == 1
+        finally:
+            gate.set()
+        first.result(timeout=WAIT_TIMEOUT)
+        second.result(timeout=WAIT_TIMEOUT)
     # Full serialization: write/read of the first completes before the
     # second's write hits the wire.
     assert order == ["write:b'G0 X1 Y1\\n'", "read", "write:b'G0 X2 Y2\\n'", "read"]
@@ -380,6 +380,8 @@ def test_send_bounded_skips_when_wire_lock_is_held() -> None:
     # close is the backstop.
     import threading
 
+    from tests.timing_helpers import WAIT_TIMEOUT
+
     ser = _FakeSerial(responses=[b"ok\n"])
     t = SerialTransport(ser)
     held = threading.Event()
@@ -388,17 +390,18 @@ def test_send_bounded_skips_when_wire_lock_is_held() -> None:
     def hold() -> None:
         with t._lock:
             held.set()
-            release.wait(timeout=5)
+            assert release.wait(timeout=WAIT_TIMEOUT)
 
     holder = threading.Thread(target=hold, daemon=True)
     holder.start()
-    held.wait(timeout=5)
     try:
+        assert held.wait(timeout=WAIT_TIMEOUT)
         assert t.send_bounded("M5", lock_timeout=0.05) is False
         assert b"M5\n" not in ser.writes
     finally:
         release.set()
-        holder.join(timeout=5)
+        holder.join(timeout=WAIT_TIMEOUT)
+    assert not holder.is_alive()
 
 
 @pytest.mark.parametrize(

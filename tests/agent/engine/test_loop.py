@@ -26,6 +26,7 @@ from engine_fakes import (
 from freezegun import freeze_time
 
 from physiclaw.agent.engine import compact as compact_mod
+from physiclaw.agent.engine import loop as loop_mod
 from physiclaw.agent.engine import memory as memory_mod
 from physiclaw.agent.engine import scratchpad
 from physiclaw.agent.engine.builtin_tool import LocalTool, build_registry
@@ -39,6 +40,7 @@ from physiclaw.agent.engine.loop import (
 from physiclaw.agent.engine.provenance import PluginBinding
 from physiclaw.agent.engine.runspec import EngineRun
 from physiclaw.agent.engine.session import Session
+from physiclaw.agent.llm import producer as producer_mod
 from physiclaw.agent.llm.context_policy import CollapsePolicy
 from physiclaw.agent.llm.producer import CORRECTIVE_LIMIT
 from physiclaw.agent.runtime.sentinel import DONE, FAIL, IDLE, STUCK
@@ -53,6 +55,7 @@ from physiclaw.contract.dto import (
     UserMessage,
 )
 from physiclaw.contract.plugin import ProposedTurn
+from tests.timing_helpers import WAIT_TIMEOUT, ManualTimeouts
 
 # ---------- drive ----------
 
@@ -1142,10 +1145,7 @@ async def test_loop_memory_gate_fails_open_after_one_retry(patched_loop_deps) ->
 
 # ---------- wall-clock budget ----------
 
-# The application budget is 5ms in the awaited-call cases. This outer guard
-# only detects hangs: under CI load a 200ms watchdog could expire in the same
-# event-loop iteration and turn the expected budget stop into external cancel.
-BUDGET_TEST_WATCHDOG = 5
+BUDGET_TEST_WATCHDOG = WAIT_TIMEOUT
 
 
 @pytest.fixture
@@ -1156,19 +1156,20 @@ def budget_clock():
 
 
 @pytest.fixture(params=["provider", "plugin", "local", "mcp"])
-def stalled_run(request, mocker, patched_loop_deps, budget_clock):
+def stalled_run(request, mocker, patched_loop_deps, manual_budget):
     registry = _registry()
     provider = FakeProvider([_reply(None, {"peek": {}})])
     run = _loop_run(
         provider,
         registry,
         settings=_settings(max_session_seconds=1),
-        deadline=time.monotonic() + 0.005,
+        deadline=time.monotonic() + 1,
     )
     cancelled = []
 
     async def stall(*args, **kwargs):
         try:
+            manual_budget.expire()
             await asyncio.Event().wait()
         finally:
             cancelled.append(True)
@@ -1189,7 +1190,14 @@ def stalled_run(request, mocker, patched_loop_deps, budget_clock):
     return run, call, cancelled
 
 
-async def test_regression_budget_cancels_inflight_calls(stalled_run):
+@pytest.fixture
+def manual_budget(mocker, budget_clock):
+    timeouts = ManualTimeouts()
+    mocker.patch.object(loop_mod, "asyncio", timeouts)
+    return timeouts
+
+
+async def test_regression_budget_cancels_inflight_calls(stalled_run, manual_budget):
     run, call, cancelled = stalled_run
     session = _llm(run).session
 
@@ -1200,21 +1208,30 @@ async def test_regression_budget_cancels_inflight_calls(stalled_run):
     assert session.active_plugin is None
     call.assert_awaited_once()
     assert cancelled == [True]
+    assert manual_budget.delays == [1]
     run.tr.write.assert_any_call(
         {"event": "budget_exhausted", "turn": 0, "budget_seconds": 1}
     )
 
 
 async def test_regression_budget_interrupts_provider_retry_backoff(
-    patched_loop_deps, budget_clock
+    patched_loop_deps, manual_budget, mocker
 ):
+    async def backoff(delay):
+        assert delay == 30
+        manual_budget.expire()
+        await asyncio.Future()
+
+    sleep = mocker.AsyncMock(side_effect=backoff)
+    mocker.patch.object(producer_mod, "asyncio", SimpleNamespace(sleep=sleep))
+    mocker.patch.object(producer_mod, "retry_delay", return_value=30)
     provider = FakeProvider([ProviderTransientError("busy")])
     session = Session()
     run = _loop_run(
         provider,
         _registry(),
         settings=_settings(retry_backoff_seconds=30),
-        deadline=time.monotonic() + 0.005,
+        deadline=time.monotonic() + 60,
         session=session,
         messages=[],
     )
@@ -1223,6 +1240,7 @@ async def test_regression_budget_interrupts_provider_retry_backoff(
 
     assert session.budget_exhausted is True
     assert len(provider.calls) == 1
+    sleep.assert_awaited_once_with(30)
 
 
 @pytest.fixture(params=["provider", "note"])
@@ -1357,19 +1375,20 @@ async def test_budget_does_not_overwrite_a_completed_outcome(
 
 
 async def test_budget_trace_records_the_interrupted_turn(
-    patched_loop_deps, budget_clock
+    patched_loop_deps, manual_budget
 ):
     provider = FakeProvider([_reply(None, {"peek": {}})])
     session = Session()
     run = _loop_run(
         provider,
         _registry(),
-        deadline=time.monotonic() + 0.005,
+        deadline=time.monotonic() + 1,
         session=session,
         messages=[],
     )
 
     async def stall(*args):
+        manual_budget.expire()
         await asyncio.Event().wait()
 
     original_chat = provider.respond

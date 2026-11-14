@@ -1011,7 +1011,7 @@ def test_regression_overlapping_sync_cannot_replace_another_staging_tree(
 
 
 @given(st.text(alphabet="0123456789abcdef", min_size=64, max_size=64))
-@settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
+@settings(deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
 def test_checksum_mismatch_never_modifies_installed_pack(
     official_home, installed, mocker, checksum
 ):

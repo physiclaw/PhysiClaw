@@ -94,14 +94,17 @@ def test_terminal_close_releases_once_and_rejects_late_requests(usb_bus, open_er
 
 
 def test_terminal_close_waits_for_inflight_control_request(usb_bus):
+    from tests.timing_helpers import WAIT_TIMEOUT, ObservedLock
+
     channel = uvc.camera_terminal()
+    channel._lock = ObservedLock(channel._lock)
     entered, resume = threading.Event(), threading.Event()
-    closing, closed = threading.Event(), threading.Event()
+    closed = threading.Event()
     result = []
 
     def control(interface, pipe, request):
         entered.set()
-        if not resume.wait(2):
+        if not resume.wait(WAIT_TIMEOUT):
             return 1
         request.contents.wLenDone = request.contents.wLength
         return 0
@@ -111,23 +114,25 @@ def test_terminal_close_waits_for_inflight_control_request(usb_bus):
     reader = threading.Thread(target=lambda: result.append(channel.set_auto()))
 
     def close():
-        closing.set()
         channel.close()
         closed.set()
 
     closer = threading.Thread(target=close)
     reader.start()
     try:
-        assert entered.wait(1)
+        assert entered.wait(WAIT_TIMEOUT)
         closer.start()
-        assert closing.wait(1)
-        assert not closed.wait(0.05)
+        assert channel._lock.contended.wait(WAIT_TIMEOUT)
+        assert not closed.is_set()
+        assert "interface.Release" not in usb_bus.calls
     finally:
         resume.set()
-        reader.join(2)
+        reader.join(WAIT_TIMEOUT)
         if closer.ident is not None:
-            closer.join(2)
+            closer.join(WAIT_TIMEOUT)
 
+    assert not reader.is_alive()
+    assert not closer.is_alive()
     assert result == [True]
     assert closed.is_set()
     assert usb_bus.calls.count("interface.Release") == 1

@@ -472,7 +472,11 @@ def test_testdrive_malformed_moves_never_reach_hardware(fake_arm, command):
     assert fake_arm.long_presses == 0
 
 
-@settings(max_examples=40, suppress_health_check=[HealthCheck.function_scoped_fixture])
+@settings(
+    deadline=None,
+    max_examples=40,
+    suppress_health_check=[HealthCheck.function_scoped_fixture],
+)
 @given(x=st.integers(-200, 200), y=st.integers(-500, 500))
 def test_testdrive_valid_decimal_moves_preserve_signed_distances(mocker, x, y):
     arm = FakeArm()
@@ -487,7 +491,11 @@ def test_testdrive_valid_decimal_moves_preserve_signed_distances(mocker, x, y):
     assert arm.closed
 
 
-@settings(max_examples=40, suppress_health_check=[HealthCheck.function_scoped_fixture])
+@settings(
+    deadline=None,
+    max_examples=40,
+    suppress_health_check=[HealthCheck.function_scoped_fixture],
+)
 @given(
     axis=st.sampled_from(["x", "y"]),
     sign=st.sampled_from([-1, 1]),

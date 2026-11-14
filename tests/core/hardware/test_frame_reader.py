@@ -201,22 +201,35 @@ def test_reopen_cannot_make_cached_capture_fresh_or_healthy(mocker) -> None:
     assert reader.healthy()
 
 
-def test_wait_frames_counts_new_publishes() -> None:
+def test_wait_frames_counts_new_publishes(mocker) -> None:
     import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    from tests.timing_helpers import WAIT_TIMEOUT
 
     r = _reader()
+    waiting = threading.Event()
+    original_wait = r._cond.wait
+
+    def wait(timeout):
+        # Condition.wait releases the lock after the target sequence is set.
+        waiting.set()
+        return original_wait(timeout)
+
+    mocker.patch.object(r._cond, "wait", side_effect=wait)
 
     def publish(n: int) -> None:
+        assert waiting.wait(WAIT_TIMEOUT)
         for _ in range(n):
-            time.sleep(0.01)
             r.publish(_frame())
 
-    t = threading.Thread(target=publish, args=(3,))
-    t.start()
-    try:
-        assert r.wait_frames(3, timeout=2.0) is True
-    finally:
-        t.join(timeout=1.0)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        publisher = pool.submit(publish, 3)
+        try:
+            assert r.wait_frames(3, timeout=WAIT_TIMEOUT) is True
+        finally:
+            waiting.set()
+        publisher.result(timeout=WAIT_TIMEOUT)
 
 
 def test_wait_frames_times_out_without_publisher() -> None:
@@ -318,13 +331,14 @@ def test_healthy_requires_running_thread_and_recent_frame() -> None:
     assert not r.healthy()
 
 
-def test_note_reopened_resets_stale_clock() -> None:
+def test_note_reopened_resets_stale_clock(mocker) -> None:
+    mocker.patch.object(fr_mod, "time", SimpleNamespace(monotonic=lambda: 100.0))
     r = _reader()
     r._frame_time = 0.0
 
     r.note_reopened()
 
-    assert time.monotonic() - r._frame_time < 1.0
+    assert r._frame_time == 100.0
 
 
 @pytest.mark.parametrize("raise_on_read", [False, True], ids=["empty", "exception"])
@@ -355,6 +369,8 @@ def test_loop_backs_off_on_fail_path(mocker, raise_on_read) -> None:
 @pytest.mark.parametrize("outcome", ["frame", "failure", "exception"])
 @pytest.mark.parametrize("elapsed", [10.0, 70.0])
 def test_regression_stop_discards_inflight_read(mocker, outcome, elapsed) -> None:
+    from tests.timing_helpers import WAIT_TIMEOUT
+
     blocked, release = threading.Event(), threading.Event()
     clock = {"now": 100.0}
     mocker.patch.object(
@@ -375,7 +391,7 @@ def test_regression_stop_discards_inflight_read(mocker, outcome, elapsed) -> Non
         if calls == 1:
             return False, None  # Start a drought before the blocking read.
         blocked.set()
-        assert release.wait(1)
+        assert release.wait(WAIT_TIMEOUT)
         if outcome == "exception":
             raise OSError("disconnected")
         return (True, late) if outcome == "frame" else (False, None)
@@ -386,14 +402,15 @@ def test_regression_stop_discards_inflight_read(mocker, outcome, elapsed) -> Non
     reader.publish(seed)
     reader.start()
     try:
-        assert blocked.wait(1)
+        assert blocked.wait(WAIT_TIMEOUT)
         reader.stop()
         clock["now"] += elapsed
     finally:
         release.set()
-        reader.JOIN_TIMEOUT_SECONDS = 1
+        reader.JOIN_TIMEOUT_SECONDS = WAIT_TIMEOUT
         reader.stop()
 
+    assert not reader._thread.is_alive()
     reader.FRAME_WAIT_SECONDS = 0
     assert reader._frame is seed
     assert reader.fresh_frame() is None

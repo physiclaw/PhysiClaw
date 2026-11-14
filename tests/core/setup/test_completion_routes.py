@@ -67,14 +67,39 @@ async def test_ready_route_fires_become_ready_off_thread(
     # Fire-and-forget on the default executor: the response must not wait
     # for the settle, but become_ready (settle THEN mark) must run.
     import asyncio
+    import threading
+
+    from tests.timing_helpers import WAIT_TIMEOUT
 
     pl = MagicMock()
+    loop = asyncio.get_running_loop()
+    started = asyncio.Event()
+    resume = threading.Event()
+    finished = asyncio.Event()
+    main_thread = threading.get_ident()
+    errors = []
+
+    def become_ready():
+        try:
+            assert threading.get_ident() != main_thread
+            loop.call_soon_threadsafe(started.set)
+            assert resume.wait(WAIT_TIMEOUT)
+        except BaseException as exc:
+            errors.append(exc)
+        finally:
+            loop.call_soon_threadsafe(finished.set)
+
+    pl.become_ready.side_effect = become_ready
     completion_routes.register(fake_mcp, pl)
 
-    await fake_mcp.get("/api/ready", "POST")(async_request())
-
-    for _ in range(100):
-        if pl.become_ready.called:
-            break
-        await asyncio.sleep(0.01)
+    try:
+        await asyncio.wait_for(
+            fake_mcp.get("/api/ready", "POST")(async_request()), WAIT_TIMEOUT
+        )
+        await asyncio.wait_for(started.wait(), WAIT_TIMEOUT)
+        assert not finished.is_set()
+    finally:
+        resume.set()
+        await asyncio.wait_for(finished.wait(), WAIT_TIMEOUT)
+    assert errors == []
     pl.become_ready.assert_called_once()

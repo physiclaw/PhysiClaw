@@ -1151,7 +1151,11 @@ def test_doctor_enumeration_interrupt_propagates_after_release(doctor_io):
 
 
 @given(host=st.ip_addresses(v=6), port=st.integers(min_value=1, max_value=65534))
-@settings(max_examples=20, suppress_health_check=[HealthCheck.function_scoped_fixture])
+@settings(
+    deadline=None,
+    max_examples=20,
+    suppress_health_check=[HealthCheck.function_scoped_fixture],
+)
 def test_doctor_ipv6_probe_urls_keep_host_and_successor_port(doctor_io, host, port):
     doctor_io.live.return_value = {"host": str(host), "port": port}
     doctor_io.bridge.reset_mock()

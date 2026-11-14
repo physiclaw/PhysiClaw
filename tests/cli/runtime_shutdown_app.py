@@ -20,7 +20,7 @@ import time
 STARTUP_TIMEOUT = 60
 
 
-def read_interrupts(loop=None) -> None:
+def read_interrupts(loop=None, *, release=None) -> None:
     """Inject Ctrl+C without requiring a shared console on a Windows CI runner.
 
     This pipe belongs to the test harness. The managed runtime still receives
@@ -31,8 +31,10 @@ def read_interrupts(loop=None) -> None:
     process_port.prepare_managed_runtime()
 
     def read():
-        while os.read(sys.stdin.fileno(), 1):
-            if loop is None:
+        while command := os.read(sys.stdin.fileno(), 1):
+            if command == b"r" and release is not None:
+                release.set()
+            elif loop is None:
                 _thread.interrupt_main()
             else:
                 # Wake a standalone runtime even during its 600-second sleep.
@@ -45,6 +47,7 @@ def child(base: str, mode: str) -> None:
     from physiclaw.agent.engine import engine, mcp_tool
     from physiclaw.agent.runtime import launcher, runtime
     from physiclaw.agent.runtime.hook import Trigger
+    from physiclaw.agent.runtime.stopping import stop_event
 
     if mode == "unresponsive":
         print("CHILD_UNRESPONSIVE", flush=True)
@@ -67,7 +70,9 @@ def child(base: str, mode: str) -> None:
         await mcp.list_tools()
         print("MCP_READY", flush=True)
         if mode == "model":
-            await asyncio.sleep(0.5)
+            stopping = stop_event.get()
+            assert stopping is not None
+            await stopping.wait()
             # A model response arriving after stop cannot schedule a tool.
             await mcp.call_tool("finish")
         elif mode == "tool":
@@ -86,9 +91,19 @@ def child(base: str, mode: str) -> None:
     launcher.close_mcp = close
     launcher.setup_logging = lambda *args, **kwargs: None
     if mode == "early-exit":
+        from types import SimpleNamespace
+
+        reading = threading.Event()
+
+        def read_control(*args):
+            reading.set()
+            return os.read(*args)
+
+        # Scope the spy to the launcher; leave the real, blocking pipe read.
+        launcher.os = SimpleNamespace(read=read_control, environ=os.environ)
 
         async def early_return(self):
-            await asyncio.sleep(0.1)  # The pipe reader is already blocked.
+            assert await asyncio.to_thread(reading.wait, STARTUP_TIMEOUT)
 
         runtime.Runtime.start = early_return
     sys.argv = ["runtime", "--server", base, "--interval", "600"]
@@ -113,6 +128,7 @@ def parent(port: int, mode: str, listeners: list[socket.socket]) -> None:
 
     mcp = MCPServer("shutdown-test")
     ready = mode not in {"not-ready", "unconfigured"}
+    hardware_release = threading.Event()
 
     @mcp.custom_route("/api/status", methods=["GET"])
     async def status(request):
@@ -131,7 +147,7 @@ def parent(port: int, mode: str, listeners: list[socket.socket]) -> None:
         # Model a hardware thread completing a screenshot via the phone bridge.
         # Closing/cancelling the MCP request cannot stop this thread.
         def hardware():
-            time.sleep(0.5)
+            assert hardware_release.wait(STARTUP_TIMEOUT)
             with httpx.Client(trust_env=False) as client:
                 response = client.get(f"http://127.0.0.1:{port + 1}/bridge")
                 response.raise_for_status()
@@ -201,7 +217,7 @@ def parent(port: int, mode: str, listeners: list[socket.socket]) -> None:
             asyncio.run(runtime.stop())
 
         server_mod._serve = wrong_order
-    read_interrupts()
+    read_interrupts(release=hardware_release)
     try:
         server_mod.server(
             host="127.0.0.1",

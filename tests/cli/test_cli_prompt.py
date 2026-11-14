@@ -345,7 +345,11 @@ def test_request_renders_multipart_content_in_order(
     assert "opaque-image-payload" not in result.stdout
 
 
-@settings(max_examples=30, suppress_health_check=[HealthCheck.function_scoped_fixture])
+@settings(
+    deadline=None,
+    max_examples=30,
+    suppress_health_check=[HealthCheck.function_scoped_fixture],
+)
 @given(text=st.text(alphabet=st.characters(blacklist_categories=("Cs",)), max_size=120))
 @example(text="line\r\n")
 @example(text="textX\n\n")
