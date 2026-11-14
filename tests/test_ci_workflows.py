@@ -4,6 +4,7 @@ import os
 import shlex
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,47 @@ from coverage import CoverageData
 from ruamel.yaml import YAML
 
 WORKFLOWS = Path(__file__).resolve().parents[1] / ".github" / "workflows"
+
+
+def test_release_checkout_preserves_annotated_tags():
+    job = YAML(typ="safe").load(WORKFLOWS / "release.yml")["jobs"]["validate"]
+    checkout = next(
+        s for s in job["steps"] if s.get("uses", "").startswith("actions/checkout@")
+    )
+    # With the default tag+SHA inputs checkout force-fetches the peeled commit
+    # into refs/tags/vX.Y.Z, destroying the annotation required by validation.
+    assert checkout["with"]["ref"] == "${{ github.sha }}"
+    assert checkout["with"]["fetch-depth"] == 0
+    assert checkout["with"]["persist-credentials"] is False
+
+
+def test_release_and_local_uv_versions_cannot_drift():
+    project = tomllib.loads((WORKFLOWS.parents[1] / "pyproject.toml").read_text())
+    required = project["tool"]["uv"]["required-version"]
+    assert required.startswith("==")
+    for filename in ("ci.yml", "package.yml", "release.yml"):
+        workflow = YAML(typ="safe").load(WORKFLOWS / filename)
+        for job in workflow["jobs"].values():
+            for step in job.get("steps", []):
+                if step.get("uses", "").startswith("astral-sh/setup-uv@"):
+                    assert "==" + step["with"]["version"] == required
+
+
+def test_publication_requires_validation_and_verified_artifacts():
+    jobs = YAML(typ="safe").load(WORKFLOWS / "release.yml")["jobs"]
+    assert jobs["ci"]["needs"] == "validate"
+    assert jobs["prepublish"]["needs"] == "ci"
+    assert "github.event_name == 'push'" in jobs["prepublish"]["if"]
+    publish = jobs["publish"]
+    assert set(publish["needs"]) == {"ci", "prepublish"}
+    assert publish["environment"]["name"] == "pypi"
+    assert publish["permissions"] == {"id-token": "write"}
+    assert all(
+        "run" not in step and "checkout@" not in step.get("uses", "")
+        for step in publish["steps"]
+    )
+    assert set(jobs["verify"]["needs"]) == {"ci", "publish"}
+    assert set(jobs["github-release"]["needs"]) == {"ci", "verify"}
 
 
 @pytest.fixture(

@@ -6,7 +6,8 @@ import subprocess
 import sys
 import tomllib
 from pathlib import Path
-from textwrap import dedent
+from textwrap import dedent, indent
+from zipfile import ZipFile
 
 import pytest
 
@@ -31,7 +32,14 @@ def project(tmp_path, monkeypatch):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("NO_COLOR", "1")
     (project / "pyproject.toml").write_text(
-        '[project]\nname = "physiclaw"\nversion = "0.8.4"\n', encoding="utf-8"
+        '[project]\nname = "physiclaw"\nversion = "0.8.4"\nrequires-python = ">=3.12"\n',
+        encoding="utf-8",
+    )
+    (project / "uv.lock").write_text(
+        'version = 1\nrequires-python = ">=3.12"\n'
+        '[[package]]\nname = "physiclaw"\nversion = "0.8.4"\n'
+        'source = { virtual = "." }\n',
+        encoding="utf-8",
     )
     (project / "Makefile").write_bytes((REPO_ROOT / "Makefile").read_bytes())
     (project / "scripts").mkdir()
@@ -58,6 +66,16 @@ def commands(project, mocker):
             code = 2
         elif command[:2] == ("git", "rev-parse"):
             output = "a" * 40 + "\n"
+        elif command == ("uv", "lock"):
+            path = Path("uv.lock")
+            locked = tomllib.loads(path.read_text())["package"][0]["version"]
+            path.write_text(
+                path.read_text().replace(
+                    f'version = "{locked}"', f'version = "{release.read_version()}"'
+                )
+            )
+        elif command[:4] == ("gh", "api", "--hostname", "github.com"):
+            output = json.dumps({"workflow_runs": [successful_ci("a" * 40)]})
         elif command == ("uv", "build", "--no-sources"):
             for path in release.artifact_paths(release.read_version()):
                 path.parent.mkdir(exist_ok=True)
@@ -65,6 +83,17 @@ def commands(project, mocker):
         return subprocess.CompletedProcess(command, code, output)
 
     return mocker.patch.object(release.subprocess, "run", side_effect=run)
+
+
+def successful_ci(head):
+    return {
+        "head_sha": head,
+        "head_branch": "main",
+        "event": "push",
+        "path": ".github/workflows/ci.yml",
+        "status": "completed",
+        "conclusion": "success",
+    }
 
 
 def invoked(commands):
@@ -100,7 +129,7 @@ def test_release_tags_pushed_version_without_bump_build_or_upload(
     assert release.main([action]) == 0
     assert release.read_version() == "0.8.4"
     calls = invoked(commands)
-    assert not any(args[0] == "uv" for args in calls)
+    assert [args for args in calls if args[0] == "uv"] == [("uv", "lock", "--check")]
     assert ("git", "push", "origin", "main") not in calls
     assert calls[-2:] == [
         ("git", "tag", "-a", "v0.8.4", "a" * 40, "-m", "physiclaw v0.8.4"),
@@ -199,6 +228,60 @@ def test_bump_rejects_version_match_inside_multiline_text(project, commands, cap
     assert "Couldn't update [project].version" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize(
+    "failure", ["preflight", "lock", "metadata", "dependencies", "invalid", "interrupt"]
+)
+def test_failed_bump_restores_files_without_staging(project, commands, failure):
+    before = {
+        name: (project / name).read_bytes() for name in ("pyproject.toml", "uv.lock")
+    }
+    original = commands.side_effect
+
+    def fail(args, **kwargs):
+        if args == ("uv", "lock", "--check") and failure == "preflight":
+            return subprocess.CompletedProcess(
+                args, 7, "Incompatible uv or stale lockfile"
+            )
+        if args == ("uv", "lock"):
+            original(args, **kwargs)
+            lock = Path("uv.lock")
+            if failure == "metadata":
+                lock.write_text(
+                    lock.read_text().replace(
+                        "version = 1\n", "version = 1\nrevision = 999\n", 1
+                    )
+                )
+            if failure == "dependencies":
+                lock.write_text(
+                    lock.read_text() + '\ndependencies = [{ name = "unexpected" }]\n'
+                )
+            if failure == "lock":
+                return subprocess.CompletedProcess(args, 7, "Failed to resolve")
+            if failure == "interrupt":
+                raise KeyboardInterrupt
+            if failure == "invalid":
+                Path("uv.lock").write_text("version = [broken")
+            return subprocess.CompletedProcess(args, 0, "")
+        return original(args, **kwargs)
+
+    commands.side_effect = fail
+    assert release.main(["bump"]) != 0
+    assert {name: (project / name).read_bytes() for name in before} == before
+    assert not any(
+        args[:2] in {("git", "add"), ("git", "commit")} for args in invoked(commands)
+    )
+
+
+def test_bump_rejects_missing_project_in_lockfile(project, commands, capsys):
+    lock = project / "uv.lock"
+    lock.write_text(lock.read_text().replace('"physiclaw"', '"other"'))
+    before = (project / "pyproject.toml").read_bytes()
+    assert release.main(["bump"]) == 1
+    assert "current version" in capsys.readouterr().err
+    assert (project / "pyproject.toml").read_bytes() == before
+    assert ("uv", "lock") not in invoked(commands)
+
+
 @pytest.mark.parametrize("version", ["1.0; echo bad", "$(echo bad)", "../1", "1\n2"])
 def test_invalid_version_never_reaches_commands(
     project, commands, monkeypatch, version
@@ -266,6 +349,8 @@ def test_build_rejects_missing_artifact(commands, capsys):
     [
         ("git", "status"),
         ("git", "fetch"),
+        ("uv", "lock", "--check"),
+        ("gh", "api"),
         ("git", "tag", "-a"),
         ("git", "push", "origin", "refs/tags/v0.8.4"),
     ],
@@ -317,8 +402,10 @@ def test_bump_accepts_prerelease_progression_on_release_branch(
     project, commands, monkeypatch, current, new
 ):
     (project / "pyproject.toml").write_text(
-        f'[project]\nversion = "{current}"\n', encoding="utf-8"
+        f'[project]\nname = "physiclaw"\nversion = "{current}"\n', encoding="utf-8"
     )
+    lock = project / "uv.lock"
+    lock.write_text(lock.read_text().replace('"0.8.4"', f'"{current}"'))
     monkeypatch.setenv("VERSION", new)
     original = commands.side_effect
 
@@ -379,6 +466,70 @@ def test_release_preflight_stops_before_creating_tag(
     assert release.main(["release"]) != 0
     assert error in capsys.readouterr().err
     assert not any(args[:2] == ("git", "tag") for args in invoked(commands))
+
+
+@pytest.mark.parametrize("action", ["release-check", "release-start"])
+@pytest.mark.parametrize(
+    "change",
+    [
+        None,
+        {"status": "queued", "conclusion": None},
+        {"status": "in_progress", "conclusion": None},
+        {"conclusion": "failure"},
+        {"conclusion": "cancelled"},
+        {"head_sha": "b" * 40},
+        {"head_branch": "other"},
+        {"event": "workflow_dispatch"},
+        {"path": ".github/workflows/other.yml"},
+    ],
+)
+def test_release_requires_successful_ci_for_exact_commit(
+    commands, capsys, action, change
+):
+    original = commands.side_effect
+
+    def ci(args, **kwargs):
+        if args[0] == "gh":
+            runs = [{**successful_ci("a" * 40), **change}] if change is not None else []
+            return subprocess.CompletedProcess(
+                args, 0, json.dumps({"workflow_runs": runs})
+            )
+        return original(args, **kwargs)
+
+    commands.side_effect = ci
+    assert release.main([action]) == 1
+    assert "Latest main CI must succeed" in capsys.readouterr().err
+    assert not any(
+        args[:2] in {("git", "tag"), ("git", "push")} for args in invoked(commands)
+    )
+
+
+def test_release_check_does_not_create_or_push_tags(commands, capsys):
+    assert release.main(["release-check"]) == 0
+    assert "Ready to tag v0.8.4" in capsys.readouterr().out
+    assert not any(
+        args[:2] in {("git", "tag"), ("git", "push")} for args in invoked(commands)
+    )
+
+
+def test_release_rejects_head_moving_during_preflight(commands, capsys):
+    original = commands.side_effect
+    checked_ci = False
+
+    def move(args, **kwargs):
+        nonlocal checked_ci
+        if args[0] == "gh":
+            checked_ci = True
+        if checked_ci and args == ("git", "rev-parse", "HEAD"):
+            return subprocess.CompletedProcess(args, 0, "b" * 40)
+        return original(args, **kwargs)
+
+    commands.side_effect = move
+    assert release.main(["release-start"]) == 1
+    assert "HEAD changed" in capsys.readouterr().err
+    assert not any(
+        args[:2] in {("git", "tag"), ("git", "push")} for args in invoked(commands)
+    )
 
 
 @pytest.mark.parametrize(
@@ -792,7 +943,7 @@ def test_native_make_enters_python_workflow(project, action, error):
     assert "CreateProcess" not in result.stderr
     assert "Traceback" not in result.stderr
     assert release.read_version() == "0.8.4"
-    assert not (project / "uv.lock").exists()
+    assert 'version = "0.8.4"' in (project / "uv.lock").read_text()
     assert not (project / ".venv").exists()
 
 
@@ -801,6 +952,9 @@ def committed_project(project, monkeypatch):
     # Isolate Git before adding files so CRLF handling stays unchanged throughout.
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
     monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    monkeypatch.setenv("UV_CACHE_DIR", str(project / "cache"))
+    monkeypatch.setenv("UV_PYTHON", sys.executable)
+    monkeypatch.setenv("UV_OFFLINE", "1")
     subprocess.run(["git", "init", "--quiet", "--initial-branch=main"], check=True)
     for key, value in (
         ("user.name", "Release Test"),
@@ -810,8 +964,22 @@ def committed_project(project, monkeypatch):
     ):
         subprocess.run(["git", "config", "--local", key, value], check=True)
     (project / ".gitignore").write_text("cache/\n", encoding="utf-8")
+    # Replace the unit-test stub with a complete lock from the actual toolchain.
+    (project / "uv.lock").unlink()
     subprocess.run(
-        ["git", "add", "pyproject.toml", ".gitignore", "Makefile", "scripts"],
+        ["uv", "lock", "--offline"],
+        check=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "add",
+            "pyproject.toml",
+            "uv.lock",
+            ".gitignore",
+            "Makefile",
+            "scripts",
+        ],
         check=True,
     )
     subprocess.run(["git", "commit", "--quiet", "-m", "fixture"], check=True)
@@ -833,6 +1001,24 @@ def test_native_make_bump_commits_version_and_lockfile(committed_project):
     subject = subprocess.check_output(["git", "log", "-1", "--format=%s"], text=True)
     assert subject.strip() == "chore: bump version to 1.2.3"
     assert subprocess.check_output(["git", "tag", "--list"], text=True) == ""
+
+
+def test_native_bump_rejects_incompatible_uv_without_editing(committed_project):
+    project = committed_project
+    with (project / "pyproject.toml").open("a") as source:
+        source.write('\n[tool.uv]\nrequired-version = ">=999.0.0"\n')
+    subprocess.run(["git", "add", "pyproject.toml"], check=True)
+    subprocess.run(["git", "commit", "--quiet", "-m", "require a newer uv"], check=True)
+    before = {
+        name: (project / name).read_bytes() for name in ("pyproject.toml", "uv.lock")
+    }
+
+    result = run_make(project, "bump")
+
+    assert result.returncode != 0
+    assert "999.0.0" in result.stdout + result.stderr
+    assert {name: (project / name).read_bytes() for name in before} == before
+    assert subprocess.check_output(["git", "status", "--porcelain"], text=True) == ""
 
 
 @pytest.fixture
@@ -867,6 +1053,67 @@ def release_remote(committed_project, tmp_path, monkeypatch):
         "GIT_SSH_COMMAND",
         f'"{Path(sys.executable).as_posix()}" "{transport.as_posix()}" "{bare.as_posix()}"',
     )
+    # Keep native release preflight offline while exercising its real gh process.
+    # Only the main-CI endpoint is implemented; unexpected calls fail closed.
+    cli = tmp_path / "cli"
+    cli.mkdir()
+    fake_gh = cli / "gh.py"
+    fake_gh.write_text(
+        dedent("""\
+            import json
+            import subprocess
+            import sys
+
+            assert sys.argv[1:4] == ['api', '--hostname', 'github.com']
+            head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+            assert sys.argv[4] == (
+                'repos/physiclaw/PhysiClaw/actions/workflows/ci.yml/runs'
+                f'?event=push&branch=main&head_sha={head}&per_page=1'
+            )
+            print(json.dumps({'workflow_runs': [{
+                'head_sha': head, 'head_branch': 'main', 'event': 'push',
+                'path': '.github/workflows/ci.yml',
+                'status': 'completed', 'conclusion': 'success',
+            }]}))
+            """),
+        encoding="utf-8",
+    )
+    # Let uv generate a native console launcher, including gh.exe on Windows.
+    # A .cmd shim would send the query's ampersands through cmd.exe parsing.
+    dist = "release_cli_fixture-0.0.0.dist-info"
+    files = {
+        "release_cli_fixture.py": "def main():\n" + indent(fake_gh.read_text(), "    "),
+        f"{dist}/METADATA": "Metadata-Version: 2.1\nName: release-cli-fixture\nVersion: 0.0.0\n",
+        f"{dist}/WHEEL": "Wheel-Version: 1.0\nRoot-Is-Purelib: true\nTag: py3-none-any\n",
+        f"{dist}/entry_points.txt": "[console_scripts]\ngh = release_cli_fixture:main\n",
+    }
+    files[f"{dist}/RECORD"] = "".join(
+        f"{name},,\n" for name in [*files, f"{dist}/RECORD"]
+    )
+    wheel = cli / "release_cli_fixture-0.0.0-py3-none-any.whl"
+    with ZipFile(wheel, "w") as archive:
+        for name, content in files.items():
+            archive.writestr(name, content)
+    environment = cli / "venv"
+    subprocess.run(
+        ["uv", "venv", "--python", sys.executable, str(environment)], check=True
+    )
+    bin_dir = environment / ("Scripts" if os.name == "nt" else "bin")
+    python = bin_dir / ("python.exe" if os.name == "nt" else "python")
+    subprocess.run(
+        [
+            "uv",
+            "pip",
+            "install",
+            "--python",
+            str(python),
+            "--no-deps",
+            "--no-index",
+            str(wheel),
+        ],
+        check=True,
+    )
+    monkeypatch.setenv("PATH", str(bin_dir) + os.pathsep + os.environ["PATH"])
 
     def git(*args):
         result = subprocess.run(

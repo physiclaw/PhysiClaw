@@ -193,9 +193,33 @@ class Release:
         # the semantic change before writing or running any release commands.
         if tomllib.loads(updated) != expected:
             raise ReleaseError("Couldn't update [project].version in pyproject.toml")
-        with path.open("w", encoding="utf-8", newline="") as target:
-            target.write(updated)
-        self.run("uv", "lock")
+        # This also enforces tool.uv.required-version before editing any files.
+        self.run("uv", "lock", "--check")
+        lock = Path("uv.lock")
+        original_project, original_lock = path.read_bytes(), lock.read_bytes()
+        expected_lock = tomllib.loads(original_lock.decode("utf-8"))
+        packages = [
+            package
+            for package in expected_lock.get("package", [])
+            if package.get("name") == expected["project"]["name"]
+            and package.get("source") in ({"editable": "."}, {"virtual": "."})
+        ]
+        if len(packages) != 1 or packages[0].get("version") != current:
+            raise ReleaseError("Lockfile must contain this project's current version")
+        packages[0]["version"] = new
+        try:
+            with path.open("w", encoding="utf-8", newline="") as target:
+                target.write(updated)
+            self.run("uv", "lock")
+            if tomllib.loads(lock.read_text(encoding="utf-8")) != expected_lock:
+                raise ReleaseError(
+                    "Version bump changed dependencies or lockfile metadata; "
+                    "update and commit the lockfile separately before releasing"
+                )
+        except (ReleaseError, OSError, ValueError, KeyboardInterrupt):
+            path.write_bytes(original_project)
+            lock.write_bytes(original_lock)
+            raise
         self.run("git", "add", "pyproject.toml", "uv.lock")
         self.run("git", "commit", "-m", f"chore: bump version to {new}")
         self.done("Lockfile updated; version committed locally")
@@ -225,7 +249,8 @@ class Release:
             "\n  Local build only. CI builds and tests the distributions uploaded to PyPI.\n"
         )
 
-    def publish(self) -> None:
+    def release_preflight(self) -> tuple[str, str, bool]:
+        """Check everything possible before creating an immutable public tag."""
         if os.environ.get("VERSION"):
             raise ReleaseError(
                 "Release does not bump versions; use make bump VERSION=X.Y.Z first"
@@ -275,6 +300,37 @@ class Release:
                 "Couldn't check remote release tag", remote_tag.returncode
             )
         reuse_tag = self.check_tag(current, expected_head=head)
+        self.run("uv", "lock", "--check")
+        runs = self.github(
+            f"repos/{REPOSITORY}/actions/workflows/ci.yml/runs"
+            f"?event=push&branch=main&head_sha={head}&per_page=1"
+        ).get("workflow_runs", [])
+        run = runs[0] if len(runs) == 1 else {}
+        if (
+            run.get("head_sha") != head
+            or run.get("head_branch") != "main"
+            or run.get("event") != "push"
+            or run.get("path") != ".github/workflows/ci.yml"
+            or run.get("status") != "completed"
+            or run.get("conclusion") != "success"
+        ):
+            raise ReleaseError(
+                f"Latest main CI must succeed for {head[:12]} before tagging "
+                f"(status: {run.get('conclusion') or run.get('status') or 'not found'}). "
+                "Wait for CI or fix it, then rerun make release-check"
+            )
+        # A slow CI/API lookup must not accidentally release a moving checkout.
+        self.check_checkout(main=True)
+        if self.run("git", "rev-parse", "HEAD", capture=True).stdout.strip() != head:
+            raise ReleaseError("HEAD changed during release preflight; retry")
+        return current, head, reuse_tag
+
+    def release_check(self) -> None:
+        current, head, _ = self.release_preflight()
+        print(f"Ready to tag v{current} at {head}; main CI and lockfile passed.")
+
+    def publish(self) -> None:
+        current, head, reuse_tag = self.release_preflight()
         self.stage(f"Request CI release - {current}")
         if reuse_tag:
             print(f"        Reusing local annotated tag v{current}", flush=True)
@@ -282,14 +338,20 @@ class Release:
             self.run(
                 "git", "tag", "-a", f"v{current}", head, "-m", f"physiclaw v{current}"
             )
-        self.run("git", "push", "origin", tag)
+        self.run("git", "push", "origin", f"refs/tags/v{current}")
         self.done(f"Pushed v{current}; CI must pass and publication must be approved")
         self.summary()
 
     def github(self, endpoint: str, *options: str):
         """Use the local reviewer's gh credentials, always against github.com."""
         result = self.run(
-            "gh", "api", "--hostname", "github.com", endpoint, *options, capture=True
+            "gh",
+            "api",
+            "--hostname",
+            "github.com",
+            endpoint,
+            *options,
+            capture=True,
         )
         return json.loads(result.stdout)
 
@@ -479,6 +541,7 @@ def main(argv: list[str] | None = None) -> int:
             "publish",
             "release",
             "release-start",
+            "release-check",
             "validate-tag",
             "release-status",
             "release-approve",

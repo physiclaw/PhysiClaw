@@ -1,4 +1,4 @@
-.PHONY: test-bootstrap test test-cov test-all-cov test-fast test-encoding test-encoding-0 test-encoding-1 test-slow test-integration test-all testall test-studio-ui mutate lint fmt typecheck loc help firmware bump build publish release release-start release-status release-approve release-watch docs-deploy check-site-assets \
+.PHONY: test-bootstrap test test-cov test-all-cov test-fast test-encoding test-encoding-0 test-encoding-1 test-slow test-integration test-all testall test-studio-ui mutate lint fmt typecheck loc help firmware bump build publish release release-check release-start release-status release-approve release-watch docs-deploy check-site-assets \
         manual hw-help hw-parts hw-build hw-check hw-step hw-print hw-manual hw-manual-pdf hw-sourcing hw-url hw-drawing hw-rebuild hw-preflight hw-prepare hw-verify hw-publish hw-release _hw-package
 
 PY ?= uv run
@@ -56,7 +56,8 @@ help:
 	@echo "                          Set VERSION explicitly for major/minor/prereleases."
 	@echo "                          Commits version + lockfile locally; push main before release."
 	@echo "  build                 - uv build wheel + sdist for the version in pyproject.toml"
-	@echo "  release-start         - push the version tag and start release CI."
+	@echo "  release-check         - check lockfile, upstream and exact-commit main CI; no tag/push."
+	@echo "  release-start         - repeat preflight, push the version tag and start release CI."
 	@echo "  release-status        - show release progress and the next action (read-only)."
 	@echo "  release-approve       - approve PyPI publication after release checks pass."
 	@echo "  release-watch         - follow CI to completion (read-only)."
@@ -133,7 +134,7 @@ firmware:
 # See RELEASING.md for commands and Trusted Publisher configuration.
 # One cross-platform driver keeps each action sequential under make -j.
 # --no-project avoids syncing dependencies before checking the working tree.
-bump build publish release release-start release-status release-approve release-watch:
+bump build publish release release-check release-start release-status release-approve release-watch:
 	@$(PY) --no-project python scripts/release.py $@
 
 # --- Hardware CAD pipeline ----------------------------------------------------

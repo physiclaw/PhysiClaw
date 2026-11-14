@@ -104,6 +104,10 @@ dev = [
     "types-croniter>=6.2.4.20260711",
 ]
 
+[tool.uv]
+# Keep local lockfile generation identical to the release/CI toolchain.
+required-version = "==0.13.7"
+
 [tool.uv.dependency-groups]
 cad = {requires-python = ">=3.12,<3.15"}
 
