@@ -86,8 +86,9 @@ def test_regression_adjacent_port_selection_retries_unavailable_windows_ports(
     control.getsockname.return_value = ("127.0.0.1", 50002)
     first_bridge.bind.side_effect = error
     mocker.patch.object(fixture_app, "sys", SimpleNamespace(platform="win32"))
-    mocker.patch(
-        "tests.cli.runtime_shutdown_app.socket",
+    mocker.patch.object(
+        fixture_app,
+        "socket",
         SimpleNamespace(
             socket=mocker.Mock(
                 side_effect=[first_control, first_bridge, control, bridge]
@@ -109,8 +110,9 @@ def test_regression_adjacent_port_selection_does_not_hide_unexpected_errors(mock
     bridge.__enter__.return_value = bridge
     control.getsockname.return_value = ("127.0.0.1", 50000)
     bridge.bind.side_effect = OSError(errno.EIO, "unexpected bind failure")
-    mocker.patch(
-        "tests.cli.runtime_shutdown_app.socket",
+    mocker.patch.object(
+        fixture_app,
+        "socket",
         SimpleNamespace(socket=mocker.Mock(side_effect=[control, bridge])),
     )
 
@@ -130,36 +132,34 @@ def reserved_parent(tmp_path, mode):
         "NO_PROXY": "127.0.0.1,localhost,::1",
         "no_proxy": "127.0.0.1,localhost,::1",
     }
-    proc = None
     with path.open("a", encoding="utf-8") as output:
+        options = (
+            {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+            if sys.platform == "win32"
+            else {}
+        )
+        proc = subprocess.Popen(
+            [
+                sys.executable,
+                str(Path(__file__).with_name("runtime_shutdown_app.py")),
+                "parent",
+                mode,
+            ],
+            **options,
+            stdin=subprocess.PIPE,
+            env=env,
+            stdout=output,
+            stderr=subprocess.STDOUT,
+        )
         try:
-            options = (
-                {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
-                if sys.platform == "win32"
-                else {}
-            )
-            proc = subprocess.Popen(
-                [
-                    sys.executable,
-                    str(Path(__file__).with_name("runtime_shutdown_app.py")),
-                    "parent",
-                    mode,
-                ],
-                **options,
-                stdin=subprocess.PIPE,
-                env=env,
-                stdout=output,
-                stderr=subprocess.STDOUT,
-            )
             output_text = wait_for(proc, path, "LISTENERS_RESERVED=")
             port = int(re.search(r"LISTENERS_RESERVED=(\d+)", output_text)[1])
             yield proc, path, port
         finally:
-            if proc is not None:
-                if proc.poll() is None:
-                    proc.kill()
-                proc.wait(timeout=WAIT_TIMEOUT)
-                proc.stdin.close()
+            if proc.poll() is None:
+                proc.kill()
+            proc.wait(timeout=WAIT_TIMEOUT)
+            proc.stdin.close()
             # Do not leave a child behind even when a regression fails a test.
             match = re.search(r"CHILD_PID=(\d+)", path.read_text(encoding="utf-8"))
             if match:
