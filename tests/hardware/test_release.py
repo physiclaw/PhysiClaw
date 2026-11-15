@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import json
 import os
@@ -783,7 +784,7 @@ def test_source_digest_includes_untracked_files_and_renames(
 
 @pytest.mark.skipif(
     sys.platform == "win32",
-    reason="POSIX permits control and undecodable filename bytes",
+    reason="Windows filenames cannot contain control or undecodable bytes",
 )
 @pytest.mark.parametrize(
     "name", [b"part-\xff.py", b"line\r\nbreak.py", b"line\rbreak.py", b"line\nbreak.py"]
@@ -792,7 +793,14 @@ def test_source_digest_keeps_posix_filename_bytes(tmp_path, monkeypatch, name):
     monkeypatch.setattr(rel, "REPO_ROOT", tmp_path)
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
     source = tmp_path / os.fsdecode(name)
-    source.write_bytes(b"SIZE = 1")
+    try:
+        source.write_bytes(b"SIZE = 1")
+    except OSError as error:
+        # APFS rejects invalid UTF-8 even though macOS is POSIX. Probe the
+        # actual filesystem; keep control-byte cases and all other errors live.
+        if name == b"part-\xff.py" and error.errno == errno.EILSEQ:
+            pytest.skip("filesystem rejects undecodable filename bytes")
+        raise
     first = rel.source_digest()
     content_digest = hashlib.sha256(b"SIZE = 1").hexdigest().encode()
     assert first == hashlib.sha256(name + b"\0" + content_digest + b"\0").hexdigest()

@@ -5,18 +5,44 @@ Run only through test_runtime_shutdown.py. No phone or model API is used.
 
 import _thread
 import asyncio
+import errno
 import importlib
-import json
 import logging
 import os
 import socket
 import subprocess
 import sys
 import threading
+from contextlib import contextmanager
 
 # Cold imports under subprocess coverage can be slow on shared CI runners.
 # This budget is only for startup; tests bound shutdown separately.
 STARTUP_TIMEOUT = 60
+
+
+@contextmanager
+def reserved_ports():
+    # Select and retain both addresses in the process that will serve them.
+    # No close/rebind gap or cross-process socket handle transfer is needed.
+    for _ in range(100):
+        with socket.socket() as control, socket.socket() as bridge:
+            control.bind(("127.0.0.1", 0))
+            port = control.getsockname()[1]
+            if port >= 65535:
+                continue
+            try:
+                bridge.bind(("0.0.0.0", port + 1))
+            except OSError as error:
+                # Windows can exclude the neighboring ephemeral port.
+                if error.errno != errno.EADDRINUSE and not (
+                    sys.platform == "win32"
+                    and getattr(error, "winerror", None) == 10013
+                ):
+                    raise
+                continue
+            yield port, (control, bridge)
+            return
+    raise AssertionError("no adjacent free ports")
 
 
 def read_interrupts(loop=None, *, release=None) -> None:
@@ -180,10 +206,10 @@ def parent(port: int, mode: str, listeners: list[socket.socket]) -> None:
     server_mod._start_hardware_bringup = lambda *args, **kwargs: print(
         "SERVICES_STARTED", flush=True
     )
-    inherited = iter(listeners)
+    reserved = iter(listeners)
 
     def open_listener(host, number):
-        listener = next(inherited)
+        listener = next(reserved)
         assert listener.getsockname() == (host, number)
         listener.listen()
         return listener
@@ -233,7 +259,8 @@ def parent(port: int, mode: str, listeners: list[socket.socket]) -> None:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    if sys.argv[3] == "unconfigured":
+    mode = sys.argv[3] if sys.argv[1] == "child" else sys.argv[2]
+    if mode == "unconfigured":
         for name in list(os.environ):
             if name.endswith("_API_KEY") or name == "PHYSICLAW_MODEL":
                 os.environ.pop(name)
@@ -241,17 +268,11 @@ if __name__ == "__main__":
         os.environ["PHYSICLAW_MODEL"] = "openai/test"
         os.environ["OPENAI_API_KEY"] = "synthetic-test-key"
     if sys.argv[1] == "child":
-        child(sys.argv[2], sys.argv[3])
+        child(sys.argv[2], mode)
     else:
-        if sys.platform == "win32":
-            listeners = [
-                socket.fromshare(bytes.fromhex(shared))
-                for shared in json.loads(sys.stdin.buffer.readline())
-            ]
-        else:
-            listeners = [socket.socket(fileno=int(fd)) for fd in sys.argv[4:]]
-        parent(
-            int(sys.argv[2]),
-            sys.argv[3],
-            listeners,
-        )
+        with reserved_ports() as (port, listeners):
+            print(f"LISTENERS_RESERVED={port}", flush=True)
+            # Let the test inspect reservation before starting real services.
+            # Use raw stdin throughout so buffering cannot eat interrupt bytes.
+            assert os.read(sys.stdin.fileno(), 1) == b"s", "missing start command"
+            parent(port, mode, listeners)

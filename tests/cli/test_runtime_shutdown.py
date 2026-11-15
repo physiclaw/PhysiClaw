@@ -4,7 +4,6 @@ Run: pytest -m integration tests/cli/test_runtime_shutdown.py
 """
 
 import errno
-import json
 import os
 import re
 import signal
@@ -19,6 +18,7 @@ from types import SimpleNamespace
 import pytest
 
 from physiclaw.port import processes as process_port
+from tests.cli import runtime_shutdown_app as fixture_app
 from tests.cli.runtime_shutdown_app import STARTUP_TIMEOUT
 from tests.timing_helpers import WAIT_TIMEOUT
 
@@ -66,33 +66,6 @@ async def test_unconfigured_server_serves_mcp_after_hardware_ready_without_agent
     assert runtime_state.read_live() is None
 
 
-@contextmanager
-def reserved_ports():
-    # Keep the actual bind addresses reserved until the child inherits them.
-    # A loopback probe misses conflicts on other interfaces; closing the
-    # sockets before Popen also lets another process take the selected ports.
-    for _ in range(100):
-        with socket.socket() as control, socket.socket() as bridge:
-            control.bind(("127.0.0.1", 0))
-            port = control.getsockname()[1]
-            if port >= 65535:
-                continue
-            try:
-                bridge.bind(("0.0.0.0", port + 1))
-            except OSError as error:
-                # A neighboring Windows port can be in an excluded range even
-                # when the ephemeral control port is available (WSAEACCES).
-                if error.errno != errno.EADDRINUSE and not (
-                    sys.platform == "win32"
-                    and getattr(error, "winerror", None) == 10013
-                ):
-                    raise
-                continue
-            yield port, (control, bridge)
-            return
-    raise AssertionError("no adjacent free ports")
-
-
 @pytest.mark.parametrize(
     "code, winerror", [(errno.EADDRINUSE, None), (errno.EACCES, 10013)]
 )
@@ -112,9 +85,9 @@ def test_regression_adjacent_port_selection_retries_unavailable_windows_ports(
     first_control.getsockname.return_value = ("127.0.0.1", 50000)
     control.getsockname.return_value = ("127.0.0.1", 50002)
     first_bridge.bind.side_effect = error
-    mocker.patch(f"{__name__}.sys", SimpleNamespace(platform="win32"))
+    mocker.patch.object(fixture_app, "sys", SimpleNamespace(platform="win32"))
     mocker.patch(
-        f"{__name__}.socket",
+        "tests.cli.runtime_shutdown_app.socket",
         SimpleNamespace(
             socket=mocker.Mock(
                 side_effect=[first_control, first_bridge, control, bridge]
@@ -122,7 +95,7 @@ def test_regression_adjacent_port_selection_retries_unavailable_windows_ports(
         ),
     )
 
-    with reserved_ports() as (port, listeners):
+    with fixture_app.reserved_ports() as (port, listeners):
         assert port == 50002
         assert listeners == (control, bridge)
 
@@ -137,17 +110,17 @@ def test_regression_adjacent_port_selection_does_not_hide_unexpected_errors(mock
     control.getsockname.return_value = ("127.0.0.1", 50000)
     bridge.bind.side_effect = OSError(errno.EIO, "unexpected bind failure")
     mocker.patch(
-        f"{__name__}.socket",
+        "tests.cli.runtime_shutdown_app.socket",
         SimpleNamespace(socket=mocker.Mock(side_effect=[control, bridge])),
     )
 
     with pytest.raises(OSError, match="unexpected bind failure"):
-        with reserved_ports():
+        with fixture_app.reserved_ports():
             pytest.fail("unexpected bind error was swallowed")
 
 
 @contextmanager
-def running(tmp_path, mode):
+def reserved_parent(tmp_path, mode):
     path = tmp_path / "process.log"
     env = {
         **os.environ,
@@ -160,34 +133,26 @@ def running(tmp_path, mode):
     proc = None
     with path.open("a", encoding="utf-8") as output:
         try:
-            with reserved_ports() as (port, listeners):
-                descriptors = tuple(listener.fileno() for listener in listeners)
-                options = (
-                    {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
-                    if sys.platform == "win32"
-                    else {"pass_fds": descriptors}
-                )
-                proc = subprocess.Popen(
-                    [
-                        sys.executable,
-                        str(Path(__file__).with_name("runtime_shutdown_app.py")),
-                        "parent",
-                        str(port),
-                        mode,
-                        *(str(fd) for fd in descriptors),
-                    ],
-                    **options,
-                    stdin=subprocess.PIPE,
-                    env=env,
-                    stdout=output,
-                    stderr=subprocess.STDOUT,
-                )
-                if sys.platform == "win32":
-                    # WSADuplicateSocket keeps both addresses reserved while
-                    # the child starts; Windows cannot inherit via pass_fds.
-                    shared = [listener.share(proc.pid).hex() for listener in listeners]
-                    proc.stdin.write(json.dumps(shared).encode("ascii") + b"\n")
-                    proc.stdin.flush()
+            options = (
+                {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+                if sys.platform == "win32"
+                else {}
+            )
+            proc = subprocess.Popen(
+                [
+                    sys.executable,
+                    str(Path(__file__).with_name("runtime_shutdown_app.py")),
+                    "parent",
+                    mode,
+                ],
+                **options,
+                stdin=subprocess.PIPE,
+                env=env,
+                stdout=output,
+                stderr=subprocess.STDOUT,
+            )
+            output_text = wait_for(proc, path, "LISTENERS_RESERVED=")
+            port = int(re.search(r"LISTENERS_RESERVED=(\d+)", output_text)[1])
             yield proc, path, port
         finally:
             if proc is not None:
@@ -210,6 +175,18 @@ def running(tmp_path, mode):
                 except OSError:
                     if process_port.pid_alive(pid):
                         raise
+
+
+def start_parent(proc):
+    proc.stdin.write(b"s")
+    proc.stdin.flush()
+
+
+@contextmanager
+def running(tmp_path, mode):
+    with reserved_parent(tmp_path, mode) as result:
+        start_parent(result[0])
+        yield result
 
 
 def interrupt(proc, sig=None):
@@ -404,20 +381,16 @@ def test_no_runtime_server_and_standalone_runtime_keep_real_mcp_lifecycle(tmp_pa
     assert not any(error in output for error in (*TARGET_ERRORS, "cancel scope"))
 
 
-def test_regression_listeners_cannot_be_stolen_during_spawn(tmp_path, mocker):
-    popen = subprocess.Popen
-
-    def spawn(args, **kwargs):
+def test_regression_listeners_remain_reserved_until_services_start(tmp_path):
+    with reserved_parent(tmp_path, "external") as (parent, path, port):
+        # The subprocess is blocked on its start command: neither service has
+        # listened yet, and both addresses must already belong to that process.
         for host, offset in (("127.0.0.1", 0), ("0.0.0.0", 1)):
             with socket.socket() as competitor:
                 with pytest.raises(OSError) as caught:  # noqa: PT011 -- errno is asserted below.
-                    competitor.bind((host, int(args[3]) + offset))
+                    competitor.bind((host, port + offset))
             assert caught.value.errno == errno.EADDRINUSE
-        return popen(args, **kwargs)
-
-    mocker.patch.object(subprocess, "Popen", side_effect=spawn)
-
-    with running(tmp_path, "external") as (parent, path, port):
+        start_parent(parent)
         wait_for(parent, path, "MCP tools live")
         interrupt(parent)
         parent.wait(timeout=WAIT_TIMEOUT)
