@@ -7,6 +7,7 @@ files to verify deletion vs. preservation.
 
 from __future__ import annotations
 
+import stat
 from pathlib import Path
 
 import pytest
@@ -40,6 +41,18 @@ def populated_home(physiclaw_home: Path) -> Path:
 
 
 # ---------- --data ----------
+
+
+def test_uninstall_removes_readonly_clone_leftovers(populated_home, runner):
+    leftover = populated_home / "models" / "marker"
+    leftover.chmod(stat.S_IREAD)
+    try:
+        result = runner.invoke(_make_app(), ["--data", "--yes"])
+        assert result.exit_code == 0, result.output
+        assert not populated_home.exists()
+    finally:
+        if leftover.exists():
+            leftover.chmod(stat.S_IWRITE)
 
 
 def test_uninstall_data_yes_removes_home(

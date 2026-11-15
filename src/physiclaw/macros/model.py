@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, ClassVar
 
 from physiclaw.common import gesture_vocab
 from physiclaw.common.bbox import Bbox, center_of, inside
+from physiclaw.common.filenames import is_portable_name
 
 # Screen/BLANK_SCREEN moved to common.listing (they are a listing codec,
 # not macro behavior); re-exported here so macro-side imports read
@@ -624,3 +625,5 @@ def check_name(name: str, where: str = "name", extra: str = "") -> None:
             f"≤{MAX_NAME_LEN} chars, no leading/trailing/consecutive "
             f"hyphens{extra}"
         )
+    if not is_portable_name(name):
+        raise MacroError(f"{where} {name!r} is a reserved filesystem name{extra}")

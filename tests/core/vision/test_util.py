@@ -3,7 +3,7 @@ numpad inference, and the phone-in-frame diagnostic.
 
 All tests use synthetic BGR `np.ndarray` images — no real photos
 required. `check_phone_in_frame` writes a debug JPEG under
-`tempfile.gettempdir()` as a side effect; tests mock `cv2.imwrite` to
+`tempfile.gettempdir()` as a side effect; tests mock `write_image` to
 keep the host clean.
 """
 
@@ -16,6 +16,8 @@ import cv2
 import numpy as np
 import pytest
 
+from physiclaw.common.image import read_image
+from physiclaw.core.vision import util
 from physiclaw.core.vision.util import (
     bbox_on_screen,
     check_phone_in_frame,
@@ -154,6 +156,23 @@ def test_decode_image_raises_on_invalid_bytes() -> None:
         decode_image(b"not an image")
 
 
+def test_rotation_diagnostic_writes_unicode_path_and_survives_write_failure(
+    tmp_path, monkeypatch, caplog
+):
+    path = tmp_path / "旋转 🚀.jpg"
+    monkeypatch.setattr(util, "_ROTATION_DEBUG_PATH", str(path))
+    frame = _phone_like_frame(800, 600, phone_w=600, phone_h=300)
+    result = check_phone_in_frame(frame)
+    assert result["ok"]
+    assert read_image(path) is not None
+
+    monkeypatch.setattr(
+        util, "_ROTATION_DEBUG_PATH", str(tmp_path / "missing" / "frame.jpg")
+    )
+    assert check_phone_in_frame(frame) == result
+    assert "Could not save camera rotation diagnostic" in caplog.text
+
+
 # ---------- check_phone_in_frame ----------
 
 
@@ -182,7 +201,7 @@ def _phone_like_frame(
 
 
 def test_check_phone_in_frame_raises_when_no_bright_region(mocker) -> None:
-    mocker.patch.object(cv2, "imwrite")
+    mocker.patch.object(util, "write_image")
     img = np.zeros((480, 640, 3), dtype=np.uint8)
 
     with pytest.raises(RuntimeError, match=r"^No bright region in camera frame"):
@@ -190,7 +209,7 @@ def test_check_phone_in_frame_raises_when_no_bright_region(mocker) -> None:
 
 
 def test_check_phone_in_frame_reports_ok_for_well_aligned_phone(mocker) -> None:
-    mocker.patch.object(cv2, "imwrite")
+    mocker.patch.object(util, "write_image")
     # Aligned 2:1 phone covering roughly 37% of the frame.
     img = _phone_like_frame(800, 600, phone_w=600, phone_h=300)
 
@@ -211,7 +230,7 @@ def test_check_phone_in_frame_reports_ok_for_well_aligned_phone(mocker) -> None:
 def test_check_phone_in_frame_returns_low_coverage_advice_without_warning_logs(
     mocker, caplog, img_w, img_h, phone_w, phone_h
 ) -> None:
-    mocker.patch.object(cv2, "imwrite")
+    mocker.patch.object(util, "write_image")
     img = _phone_like_frame(img_w, img_h, phone_w=phone_w, phone_h=phone_h)
 
     with caplog.at_level(logging.INFO):
@@ -228,7 +247,7 @@ def test_check_phone_in_frame_returns_low_coverage_advice_without_warning_logs(
 
 
 def test_check_phone_in_frame_accepts_coverage_just_above_25pct(mocker) -> None:
-    mocker.patch.object(cv2, "imwrite")
+    mocker.patch.object(util, "write_image")
     img = _phone_like_frame(800, 600, phone_w=510, phone_h=255)
 
     result = check_phone_in_frame(img)
@@ -238,7 +257,7 @@ def test_check_phone_in_frame_accepts_coverage_just_above_25pct(mocker) -> None:
 
 
 def test_check_phone_in_frame_flags_misaligned_long_axis(mocker) -> None:
-    mocker.patch.object(cv2, "imwrite")
+    mocker.patch.object(util, "write_image")
     # Image landscape but phone portrait.
     img = _phone_like_frame(800, 600, phone_w=200, phone_h=600)
 
@@ -248,7 +267,7 @@ def test_check_phone_in_frame_flags_misaligned_long_axis(mocker) -> None:
 
 
 def test_check_phone_in_frame_flags_rotated_phone(mocker) -> None:
-    mocker.patch.object(cv2, "imwrite")
+    mocker.patch.object(util, "write_image")
     # Build a phone tilted ~10° — drawn via a rotation transform.
     img = np.zeros((600, 800, 3), dtype=np.uint8)
     src_corners = np.array(
@@ -267,7 +286,7 @@ def test_check_phone_in_frame_flags_rotated_phone(mocker) -> None:
 def test_check_phone_in_frame_flags_aspect_ratio_outside_2to1_tolerance(
     mocker,
 ) -> None:
-    mocker.patch.object(cv2, "imwrite")
+    mocker.patch.object(util, "write_image")
     # A square (1:1) phone — aspect 1.0, far from 2.0.
     img = _phone_like_frame(800, 600, phone_w=400, phone_h=400)
 

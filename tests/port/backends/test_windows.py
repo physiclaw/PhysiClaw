@@ -7,14 +7,36 @@ regressions also exercise the real Windows API when available.
 from __future__ import annotations
 
 import socket
+import stat
 import subprocess
 import sys
+from types import SimpleNamespace
 from unittest.mock import MagicMock, call
 
 import pytest
 
 from physiclaw.port.backends import windows
 from tests.timing_helpers import PROCESS_TIMEOUT, WAIT_TIMEOUT
+
+
+@pytest.mark.parametrize(
+    "attributes", [0, stat.FILE_ATTRIBUTE_READONLY | stat.FILE_ATTRIBUTE_REPARSE_POINT]
+)
+def test_tree_cleanup_does_not_override_other_permissions_or_follow_links(
+    mocker, attributes
+):
+    mocker.patch.object(
+        windows.os, "lstat", return_value=SimpleNamespace(st_file_attributes=attributes)
+    )
+    chmod = mocker.patch.object(windows.os, "chmod")
+    remove = mocker.Mock()
+    error = PermissionError("not an owned readonly file")
+
+    with pytest.raises(PermissionError, match="not an owned readonly file"):
+        windows.remove_readonly(remove, "file", error)
+
+    chmod.assert_not_called()
+    remove.assert_not_called()
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="requires Windows process handles")

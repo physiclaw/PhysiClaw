@@ -7,8 +7,11 @@ never import this module directly — go through ``physiclaw.port``.
 import logging
 import math
 import os
+import re
+import shutil
 import signal
 import socket
+import stat
 import subprocess
 import threading
 import time
@@ -287,10 +290,40 @@ REMOTE_SHUTDOWN_SUPPORTED = False
 EDITOR_CANDIDATES = ("notepad",)
 
 
-def editor_command(editor: str, filename: str) -> str:
-    # Popen passes a string to CreateProcess unchanged when shell=False.
-    # Preserve the user's Windows quoting; quote only the appended filename.
-    return f"{editor} {subprocess.list2cmdline([filename])}"
+def run_editor(editor: str | list[str], filename: str) -> None:
+    prefix = subprocess.list2cmdline(editor) if isinstance(editor, list) else editor
+    # Only split the executable: preserve the user's native argument quoting.
+    match = re.fullmatch(r'\s*(?:"([^"]+)"|([^\s"]+))(.*)', prefix, re.DOTALL)
+    if match is None:
+        raise ValueError("invalid Windows editor command")
+    executable = match[1] or match[2]
+    resolved = shutil.which(executable) or executable
+    tail = match[3]
+    command: str | list[str]
+    if Path(resolved).suffix.lower() in {".cmd", ".bat"}:
+        # cmd.exe resolves batch wrappers, while CreateProcess only tries .exe.
+        # Pass the filename as environment data so literal %NAME% is not expanded.
+        body = f'"%PHYSICLAW_EDITOR_EXECUTABLE%"{tail} "%PHYSICLAW_EDITOR_FILE%"'
+        command = (
+            f"{subprocess.list2cmdline([os.environ.get('COMSPEC', 'cmd.exe')])} "
+            f'/d /v:off /s /c "{body}"'
+        )
+        subprocess.run(
+            command,
+            check=True,
+            env={
+                **os.environ,
+                "PHYSICLAW_EDITOR_EXECUTABLE": resolved,
+                "PHYSICLAW_EDITOR_FILE": filename,
+            },
+        )
+    else:
+        command = (
+            [*editor, filename]
+            if isinstance(editor, list)
+            else f"{subprocess.list2cmdline([resolved])}{tail} {subprocess.list2cmdline([filename])}"
+        )
+        subprocess.run(command, check=True)
 
 
 def termination_signals() -> tuple[int, ...]:
@@ -365,3 +398,16 @@ def lock_stream(stream: BinaryIO) -> None:
         msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
     except OSError as exc:
         raise BlockingIOError(str(exc)) from exc
+
+
+def remove_readonly(function, path, error) -> None:
+    if not isinstance(error, PermissionError):
+        raise error
+    attributes = getattr(os.lstat(path), "st_file_attributes", 0)
+    if (
+        not attributes & stat.FILE_ATTRIBUTE_READONLY
+        or attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT
+    ):
+        raise error
+    os.chmod(path, stat.S_IWRITE)
+    function(path)

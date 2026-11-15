@@ -70,7 +70,24 @@ def test_init_loads_model(tmp_path: Path, mocker) -> None:
     detector = IconDetector(model_path=model)
 
     assert detector.net is fake_net
-    spy.assert_called_once_with(str(model))
+    spy.assert_called_once()
+
+
+def test_unicode_model_path_loads_real_onnx_and_runs_inference(tmp_path):
+    # A complete ONNX Relu graph, not a mocked filename/loader boundary.
+    model_bytes = bytes.fromhex(
+        "08073a3f0a0c0a0158120159220452656c7512056175646974"
+        "5a130a0158120e0a0c080112080a0208010a020801"
+        "62130a0159120e0a0c080112080a0208010a0208014202100d"
+    )
+    model = tmp_path / "测试 🚀" / "图标.onnx"
+    model.parent.mkdir()
+    model.write_bytes(model_bytes)
+
+    detector = IconDetector(model)
+    detector.net.setInput(np.array([[-2.0]], dtype=np.float32))
+
+    np.testing.assert_array_equal(detector.net.forward(), [[0.0]])
 
 
 # ---------- detect ----------

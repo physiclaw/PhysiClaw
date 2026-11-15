@@ -22,6 +22,7 @@ from datetime import datetime
 from pathlib import Path
 
 from physiclaw.common import paths
+from physiclaw.common.image import write_image
 from physiclaw.common.text import write_text
 
 log = logging.getLogger(__name__)
@@ -83,7 +84,6 @@ def _save_frame(directory: Path, frame) -> None:
 
     try:
         d = _mkdir(directory)
-        if not cv2.imwrite(str(d / f"{_stamp()}.jpg"), frame):
-            log.warning("camera dump encoder could not write to %s", directory)
+        write_image(d / f"{_stamp()}.jpg", frame)
     except (OSError, cv2.error):
         log.warning("camera dump failed", exc_info=True)

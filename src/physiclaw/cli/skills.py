@@ -35,6 +35,7 @@ from physiclaw.cli._format import exit_error, ok, warn
 from physiclaw.common import paths
 from physiclaw.common.config import load as _load_config
 from physiclaw.common.text import read_text, write_text
+from physiclaw.port.filesystem import remove_tree
 from physiclaw.port.locks import FileLockBusy, exclusive_file_lock
 
 skills_app = typer.Typer(
@@ -165,7 +166,8 @@ def _validate_name(name: str) -> None:
 
     if not is_safe_skill_name(name):
         exit_error(
-            f"invalid skill name {name!r}. Allowed: letters, digits, '.', '_', '-'."
+            f"invalid skill name {name!r}. Allowed: letters, digits, '.', '_', '-'; "
+            "no trailing dot or reserved device name."
         )
 
 
@@ -180,6 +182,8 @@ def _git(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess:
             cwd=str(cwd) if cwd else None,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
     except FileNotFoundError:
         exit_error(
@@ -196,7 +200,8 @@ def _git(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess:
 def _clone(source: str, ref: str | None, dest: Path) -> str:
     """Shallow-clone ``source`` into ``dest``. If ``ref`` is given, check
     out that branch or tag. Returns the HEAD sha of the cloned tree."""
-    clone_args = ["clone", "--depth=1"]
+    # Cleanup must never change attributes of hardlinks to the source's objects.
+    clone_args = ["clone", "--depth=1", "--no-hardlinks"]
     if ref:
         clone_args += ["--branch", ref]
     clone_args += ["--", source, str(dest)]
@@ -270,6 +275,13 @@ def _validate_tree(
         exit_error(f"unsupported skill file: {path}")
 
 
+def _cleanup(path: Path) -> None:
+    try:
+        remove_tree(path)
+    except OSError as error:
+        typer.echo(warn(f"could not clean up {path}: {error}"), err=True)
+
+
 def _replace_skill(src: Path, dst: Path) -> None:
     """Replace on the same filesystem; restore the old install on failure.
 
@@ -296,7 +308,7 @@ def _replace_skill(src: Path, dst: Path) -> None:
         raise
     finally:
         if not preserve:
-            shutil.rmtree(backup_dir, ignore_errors=True)
+            _cleanup(backup_dir)
 
 
 @skills_app.command(
@@ -366,7 +378,7 @@ def _install(
             _check_existing(target, force)
             _replace_skill(staging, target)
         finally:
-            shutil.rmtree(scratch, ignore_errors=True)
+            _cleanup(scratch)
 
     typer.echo(
         ok(
@@ -479,7 +491,7 @@ def _uninstall(
         if target.is_symlink() or target.is_file():
             target.unlink()
         else:
-            shutil.rmtree(target)
+            remove_tree(target)
     typer.echo(ok(f"removed {name}"))
     if prov is None:
         typer.echo(warn("no provenance marker — removed user-authored skill."))

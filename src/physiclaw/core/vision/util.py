@@ -16,7 +16,7 @@ import numpy as np
 
 from physiclaw.common.bbox import validate_bbox
 from physiclaw.common.config import CONFIG
-from physiclaw.common.image import checked_image_size
+from physiclaw.common.image import checked_image_size, write_image
 from physiclaw.core.vision.preprocess import grayscale, resize_to_max_edge
 
 # `validate_bbox` comes from `physiclaw.common.bbox` (the shared
@@ -97,7 +97,10 @@ def check_phone_in_frame(frame: np.ndarray) -> dict:
         (0, 255, 0),
         2,
     )
-    cv2.imwrite(_ROTATION_DEBUG_PATH, annotated)
+    try:
+        write_image(_ROTATION_DEBUG_PATH, annotated)
+    except (OSError, cv2.error):
+        log.warning("Could not save camera rotation diagnostic", exc_info=True)
 
     # Phone edges should be parallel to image edges (< 3° deviation).
     pts = cv2.boxPoints(rect)

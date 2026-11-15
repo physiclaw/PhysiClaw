@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
 
@@ -13,6 +14,39 @@ from hardware import buildlog, log_style
 
 def records(path):
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+
+
+def test_subprocess_utf8_diagnostics_and_lossless_output(tmp_path):
+    child = (
+        "import sys;sys.stdout.buffer.write(bytes.fromhex('20e7a1ace4bbb60d0aff00'))"
+    )
+    with buildlog.session(tmp_path):
+        output = buildlog.run_process([sys.executable, "-c", child])
+        lossless = buildlog.run_process([sys.executable, "-c", child], text=False)
+
+    assert output == " 硬件\n�\0"
+    assert lossless == bytes.fromhex("20e7a1ace4bbb60d0aff00")
+    assert records(next((tmp_path / "logs").glob("*.jsonl")))
+
+
+def test_binary_subprocess_failure_preserves_both_streams(tmp_path):
+    child = (
+        "import sys;sys.stdout.buffer.write(b' out\\r\\n\\xff\\0');"
+        "sys.stderr.buffer.write(b' err\\r\\n\\xfe\\0');sys.exit(3)"
+    )
+    with buildlog.session(tmp_path) as log:
+        with pytest.raises(subprocess.CalledProcessError) as caught:
+            buildlog.run_process(
+                [sys.executable, "-c", child], text=False, merge_stderr=False
+            )
+    assert caught.value.returncode == 3
+    assert caught.value.stdout == b" out\r\n\xff\0"
+    assert caught.value.stderr == b" err\r\n\xfe\0"
+    saved = records(log.path)
+    assert {r["stream"] for r in saved if r["event"] == "subprocess_output"} == {
+        "stdout",
+        "stderr",
+    }
 
 
 def test_terminal_is_concise_but_file_keeps_diagnostics(tmp_path, capsys):

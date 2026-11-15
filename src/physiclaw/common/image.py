@@ -1,4 +1,4 @@
-"""Image ingress cap for LLM-bound payloads.
+"""Portable image file I/O and ingress caps for LLM-bound payloads.
 
 Lives in `common` because both sides of the provider/engine boundary
 need the cap (`provider.wire` scales MCP images on ingress; the server
@@ -7,10 +7,17 @@ lived in `agent.engine.compact`, the provider package had to import the
 engine's behavior module for one pure function.
 """
 
+from __future__ import annotations
+
 import logging
 from io import BytesIO
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 from physiclaw.common import config
+
+if TYPE_CHECKING:
+    import numpy as np
 
 log = logging.getLogger(__name__)
 
@@ -18,6 +25,31 @@ _JPEG_MAGIC = b"\xff\xd8\xff"  # JPEG SOI marker
 # Allow an 8K frame, while bounding a decoded BGR buffer to 96 MiB.
 MAX_IMAGE_PIXELS = 32 * 1024 * 1024
 MAX_IMAGE_DIMENSION = 16_384
+
+
+def read_image(path: str | Path) -> np.ndarray | None:
+    """Read a diagnostic image without OpenCV's narrow Windows path API."""
+    import cv2
+    import numpy as np
+
+    try:
+        data = Path(path).read_bytes()
+        if data:
+            return cv2.imdecode(np.frombuffer(data, dtype=np.uint8), cv2.IMREAD_COLOR)
+    except (OSError, cv2.error):
+        pass
+    return None
+
+
+def write_image(path: str | Path, frame: np.ndarray) -> None:
+    """Write an encoded image through Python's Unicode-capable filesystem I/O."""
+    import cv2
+
+    path = Path(path)
+    ok, encoded = cv2.imencode(path.suffix, frame)
+    if not ok:
+        raise OSError(f"Could not encode image: {path}")
+    path.write_bytes(memoryview(encoded))
 
 
 class ImageSizeError(ValueError):

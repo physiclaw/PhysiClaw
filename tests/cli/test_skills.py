@@ -436,6 +436,40 @@ def test_install_invalid_name_exit_1(fake_home: Path) -> None:
     assert result.exit_code == 1
 
 
+@pytest.mark.parametrize(
+    "name", ["myskill.", "myskill ", "nul", "CON.txt", "aux", "COM1"]
+)
+@pytest.mark.parametrize("operation", ["install", "uninstall"])
+def test_nonportable_names_cannot_mutate_an_existing_skill(fake_home, name, operation):
+    victim = fake_home / "myskill"
+    victim.mkdir(parents=True)
+    (victim / "SKILL.md").write_bytes(b"keep this skill")
+    args = [operation, name, "--force"]
+    if operation == "install":
+        args += ["--from", "owner/repo"]
+
+    result = runner.invoke(skills_app, args)
+
+    assert result.exit_code == 1
+    assert "invalid skill name" in result.output
+    assert (victim / "SKILL.md").read_bytes() == b"keep this skill"
+    assert list(fake_home.iterdir()) == [victim]
+
+
+def test_persistent_scratch_cleanup_failure_is_reported(fake_home, mocker):
+    _stub_clone(mocker, lambda d: _populate_clone(d, name="myskill"))
+    mocker.patch.object(
+        skills_mod, "remove_tree", side_effect=PermissionError("still locked")
+    )
+
+    result = runner.invoke(skills_app, ["install", "myskill", "--from", "owner/repo"])
+
+    assert result.exit_code == 0
+    assert "could not clean up" in result.output
+    assert "still locked" in result.output
+    assert (fake_home / "myskill" / "SKILL.md").is_file()
+
+
 def test_install_existing_provenanced_without_force(
     fake_home: Path,
     mocker,

@@ -4,6 +4,7 @@ import importlib
 import os
 import shlex
 import signal
+import subprocess
 from pathlib import Path
 from typing import BinaryIO
 
@@ -11,8 +12,9 @@ REMOTE_SHUTDOWN_SUPPORTED = True
 EDITOR_CANDIDATES = ("vim", "vi", "nano")
 
 
-def editor_command(editor: str, filename: str) -> list[str]:
-    return [*shlex.split(editor), filename]
+def run_editor(editor: str | list[str], filename: str) -> None:
+    argv = shlex.split(editor) if isinstance(editor, str) else editor
+    subprocess.run([*argv, filename], check=True)
 
 
 def termination_signals() -> tuple[int, ...]:
@@ -54,3 +56,7 @@ def replace_file(source: Path, target: Path) -> None:
 def lock_stream(stream: BinaryIO) -> None:
     fcntl = importlib.import_module("fcntl")
     fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
+def remove_readonly(function, path, error) -> None:
+    raise error

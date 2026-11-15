@@ -98,7 +98,7 @@ async def test_camera_advice_reaches_setup_and_diagnostics_only(
     frame[970:1030, 2470:2530] = (255, 100, 0)  # Blue UP.
     frame[1170:1230, 1870:1930] = (0, 50, 255)  # Red RIGHT.
     mocker.patch.object(camera_frame.time, "sleep")
-    mocker.patch.object(camera_frame.cv2, "imwrite")
+    mocker.patch("physiclaw.core.vision.util.write_image")
     rig = wire_locked(mocker.MagicMock())
     rig.cam.raw_frame.return_value = frame
 

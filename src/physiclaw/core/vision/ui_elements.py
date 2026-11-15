@@ -16,6 +16,7 @@ import numpy as np
 
 from physiclaw.common import paths
 from physiclaw.common.bbox import validate_bbox
+from physiclaw.common.image import read_image, write_image
 from physiclaw.common.listing import Element
 from physiclaw.common.log_style import FailureState
 from physiclaw.common.text import write_text
@@ -67,7 +68,7 @@ def detect_ui_elements(
     """Run icon detection + OCR → structured elements + annotated image.
 
     Args:
-        frame: BGR numpy array. Use `cv2.imread(path)` for a file.
+        frame: BGR numpy array. Use `read_image(path)` for a file.
     """
     h, w = frame.shape[:2]
 
@@ -244,8 +245,6 @@ if __name__ == "__main__":
     import argparse
     from pathlib import Path
 
-    import cv2
-
     from physiclaw.common.log_style import (
         add_log_arguments,
         configure_console,
@@ -265,7 +264,7 @@ if __name__ == "__main__":
 
     configure_console("vision", verbose=args.verbose, log_format=args.log_format)
 
-    frame = cv2.imread(args.image)
+    frame = read_image(args.image)
     if frame is None:
         report_error(f"Cannot read image: {args.image}", tag="vision")
         raise SystemExit(1)
@@ -292,7 +291,7 @@ if __name__ == "__main__":
         else paths.snapshots_dir() / (Path(args.image).stem + "_ui_elements.jpg")
     )
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    cv2.imwrite(str(out_path), annotated)
+    write_image(out_path, annotated)
 
     json_path = out_path.with_suffix(".json")
     write_text(json_path, compact_json(elements_to_json(elements)))

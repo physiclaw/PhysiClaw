@@ -1,14 +1,13 @@
 """Native desktop operations; callers own file contents and validation."""
 
 import shutil
-import subprocess
 from pathlib import Path
 
 from physiclaw.port._select import native as _native
 
 
 def edit_file(path: Path, *, editor: str | None = None) -> None:
-    """Wait for an editor without a shell, preserving native command quoting."""
+    """Select an editor and wait for its native launcher to finish."""
     command: list[str] | str
     if not editor:
         candidate = next(
@@ -19,12 +18,12 @@ def edit_file(path: Path, *, editor: str | None = None) -> None:
             raise FileNotFoundError(
                 f"no $EDITOR set and no {choices} on PATH. Edit by hand: {path}"
             )
-        command = [candidate, str(path)]
+        command = [candidate]
     elif not editor.strip():
         raise ValueError("editor command is empty")
     elif Path(editor).is_file():
         # A bare executable path may contain spaces or backslashes.
-        command = [editor, str(path)]
+        command = [editor]
     else:
-        command = _native.editor_command(editor, str(path))
-    subprocess.run(command, check=True)
+        command = editor
+    _native.run_editor(command, str(path))

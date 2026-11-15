@@ -31,6 +31,7 @@ import cv2
 import numpy as np
 
 from physiclaw.common import paths
+from physiclaw.common.image import read_image, write_image
 
 log = logging.getLogger(__name__)
 
@@ -57,7 +58,10 @@ class IconDetector:
                 f"Model not found at {model_path}\n"
                 "Run: physiclaw setup local-vision-model"
             )
-        self.net = cv2.dnn.readNetFromONNX(str(model_path))
+        # OpenCV's narrow filename API cannot open Unicode Windows paths.
+        self.net = cv2.dnn.readNetFromONNX(
+            np.frombuffer(model_path.read_bytes(), dtype=np.uint8)
+        )
 
     def detect(
         self, frame: np.ndarray, confidence: float = MIN_CONFIDENCE
@@ -187,7 +191,7 @@ if __name__ == "__main__":
 
     configure_console("vision", verbose=args.verbose, log_format=args.log_format)
 
-    img = cv2.imread(args.image)
+    img = read_image(args.image)
     if img is None:
         report_error(f"Cannot read image: {args.image}", tag="vision")
         raise SystemExit(1)
@@ -202,5 +206,5 @@ if __name__ == "__main__":
 
     output_path = args.output or str(Path(args.image).stem) + "_detected.jpg"
     annotated = annotate(img, elements)
-    cv2.imwrite(output_path, annotated)
+    write_image(output_path, annotated)
     print(f"Saved: {output_path}")

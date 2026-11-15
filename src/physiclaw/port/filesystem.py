@@ -1,6 +1,7 @@
 """Native filesystem details behind the application's portable text policy."""
 
 import errno
+import shutil
 from pathlib import Path
 
 from physiclaw.port._select import native as _native
@@ -29,3 +30,8 @@ def native_path(path: Path) -> Path:
 def replace_file(source: Path, target: Path) -> None:
     """Replace a sibling file, handling bounded native sharing contention."""
     _native.replace_file(source, target)
+
+
+def remove_tree(path: Path) -> None:
+    """Remove an owned tree, retrying read-only Windows files when needed."""
+    shutil.rmtree(path, onexc=_native.remove_readonly)

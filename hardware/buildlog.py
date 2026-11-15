@@ -299,7 +299,15 @@ def step(label):
     )
 
 
-def run_process(args, *, timeout=None, merge_stderr=True, cancelled=None, **kwargs):
+def run_process(
+    args,
+    *,
+    timeout=None,
+    merge_stderr=True,
+    cancelled=None,
+    text=True,
+    **kwargs,
+):
     """Stream child diagnostics to the run log and clean up its process group."""
     from hardware.port.processes import ignore_interrupts, is_interrupted, owned_process
 
@@ -313,6 +321,8 @@ def run_process(args, *, timeout=None, merge_stderr=True, cancelled=None, **kwar
         try:
             for line in pipe:
                 lines.append(line)
+                if isinstance(line, bytes):
+                    line = line.decode("utf-8", errors="replace")
                 fields = {"child_pid": child.pid, "stream": stream}
                 try:
                     child_event = json.loads(line)
@@ -342,8 +352,9 @@ def run_process(args, *, timeout=None, merge_stderr=True, cancelled=None, **kwar
         args,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT if merge_stderr else subprocess.PIPE,
-        text=True,
-        errors="replace",
+        text=text,
+        encoding="utf-8" if text else None,
+        errors="replace" if text else None,
         **kwargs,
     ) as owner:
         child = owner.process
@@ -393,12 +404,13 @@ def run_process(args, *, timeout=None, merge_stderr=True, cancelled=None, **kwar
             )
         if reader_errors:
             raise reader_errors[0]
-        output = "".join(stdout)
+        separator = "" if text else b""
+        output = separator.join(stdout)
         if is_interrupted(child.returncode):
             raise KeyboardInterrupt
         if child.returncode:
             raise subprocess.CalledProcessError(
-                child.returncode, args, output=output, stderr="".join(stderr)
+                child.returncode, args, output=output, stderr=separator.join(stderr)
             )
         return output
 

@@ -22,6 +22,13 @@ from physiclaw.conductor.spec.reply import INCOMING_LEFT, incoming_box
 runner = CliRunner()
 
 
+@pytest.mark.parametrize("app", ["nul", "con", "aux", "com1", "channel/nul"])
+def test_init_pack_rejects_device_names_before_creating_files(app):
+    with pytest.raises(PlaybookError, match="reserved filesystem name"):
+        scaffold.init_pack(app)
+    assert not paths.playbooks_dir().exists()
+
+
 def test_one_im_folder_is_the_channel_with_no_active_file() -> None:
     write_channel()
 

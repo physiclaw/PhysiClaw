@@ -23,6 +23,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from physiclaw.common.image import read_image, write_image
 from physiclaw.core.vision.preprocess import resize_to_max_edge
 
 log = logging.getLogger(__name__)
@@ -204,7 +205,7 @@ if __name__ == "__main__":
 
     configure_console("vision", verbose=args.verbose, log_format=args.log_format)
 
-    img = cv2.imread(args.image)
+    img = read_image(args.image)
     if img is None:
         report_error(f"Cannot read image: {args.image}", tag="vision")
         raise SystemExit(1)
@@ -218,5 +219,5 @@ if __name__ == "__main__":
 
     output_path = args.output or str(Path(args.image).stem) + "_ocr.jpg"
     annotated = annotate(img, results)
-    cv2.imwrite(output_path, annotated)
+    write_image(output_path, annotated)
     print(f"Saved: {output_path}")

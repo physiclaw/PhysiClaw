@@ -76,13 +76,20 @@ def digest(path: Path) -> str:
 
 def source_digest() -> str:
     """Hash tracked AND untracked non-ignored inputs, including filenames."""
-    names = run("git", "ls-files", "-z", "--cached", "--others", "--exclude-standard")
+    # NUL-delimited filenames are binary data: preserve whitespace and CR/LF bytes.
+    names = buildlog.run_process(
+        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+        cwd=REPO_ROOT,
+        timeout=120,
+        merge_stderr=False,
+        text=False,
+    )
     h = hashlib.sha256()
-    for name in sorted(set(names.split("\0")) - {""}):
-        path = REPO_ROOT / name
+    for name in sorted(set(names.split(b"\0")) - {b""}):
+        path = REPO_ROOT / os.fsdecode(name)
         if path.is_symlink() or not path.is_file():
             raise ReleaseError(f"Source is missing or a symlink: {name}")
-        h.update(name.encode() + b"\0" + digest(path).encode() + b"\0")
+        h.update(name + b"\0" + digest(path).encode() + b"\0")
     return h.hexdigest()
 
 

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -759,6 +761,8 @@ def test_deploy_success_requires_published_assets_tag_and_docs(github):
         "model.py",
         "hardware/documents/assets/icon/report.svg",
         "hardware/documents/assets/figure/wire_splice.svg",
+        "文档/硬件 🚀.py",
+        " leading.py",
     ],
 )
 def test_source_digest_includes_untracked_files_and_renames(
@@ -775,6 +779,55 @@ def test_source_digest_includes_untracked_files_and_renames(
     second = rel.source_digest()
     source.rename(tmp_path / "renamed.py")
     assert rel.source_digest() != second
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="POSIX permits control and undecodable filename bytes",
+)
+@pytest.mark.parametrize(
+    "name", [b"part-\xff.py", b"line\r\nbreak.py", b"line\rbreak.py", b"line\nbreak.py"]
+)
+def test_source_digest_keeps_posix_filename_bytes(tmp_path, monkeypatch, name):
+    monkeypatch.setattr(rel, "REPO_ROOT", tmp_path)
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    source = tmp_path / os.fsdecode(name)
+    source.write_bytes(b"SIZE = 1")
+    first = rel.source_digest()
+    content_digest = hashlib.sha256(b"SIZE = 1").hexdigest().encode()
+    assert first == hashlib.sha256(name + b"\0" + content_digest + b"\0").hexdigest()
+    source.write_bytes(b"SIZE = 2")
+    assert rel.source_digest() != first
+
+
+def test_source_digest_with_python_utf8_mode_disabled(tmp_path):
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    (tmp_path / "中文.py").write_bytes(b"fixture")
+    root = Path(__file__).resolve().parents[2]
+    code = (
+        "from pathlib import Path;from hardware import release;"
+        f"release.REPO_ROOT=Path({str(tmp_path)!r});"
+        "print(release.source_digest())"
+    )
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-X",
+            "utf8=0",
+            "-X",
+            "warn_default_encoding",
+            "-W",
+            "error::EncodingWarning",
+            "-c",
+            code,
+        ],
+        env={**os.environ, "PYTHONPATH": str(root)},
+        capture_output=True,
+        encoding="utf-8",
+        check=True,
+    )
+    assert len(result.stdout.strip()) == 64
+    assert "UnicodeDecodeError" not in result.stderr
 
 
 @pytest.mark.parametrize("failed", [False, True])

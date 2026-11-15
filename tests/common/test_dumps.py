@@ -9,6 +9,7 @@ import pytest
 from freezegun import freeze_time
 
 from physiclaw.common import dumps
+from physiclaw.common.image import read_image
 
 
 @pytest.fixture
@@ -153,6 +154,25 @@ def test_save_snapshot_writes_jpeg(
     assert files[0].stat().st_size > 0  # cv2 actually wrote
 
 
+@pytest.mark.parametrize(
+    "save,env,directory",
+    [
+        (dumps.save_snapshot, "PHYSICLAW_SAVE_SNAPSHOTS", "snapshots_dir"),
+        (dumps.save_raw_camera, "PHYSICLAW_SAVE_RAW_CAMERA", "raw_camera_dir"),
+    ],
+)
+def test_camera_dump_writes_unicode_paths(tmp_path, monkeypatch, save, env, directory):
+    target = tmp_path / "截图 🚀"
+    monkeypatch.setenv(env, "1")
+    monkeypatch.setattr(dumps.paths, directory, lambda: target)
+
+    save(np.zeros((16, 16, 3), dtype=np.uint8))
+
+    files = list(target.glob("*.jpg"))
+    assert len(files) == 1
+    assert read_image(files[0]) is not None
+
+
 # ---------- save_screenshot ----------
 
 
@@ -288,7 +308,7 @@ def test_dump_camera_encoder_failure_is_nonfatal(
     import cv2
 
     monkeypatch.setenv(env, "1")
-    encode = mocker.patch.object(cv2, "imwrite", side_effect=cv2.error("bad frame"))
+    encode = mocker.patch.object(cv2, "imencode", side_effect=cv2.error("bad frame"))
 
     save(None)
 
@@ -301,18 +321,18 @@ def test_dump_camera_unsuccessful_write_is_reported(
     import cv2
 
     monkeypatch.setenv("PHYSICLAW_SAVE_RAW_CAMERA", "1")
-    mocker.patch.object(cv2, "imwrite", return_value=False)
+    mocker.patch.object(cv2, "imencode", return_value=(False, None))
 
     dumps.save_raw_camera(None)
 
-    assert "could not write" in caplog.text
+    assert "camera dump failed" in caplog.text
 
 
 def test_dump_raw_camera_disabled_does_not_encode(monkeypatch, mocker) -> None:
     import cv2
 
     monkeypatch.delenv("PHYSICLAW_SAVE_RAW_CAMERA", raising=False)
-    encode = mocker.patch.object(cv2, "imwrite")
+    encode = mocker.patch.object(cv2, "imencode")
 
     dumps.save_raw_camera(None)
 

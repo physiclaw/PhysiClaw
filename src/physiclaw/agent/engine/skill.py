@@ -59,6 +59,7 @@ from importlib.resources import files as _pkg_files
 from pathlib import Path
 
 from physiclaw.common import paths
+from physiclaw.common.filenames import is_portable_name
 from physiclaw.common.text import read_text
 
 log = logging.getLogger(__name__)
@@ -100,7 +101,7 @@ class Skill:
 
 def is_safe_skill_name(name: str) -> bool:
     """Whether a name follows the installer's path-component character rules."""
-    return _NAME_RE.fullmatch(name) is not None
+    return _NAME_RE.fullmatch(name) is not None and is_portable_name(name)
 
 
 def discover_builtin_skills() -> dict[str, Skill]:

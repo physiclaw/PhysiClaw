@@ -12,7 +12,6 @@ target specific pieces; ``--yes`` skips confirmations; ``--dry-run``
 prints what would happen without touching the filesystem.
 """
 
-import shutil
 from pathlib import Path
 from typing import Annotated
 
@@ -21,12 +20,13 @@ import typer
 from physiclaw.cli._format import exit_error
 from physiclaw.common import config as _config
 from physiclaw.common import paths
+from physiclaw.port.filesystem import remove_tree
 
 
 def _delete(target: Path) -> None:
     """Remove a file or directory tree."""
     if target.is_dir():
-        shutil.rmtree(target)
+        remove_tree(target)
     else:
         target.unlink()
 

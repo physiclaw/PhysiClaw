@@ -61,6 +61,12 @@ def test_check_name_accepts_kebab_case() -> None:
     check_name("notify-user-wechat")  # must not raise
 
 
+@pytest.mark.parametrize("name", ["nul", "aux", "prn", "con", "com1", "lpt9"])
+def test_check_name_rejects_reserved_filesystem_names(name):
+    with pytest.raises(MacroError, match="reserved filesystem name"):
+        check_name(name)
+
+
 @pytest.mark.parametrize(
     "bad",
     ["Bad-Case", "a--b", "-lead", "trail-", "under_score", "a" * 65, "valid\n"],
