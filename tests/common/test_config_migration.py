@@ -483,6 +483,42 @@ def test_rotation_keeps_new_backup_when_older_backups_have_future_times(tmp_path
     assert original in [backup.read_bytes() for backup in backups]
 
 
+@pytest.mark.parametrize("clock_step", [0, -1], ids=["fixed-clock", "backwards-clock"])
+def test_rotation_keeps_latest_snapshots_when_backup_mtimes_tie(
+    tmp_path, mocker, clock_step
+):
+    path = tmp_path / "config.toml"
+    config.set_dotted("server.port", "9000", path)
+    suffixes = iter("gfedcba")
+
+    def create_backup(*, prefix, suffix, dir):
+        # Reverse filename order so a random-name tie-break cannot look correct.
+        name = Path(dir) / f"{prefix}{next(suffixes)}{suffix}"
+        flags = os.O_CREAT | os.O_EXCL | os.O_RDWR | getattr(os, "O_BINARY", 0)
+        return os.open(name, flags, 0o600), str(name)
+
+    backup_config = config._backup_config
+
+    def coarse_backup(target, original):
+        backup = backup_config(target, original)
+        os.utime(backup, ns=(1_700_000_000_000_000_000,) * 2)
+        return backup
+
+    mocker.patch.object(config.tempfile, "mkstemp", side_effect=create_backup)
+    mocker.patch.object(config, "_backup_config", side_effect=coarse_backup)
+    originals = []
+    with freeze_time("2026-10-26 15:30:45") as clock:
+        for port in range(9001, 9008):
+            originals.append(path.read_bytes())
+            config.set_dotted("server.port", str(port), path)
+            clock.tick(clock_step)
+
+    config.load(path)
+    backups = list((tmp_path / "backups").glob("config.toml.*.bak"))
+    assert len(backups) == 5
+    assert {backup.read_bytes() for backup in backups} == set(originals[-5:])
+
+
 def test_failed_write_preserves_config_and_history(tmp_path, mocker):
     path = tmp_path / "config.toml"
     for port in range(9000, 9006):

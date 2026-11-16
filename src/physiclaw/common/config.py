@@ -18,6 +18,7 @@ import logging
 import math
 import os
 import tempfile
+import time
 import tomllib
 from collections.abc import Iterator, MutableMapping
 from contextlib import contextmanager
@@ -829,12 +830,32 @@ def _config_document(original: bytes, path: Path) -> Any:
     return doc
 
 
+def _backup_order(backup: Path) -> int:
+    order, separator, _ = backup.stem.rsplit(".", 1)[-1].partition("_")
+    if separator and len(order) == 20 and order.isascii() and order.isdecimal():
+        return int(order)
+    return backup.stat().st_mtime_ns
+
+
 def _backup_config(path: Path, original: bytes) -> Path:
     # mkstemp is exclusive and owner-only (0600); never overwrite an earlier
     # backup or expose copied API keys through the process's default umask.
     timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+    previous = max(
+        (
+            _backup_order(p)
+            for p in _backup_dir(path).glob(f"{path.name}.*.bak")
+            if p.is_file() and not p.is_symlink()
+        ),
+        default=0,
+    )
+    # The config lock serializes writers. Persist their order in the name:
+    # filesystem mtimes can tie, and the wall clock can move backwards.
+    order = max(time.time_ns(), previous + 1)
     fd, name = tempfile.mkstemp(
-        prefix=f"{path.name}.{timestamp}.", suffix=".bak", dir=_backup_dir(path)
+        prefix=f"{path.name}.{timestamp}.{order:020d}_",
+        suffix=".bak",
+        dir=_backup_dir(path),
     )
     backup = Path(name)
     try:
@@ -849,7 +870,7 @@ def _backup_config(path: Path, original: bytes) -> Path:
     return backup
 
 
-def _prune_backups(path: Path, *, newest: Path | None = None) -> None:
+def _prune_backups(path: Path) -> None:
     """Rotate only this config's regular backups, after a successful operation."""
     try:
         backups = sorted(
@@ -858,8 +879,7 @@ def _prune_backups(path: Path, *, newest: Path | None = None) -> None:
                 for p in _backup_dir(path).glob(f"{path.name}.*.bak")
                 if p.is_file() and not p.is_symlink()
             ),
-            # Keep this write's recovery copy even if the clock moved back.
-            key=lambda p: (p == newest, p.stat().st_mtime_ns, p.name),
+            key=lambda p: (_backup_order(p), p.name),
             reverse=True,
         )
         for backup in backups[_BACKUP_LIMIT:]:
@@ -877,16 +897,15 @@ def _commit_config(path: Path, original: bytes | None, updated: bytes) -> Config
         raise ConfigError(f"{path} changed during update; no changes applied. Retry.")
     if updated == original:
         return cfg
-    backup = None
     if original is not None:
-        backup = _backup_config(path, original)
+        _backup_config(path, original)
         # Editors do not participate in our lock. Check again after backup.
         if _read_config(path) != original:
             raise ConfigError(
                 f"{path} changed during update; no changes applied. Retry."
             )
     write_text_atomic(path, updated.decode("utf-8"))
-    _prune_backups(path, newest=backup)
+    _prune_backups(path)
     return cfg
 
 
