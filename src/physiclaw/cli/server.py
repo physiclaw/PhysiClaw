@@ -347,9 +347,8 @@ def _serve(
             log_level="warning",
             log_config=None,
             access_log=False,
-            # This HTTP-only loop needs no subprocess support. Selector
-            # transports avoid Windows Proactor's shutdown()/detach leak on
-            # peer resets, without patching CPython's private cleanup methods.
+            # Both HTTP loops use selectors to avoid Windows Proactor's detach
+            # leak after a peer reset. Runtime subprocesses use subprocess.Popen.
             loop="asyncio:SelectorEventLoop",
             timeout_graceful_shutdown=BRIDGE_DRAIN_SECONDS,
         )
@@ -362,6 +361,7 @@ def _serve(
             log_level="warning",
             log_config=None,
             access_log=False,
+            loop="asyncio:SelectorEventLoop",
         )
     )
     failures: list[str] = []

@@ -1,4 +1,4 @@
-"""Exercise the configured bridge loop and real Uvicorn shutdown without hardware."""
+"""Exercise the configured HTTP loops and real Uvicorn shutdown without hardware."""
 
 import asyncio
 import importlib
@@ -18,7 +18,7 @@ server_mod = importlib.import_module("physiclaw.cli.server")
 
 
 @pytest.fixture
-def bridge_server(mocker):
+def http_servers(mocker):
     servers = []
     entered = threading.Event()
 
@@ -46,24 +46,36 @@ def bridge_server(mocker):
         )
     bridge = next(s for s in servers if s.config.host == "0.0.0.0")
     control = next(s for s in servers if s is not bridge)
-    assert bridge.config.get_loop_factory() is asyncio.SelectorEventLoop
-    assert control.config.loop == "auto"
     assert bridge.config.timeout_graceful_shutdown == server_mod.BRIDGE_DRAIN_SECONDS
     assert server_mod.BRIDGE_DRAIN_SECONDS < server_mod.BRIDGE_SHUTDOWN_SECONDS
     assert server_mod.BRIDGE_SHUTDOWN_SECONDS < server_mod.SERVER_JOIN_SECONDS
-    return bridge
+    return {"bridge": bridge, "control": control}
 
 
-def test_bridge_loop_detaches_reset_connection_before_wait_closed(bridge_server):
+@pytest.fixture
+def bridge_server(http_servers):
+    return http_servers["bridge"]
+
+
+@pytest.mark.parametrize("plane", ["bridge", "control"])
+@pytest.mark.parametrize("disconnect", ["reset", "eof-reset"])
+def test_http_loop_detaches_reset_connection_before_wait_closed(
+    http_servers, plane, disconnect, caplog
+):
     async def reset_connection():
         loop = asyncio.get_running_loop()
         accepted, lost = loop.create_future(), loop.create_future()
-        errors = []
-        loop.set_exception_handler(lambda loop, context: errors.append(context))
 
         class Peer(asyncio.Protocol):
             def connection_made(self, transport):
                 accepted.set_result(transport)
+
+            def eof_received(self):
+                # The peer has half-closed its request. Reset it with an unread
+                # response before asyncio closes the accepted connection.
+                # Proactor's shutdown() raises here and skips server detach.
+                transport.write(b"pending response" * 1000)
+                client.close()
 
             def connection_lost(self, exc):
                 lost.set_result(exc)
@@ -72,27 +84,36 @@ def test_bridge_loop_detaches_reset_connection_before_wait_closed(bridge_server)
         client = socket.socket()
         client.setblocking(False)
         try:
-            await loop.sock_connect(client, listener.sockets[0].getsockname())
+            await wait_for(loop.sock_connect(client, listener.sockets[0].getsockname()))
             transport = await wait_for(accepted)
-            # A zero linger sends TCP RST, reproducing the phone disconnect.
+            # A zero linger sends TCP RST, reproducing a phone disconnect or
+            # forced runtime termination while an MCP request is in flight.
             linger_format = "hh" if os.name == "nt" else "ii"
             client.setsockopt(
                 socket.SOL_SOCKET, socket.SO_LINGER, struct.pack(linger_format, 1, 0)
             )
-            client.close()
+            if disconnect == "eof-reset":
+                client.shutdown(socket.SHUT_WR)
+            else:
+                client.close()
             await wait_for(lost)
             listener.close()
             await wait_for(listener.wait_closed())
             assert transport.is_closing()
-            assert errors == []
         finally:
             client.close()
             if accepted.done():
                 accepted.result().close()
             listener.close()
 
-    with asyncio.Runner(loop_factory=bridge_server.config.get_loop_factory()) as runner:
+    with (
+        caplog.at_level("ERROR", logger="asyncio"),
+        asyncio.Runner(
+            loop_factory=http_servers[plane].config.get_loop_factory()
+        ) as runner,
+    ):
         runner.run(reset_connection())
+    assert not any(record.name == "asyncio" for record in caplog.records)
 
 
 @pytest.mark.slow
