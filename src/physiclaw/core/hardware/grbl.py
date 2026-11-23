@@ -2,6 +2,7 @@
 
 import logging
 import time
+from collections.abc import Sequence
 from contextlib import closing
 from typing import Protocol
 
@@ -61,7 +62,7 @@ class SerialPort(Protocol):
 
 
 class SerialBackend(Protocol):
-    def list_ports(self) -> list[ListPortInfo]: ...
+    def list_ports(self) -> Sequence[ListPortInfo]: ...
 
     def open(
         self,
@@ -74,7 +75,7 @@ class SerialBackend(Protocol):
 
 
 class NativeSerialBackend:
-    def list_ports(self) -> list[ListPortInfo]:
+    def list_ports(self) -> Sequence[ListPortInfo]:
         return serial.tools.list_ports.comports()
 
     def open(
