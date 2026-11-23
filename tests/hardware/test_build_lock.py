@@ -15,29 +15,30 @@ from tests.timing_helpers import PROCESS_TIMEOUT, WAIT_TIMEOUT
 
 def test_separate_process_is_rejected_but_child_can_inherit(tmp_path, monkeypatch):
     monkeypatch.setattr(lock, "OUTPUT_DIR", tmp_path)
-    env = {**os.environ, "PHYSICLAW_HW_OUTPUT": str(tmp_path)}
+    monkeypatch.setenv("PHYSICLAW_HW_OUTPUT", str(tmp_path))
     script = (
         "from hardware.build_lock import build_lock\nwith build_lock(): print('locked')"
     )
-    with lock.build_lock():
-        env.update(os.environ)
-        env["PHYSICLAW_HW_OUTPUT"] = str(tmp_path)
-        rejected = subprocess.run(
-            [sys.executable, "-c", script], env=env, capture_output=True
+
+    def run_child(**options):
+        return subprocess.run(
+            [sys.executable, "-c", script],
+            capture_output=True,
+            timeout=PROCESS_TIMEOUT,
+            **options,
         )
-        assert rejected.returncode != 0 and b"already running" in rejected.stderr
-        with locks.child_inheritance() as options:
-            accepted = subprocess.run(
-                [sys.executable, "-c", script],
-                env=env,
-                capture_output=True,
-                **options,
-            )
-        assert accepted.returncode == 0, accepted.stderr
-    accepted = subprocess.run(
-        [sys.executable, "-c", script], env=env, capture_output=True
-    )
-    assert accepted.returncode == 0, accepted.stderr
+
+    with locks.without_output_lock_inheritance():
+        with lock.build_lock():
+            with locks.without_output_lock_inheritance():
+                rejected = run_child()
+            assert rejected.returncode != 0
+            assert b"already running" in rejected.stderr, rejected.stderr
+            with locks.child_inheritance() as options:
+                inherited = run_child(**options)
+            assert inherited.returncode == 0, inherited.stderr
+        released = run_child()
+    assert released.returncode == 0, released.stderr
 
 
 def test_exception_releases_lock(tmp_path, monkeypatch):
@@ -77,7 +78,9 @@ with output_lock(path):
 
     with locks.output_lock(path):
         child = subprocess.run(
-            [sys.executable, "-c", script, str(path)], capture_output=True
+            [sys.executable, "-c", script, str(path)],
+            capture_output=True,
+            timeout=PROCESS_TIMEOUT,
         )
 
     assert child.returncode != 0

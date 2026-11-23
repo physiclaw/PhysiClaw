@@ -76,17 +76,24 @@ def _inherited_lock() -> Iterator[tuple[BinaryIO, int] | None]:
 
 @contextmanager
 def output_lock(path: Path) -> Iterator[None]:
-    msvcrt = importlib.import_module("msvcrt")
     # Enter the duplicate's scope first: opening the lock file first could
     # give a non-inheriting child exactly the stale advertised handle value.
     with _inherited_lock() as inherited, path.open("a+b") as stream:
         if inherited is not None:
             owned, handle = inherited
-            if os.path.samestat(os.fstat(owned.fileno()), os.fstat(stream.fileno())):
+            try:
+                identity = os.fstat(owned.fileno())
+            except OSError:
+                # A recycled handle can deny metadata access.
+                identity = None
+            if identity is not None and os.path.samestat(
+                identity, os.fstat(stream.fileno())
+            ):
                 getattr(os, "set_handle_inheritable")(handle, False)
                 yield
                 return
         lock_stream(stream)
+        msvcrt = importlib.import_module("msvcrt")
         handle = msvcrt.get_osfhandle(stream.fileno())
         previous = os.environ.get(_HANDLE_ENV)
         os.environ[_HANDLE_ENV] = str(handle)

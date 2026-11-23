@@ -1,6 +1,7 @@
 """Native inheritance windows close even when process setup fails."""
 
 import os
+from contextlib import nullcontext
 from types import SimpleNamespace
 
 import pytest
@@ -68,6 +69,20 @@ def test_windows_startup_failure_restores_handle_inheritability(mocker, monkeypa
         mocker.call(123, True),
         mocker.call(123, False),
     ]
+
+
+def test_windows_recycled_handle_with_unreadable_metadata(tmp_path, mocker):
+    inherited = nullcontext((mocker.Mock(), 123))
+    mocker.patch.object(windows, "_inherited_lock", return_value=inherited)
+    native_os = mocker.patch.object(windows, "os", wraps=os)
+    native_os.fstat.side_effect = PermissionError("Access denied")
+    mocker.patch.object(windows, "lock_stream", side_effect=BlockingIOError("busy"))
+
+    with (
+        pytest.raises(BlockingIOError, match="busy"),
+        windows.output_lock(tmp_path / "output.lock"),
+    ):
+        pytest.fail("a recycled handle bypassed the output lock")
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Native Windows handle recycling")

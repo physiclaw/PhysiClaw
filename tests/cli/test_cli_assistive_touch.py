@@ -1,7 +1,7 @@
 """Standalone startup and graceful handoff, without loading the main server."""
 
+import errno
 import importlib
-import socket
 import sys
 from contextlib import closing
 from http.client import HTTPConnection
@@ -180,21 +180,41 @@ def test_port_must_leave_room_for_phone_bridge(service):
     service["listener"].assert_not_called()
 
 
-def test_real_command_serves_both_ports_and_releases_them_on_interrupt(mocker):
-    # Reserve a free adjacent pair without touching the user's configured ports.
-    for _ in range(20):
-        with socket.create_server(("127.0.0.1", 0)) as first:
-            port = first.getsockname()[1]
+@pytest.fixture
+def assistive_touch_listeners(monkeypatch):
+    # An address already in use must fail even on macOS with a wildcard bind.
+    monkeypatch.setattr(http.TestHTTPServer, "allow_reuse_address", False)
+    session = http.TestSession()
+    for _ in range(100):
+        with http.TestHTTPServer(("127.0.0.1", 0), session, desktop=True) as desktop:
+            port = desktop.server_port
             if port == 65535:
                 continue
             try:
-                with socket.create_server(("0.0.0.0", port + 1)):
-                    break
-            except OSError:
+                phone = http.TestHTTPServer(
+                    ("0.0.0.0", port + 1), session, desktop=False
+                )
+            except OSError as error:
+                # Windows can also reject the neighboring port as excluded.
+                if error.errno != errno.EADDRINUSE and getattr(
+                    error, "winerror", None
+                ) not in {10013, 10048}:
+                    raise
                 continue
-    else:
-        pytest.fail("Could not find adjacent free ports")
+            with phone:
+                yield desktop, phone
+                return
+    pytest.fail("Could not bind adjacent AssistiveTouch listeners")
 
+
+def test_real_command_serves_both_ports_and_releases_them_on_interrupt(
+    mocker, assistive_touch_listeners
+):
+    # Pass the real listeners to the command without a close/rebind window.
+    desktop, phone = assistive_touch_listeners
+    port = desktop.server_port
+    mocker.patch.object(http, "TestSession", return_value=desktop.session)
+    mocker.patch.object(http, "open_server", side_effect=[desktop, phone])
     mocker.patch.object(
         http,
         "connection_info",
@@ -214,24 +234,31 @@ def test_real_command_serves_both_ports_and_releases_them_on_interrupt(mocker):
             assert response.status == 200
             return response.read()
 
+    requests_completed = False
+
     def ready(url, connection, open_browser):
-        assert command.runtime_state.read_live()["service"] == "test-assistive-touch"
+        nonlocal requests_completed
+        live = command.runtime_state.read_live()
+        assert live is not None
+        assert live["service"] == "test-assistive-touch"
+        assert live["port"] == port
         assert b"AssistiveTouch Test" in request(port, "GET", http.PAGE_PATH)
         code = request(port + 1, "GET", "/api/bridge/clipboard")
         image = b"\x89PNG\r\n\x1a\ncurrent screenshot"
         reply = request(port + 1, "POST", "/api/bridge/screenshot", image)
         assert reply == b"Screenshot uploaded.\nCode: " + code
         assert request(port, "GET", http.API_PATH + "/screenshot/1") == image
+        requests_completed = True
         raise KeyboardInterrupt
 
     mocker.patch.object(command, "_open_page", side_effect=ready)
     result = runner.invoke(app, ["--port", str(port), "--no-open"])
     assert result.exit_code == 0, (result.output, result.exception)
+    assert requests_completed, "command exited before both listeners served requests"
     assert command.runtime_state.read_live() is None
     assert not command.paths.runtime_state_file().exists()
-    for host, number in (("127.0.0.1", port), ("0.0.0.0", port + 1)):
-        with socket.create_server((host, number)):
-            pass
+    # Closed accepted connections can still reserve the address in TIME_WAIT.
+    assert desktop.socket.fileno() == phone.socket.fileno() == -1
 
 
 @pytest.mark.parametrize("encoding", ["utf-8", "cp1252", "ascii"])
