@@ -17,7 +17,9 @@ import logging
 import os
 import sys
 import threading
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from dataclasses import dataclass
+from typing import Protocol
 
 import cv2
 import numpy as np
@@ -34,6 +36,47 @@ log = logging.getLogger(__name__)
 # Serializes the fd-2 redirect in `silenced_stderr` across threads (camera
 # reopen vs a concurrent preview/auto-pick open) — see its docstring.
 _STDERR_REDIRECT_LOCK = threading.Lock()
+
+
+class Capture(Protocol):
+    def isOpened(self) -> bool: ...
+    def read(self) -> tuple[bool, np.ndarray | None]: ...
+    def get(self, prop: int, /) -> float: ...
+    def set(self, prop: int, value: float, /) -> bool: ...
+    def release(self) -> None: ...
+
+
+class CameraControls(Protocol):
+    def ensure_camera_permission(self) -> None: ...
+    def camera_backend(self) -> int: ...
+    def camera_size_cap(self) -> tuple[int, int] | None: ...
+    def camera_reset_controls(self) -> None: ...
+    def camera_exposure_tunable(self) -> bool: ...
+    def camera_set_auto_exposure(self, cap: Capture, /) -> None: ...
+    def camera_set_manual_exposure(self, cap: Capture, exposure: int, /) -> None: ...
+    def camera_focus_search_range(
+        self, index: int, /
+    ) -> tuple[int, int, int] | None: ...
+    def camera_focus_lockable(self) -> bool: ...
+    def camera_lock_focus(self, cap: Capture, /) -> bool: ...
+    def camera_unlock_focus(self, cap: Capture, /) -> bool | None: ...
+    def camera_read_focus(self, cap: Capture, /) -> float | None: ...
+    def camera_apply_focus(self, cap: Capture, value: float, /) -> bool: ...
+
+
+def _open_capture(index: int, backend: int) -> Capture:
+    return cv2.VideoCapture(index, backend)
+
+
+@dataclass(frozen=True)
+class CameraBackend:
+    """Capture and controls travel together since controls may use native USB."""
+
+    open_capture: Callable[[int, int], Capture]
+    controls: CameraControls
+
+
+NATIVE_CAMERA = CameraBackend(_open_capture, platform)
 
 
 @contextlib.contextmanager
@@ -68,7 +111,9 @@ def silenced_stderr() -> Iterator[None]:
             os.close(devnull)
 
 
-def apply_size_cap(size: tuple[int, int]) -> tuple[int, int]:
+def apply_size_cap(
+    size: tuple[int, int], *, controls: CameraControls = platform
+) -> tuple[int, int]:
     """Clamp a capture request to the platform's safe maximum, if any.
 
     On macOS without a UVC exposure channel, high-res modes risk a
@@ -77,7 +122,7 @@ def apply_size_cap(size: tuple[int, int]) -> tuple[int, int]:
     `Camera._request_size` is seeded (so remembered state and warmup
     logs stay honest) and inside `configure_capture` (the choke point,
     so the fallback ladder and reconnects can't sneak past it)."""
-    size_cap = platform.camera_size_cap()
+    size_cap = controls.camera_size_cap()
     if size_cap is None or size[0] * size[1] <= size_cap[0] * size_cap[1]:
         return size
     log.debug(
@@ -91,12 +136,13 @@ def apply_size_cap(size: tuple[int, int]) -> tuple[int, int]:
 
 
 def configure_capture(
-    cap: cv2.VideoCapture,
+    cap: Capture,
     *,
     exposure_auto: bool,
     exposure: int,
     size: tuple[int, int] | None = None,
     focus_value: float | None = None,
+    controls: CameraControls = platform,
 ) -> bool:
     """Configure capture size, exposure, and focus; return focus acceptance.
 
@@ -122,7 +168,8 @@ def configure_capture(
         else (
             CONFIG.camera.width,
             CONFIG.camera.height,
-        )
+        ),
+        controls=controls,
     )
     # AVFoundation (macOS) ignores this; V4L (Linux) honors it.
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
@@ -143,15 +190,15 @@ def configure_capture(
         # OPENCV_VIDEOIO_V4L_RANGE_NORMALIZED enables 0..1 controls by default.
         cap.set(cv2.CAP_PROP_MODE, 0)
     if exposure_auto:
-        platform.camera_set_auto_exposure(cap)
+        controls.camera_set_auto_exposure(cap)
     else:
-        platform.camera_set_manual_exposure(cap, exposure)
+        controls.camera_set_manual_exposure(cap, exposure)
     # Apply focus after negotiation. Exposure tuning needs this attempt's
     # result, not merely the existence of a saved position.
     if focus_value is None:
-        platform.camera_unlock_focus(cap)
+        controls.camera_unlock_focus(cap)
         return False
-    if not _apply_focus(cap, focus_value):
+    if not _apply_focus(cap, focus_value, controls):
         log.warning(
             "could not apply the remembered focus position — autofocus requested",
             extra={
@@ -162,7 +209,7 @@ def configure_capture(
     return True
 
 
-def _apply_focus(cap: cv2.VideoCapture, value: float) -> bool:
+def _apply_focus(cap: Capture, value: float, controls: CameraControls) -> bool:
     """Apply a position, requesting AF on refusal or interruption.
 
     Both capture setup and live changes use this rollback: either write
@@ -171,12 +218,12 @@ def _apply_focus(cap: cv2.VideoCapture, value: float) -> bool:
     """
     applied = False
     try:
-        applied = platform.camera_apply_focus(cap, value)
+        applied = controls.camera_apply_focus(cap, value)
         return applied
     finally:
         if not applied:
             try:
-                platform.camera_unlock_focus(cap)
+                controls.camera_unlock_focus(cap)
             except Exception:
                 log.warning(
                     "focus rollback to autofocus failed",
@@ -244,8 +291,16 @@ class Camera:
     # long warmup/permission loop while the reader's supervisor is paused.
     RECONNECT_FRAME_ATTEMPTS = 3
 
-    def __init__(self, index: int = 0, focus_value: float | None = None) -> None:
+    def __init__(
+        self,
+        index: int = 0,
+        focus_value: float | None = None,
+        *,
+        backend: CameraBackend = NATIVE_CAMERA,
+    ) -> None:
         self.index = index
+        self._open_capture = backend.open_capture
+        self._controls = backend.controls
         self.rotation: int = -1  # no rotation until calibration step 3 sets it
         # cv2.VideoCapture is not thread-safe for concurrent read()+set():
         # this lock serializes the reader's cap.read() against exposure
@@ -274,7 +329,7 @@ class Camera:
         # rung _warmup settled on instead of re-failing at the top of the
         # ladder on every reconnect.
         self._request_size: tuple[int, int] = apply_size_cap(
-            (CONFIG.camera.width, CONFIG.camera.height)
+            (CONFIG.camera.width, CONFIG.camera.height), controls=self._controls
         )
         self._reader = FrameReader(
             read_frame=self._locked_read,
@@ -321,17 +376,17 @@ class Camera:
         """Open the underlying ``cv2.VideoCapture``. Retries with macOS perm
         prompt. Caller must hold ``_cap_lock`` or run before the reader
         thread starts (``__init__``/``_warmup``)."""
-        backend = platform.camera_backend()
+        backend = self._controls.camera_backend()
         self._focus_applied = False
         cap = None
         try:
             with silenced_stderr():
-                cap = cv2.VideoCapture(self.index, backend)
+                cap = self._open_capture(self.index, backend)
                 if not cap.isOpened():
                     cap.release()
                     cap = None
-                    platform.ensure_camera_permission()
-                    cap = cv2.VideoCapture(self.index, backend)
+                    self._controls.ensure_camera_permission()
+                    cap = self._open_capture(self.index, backend)
             if not cap.isOpened():
                 raise DeviceNotFound(f"Cannot open camera index {self.index}")
             # Publish only a configured handle. Failed opens leave no live
@@ -344,7 +399,7 @@ class Camera:
             raise
         self.cap = cap
 
-    def _configure(self, cap: cv2.VideoCapture) -> None:
+    def _configure(self, cap: Capture) -> None:
         """Apply remembered settings; a failed focus restore selects AF."""
         self._focus_applied = False
         if self._focus_value is not None:
@@ -356,6 +411,7 @@ class Camera:
                 exposure=self._exposure_value,
                 size=self._request_size,
                 focus_value=self._focus_value,
+                controls=self._controls,
             )
         finally:
             if not self._focus_applied:
@@ -379,7 +435,7 @@ class Camera:
                 return frame
             # Read returned no frame — likely macOS perm denied silently.
             self.cap.release()
-            platform.ensure_camera_permission()
+            self._controls.ensure_camera_permission()
             self._open()
         return None
 
@@ -446,7 +502,7 @@ class Camera:
                 self.cap.release()
             self._reader.note_reopened()
             try:
-                platform.camera_reset_controls()
+                self._controls.camera_reset_controls()
                 self._open()
                 for _ in range(self.RECONNECT_FRAME_ATTEMPTS):
                     ok, frame = self.cap.read()
@@ -471,7 +527,7 @@ class Camera:
         Linux/Windows (V4L2/DirectShow); on macOS true only when the vendored
         UVC helper compiled and unambiguously controls the camera —
         AVFoundation itself ignores exposure properties."""
-        return platform.camera_exposure_tunable()
+        return self._controls.camera_exposure_tunable()
 
     def set_auto_exposure(self) -> None:
         """Hand exposure back to the camera firmware. Remembered, so a
@@ -479,7 +535,7 @@ class Camera:
         with self._cap_lock:
             self._require_open()
             self._exposure_auto = True
-            platform.camera_set_auto_exposure(self.cap)
+            self._controls.camera_set_auto_exposure(self.cap)
             record_event(
                 "camera.exposure_requested",
                 device_id=f"Camera-{self.index}",
@@ -494,7 +550,7 @@ class Camera:
             self._require_open()
             self._exposure_auto = False
             self._exposure_value = value
-            platform.camera_set_manual_exposure(self.cap, value)
+            self._controls.camera_set_manual_exposure(self.cap, value)
             record_event(
                 "camera.exposure_requested",
                 device_id=f"Camera-{self.index}",
@@ -510,7 +566,7 @@ class Camera:
         """The device's manual focus range, or None when unavailable."""
         with self._cap_lock:
             self._require_open()
-            return platform.camera_focus_search_range(self.index)
+            return self._controls.camera_focus_search_range(self.index)
 
     @property
     def focus_lockable(self) -> bool:
@@ -519,7 +575,7 @@ class Camera:
         Linux/Windows expose the AF toggle; macOS needs a live UVC channel
         answering focus controls. Acceptance and sharpness are checked later.
         """
-        return platform.camera_focus_lockable()
+        return self._controls.camera_focus_lockable()
 
     @property
     def focus_pinned(self) -> bool:
@@ -539,7 +595,7 @@ class Camera:
         with self._cap_lock:
             self._require_open()
             self._focus_needs_restore = True
-            return platform.camera_lock_focus(self.cap)
+            return self._controls.camera_lock_focus(self.cap)
 
     def unlock_focus(self) -> None:
         """Clear the remembered pin and request continuous autofocus."""
@@ -549,7 +605,9 @@ class Camera:
             self._focus_applied = False
             # An explicit refusal needs another hand-back attempt on close.
             # None preserves backends whose AF request remains best-effort.
-            self._focus_needs_restore = platform.camera_unlock_focus(self.cap) is False
+            self._focus_needs_restore = (
+                self._controls.camera_unlock_focus(self.cap) is False
+            )
             record_event(
                 "camera.autofocus_requested",
                 device_id=f"Camera-{self.index}",
@@ -564,7 +622,7 @@ class Camera:
         """
         with self._cap_lock:
             self._require_open()
-            return platform.camera_read_focus(self.cap)
+            return self._controls.camera_read_focus(self.cap)
 
     def apply_focus(self, value: float) -> bool:
         """Apply and remember a position only when the driver accepts it.
@@ -579,7 +637,7 @@ class Camera:
             # A partial write invalidates any previous pin. Reconnect
             # must keep the AF fallback, not replay a stale position.
             self._focus_value = None
-            self._focus_applied = _apply_focus(self.cap, value)
+            self._focus_applied = _apply_focus(self.cap, value, self._controls)
             if self._focus_applied:
                 self._focus_value = value
             record_event(
@@ -704,7 +762,7 @@ class Camera:
                     # so the next run starts fresh. Keep user-pinned exposure.
                     if CONFIG.camera.auto_exposure and not self._exposure_auto:
                         try:
-                            platform.camera_set_auto_exposure(self.cap)
+                            self._controls.camera_set_auto_exposure(self.cap)
                         except Exception:
                             log.warning(
                                 "exposure hand-back on close failed", exc_info=True
@@ -712,7 +770,7 @@ class Camera:
                     if self._focus_needs_restore:
                         try:
                             self._focus_needs_restore = (
-                                platform.camera_unlock_focus(self.cap) is False
+                                self._controls.camera_unlock_focus(self.cap) is False
                             )
                         except Exception:
                             log.warning(
@@ -724,7 +782,7 @@ class Camera:
                     self.cap.release()
                     self._focus_applied = False
                     self._closed = True
-                    platform.camera_reset_controls()
+                    self._controls.camera_reset_controls()
             finally:
                 self._cap_lock.release()
         else:

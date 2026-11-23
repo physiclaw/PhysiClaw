@@ -38,6 +38,8 @@ from physiclaw.core.setup.run_log import SetupRecorder
 if TYPE_CHECKING:
     from mcp.server.mcpserver import MCPServer
 
+    from physiclaw.core.orchestration.rig import HardwareRig
+
 log = logging.getLogger(__name__)
 
 
@@ -53,7 +55,9 @@ class ServerBundle:
     phone_app: PhoneApp
 
 
-def build_server(mcp_instance: "MCPServer | None" = None) -> ServerBundle:
+def build_server(
+    mcp_instance: "MCPServer | None" = None, *, rig: "HardwareRig | None" = None
+) -> ServerBundle:
     """Construct and wire a complete server assembly.
 
     Each call returns a fresh, isolated wiring (state objects + tool and
@@ -71,7 +75,7 @@ def build_server(mcp_instance: "MCPServer | None" = None) -> ServerBundle:
     display purposes.
     """
     mcp_ = mcp_instance if mcp_instance is not None else build_mcp()
-    pl = PhysiClaw()
+    pl = PhysiClaw(rig=rig)
     bridge = BridgeState()
     calib = CalibrationState()
     phone = PageState(bridge, calib)
@@ -126,13 +130,14 @@ _phone = default_bundle.phone
 _phone_app = default_bundle.phone_app
 
 
-def shutdown() -> None:
-    """Clean up hardware resources."""
+def shutdown(bundle: ServerBundle = default_bundle) -> None:
+    """Clean up a server's rig and setup recorder."""
+    pl = bundle.physiclaw
     try:
-        physiclaw.shutdown()
+        pl.shutdown()
     finally:
-        if physiclaw.rig.setup_recording is not None:
-            physiclaw.rig.setup_recording.close()
+        if pl.rig.setup_recording is not None:
+            pl.rig.setup_recording.close()
 
 
 def build_apps(host: str = "127.0.0.1") -> tuple[ControlGate, Starlette]:

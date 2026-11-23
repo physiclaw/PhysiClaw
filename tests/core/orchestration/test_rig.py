@@ -827,7 +827,7 @@ def test_connect_camera_seeds_bundle_focus_into_the_camera(mocker, cam_double) -
 
     r.connect_camera(0)
 
-    ctor.assert_called_once_with(0, focus_value=137.0)
+    ctor.assert_called_once_with(0, focus_value=137.0, backend=rig_mod.NATIVE_CAMERA)
 
 
 def test_connect_camera_seeds_no_focus_without_a_bundle_value(
@@ -839,7 +839,7 @@ def test_connect_camera_seeds_no_focus_without_a_bundle_value(
 
     r.connect_camera(0)
 
-    ctor.assert_called_once_with(0, focus_value=None)
+    ctor.assert_called_once_with(0, focus_value=None, backend=rig_mod.NATIVE_CAMERA)
 
 
 def test_acquire_with_wait_outlasts_short_contention(rig) -> None:
@@ -1077,7 +1077,8 @@ def test_regression_late_arm_open_closes_without_running_setup(mocker, arm_doubl
     rig = HardwareRig()
     arm = arm_double()
 
-    def open_arm():
+    def open_arm(*, backend):
+        assert backend is rig_mod.NATIVE_SERIAL
         rig.shutdown(lock_timeout=0)
         return arm
 

@@ -2,6 +2,8 @@
 
 import logging
 import time
+from contextlib import closing
+from typing import Protocol
 
 import serial
 import serial.tools.list_ports
@@ -46,14 +48,61 @@ _LIKELY_VIDS = frozenset(
 )
 
 
-def _probe_port(port: str, baudrate: int = GRBL_BAUDRATE) -> str | None:
+class SerialPort(Protocol):
+    timeout: float | None
+
+    @property
+    def in_waiting(self) -> int: ...
+
+    def read(self, size: int, /) -> bytes: ...
+    def write(self, data: bytes, /) -> int | None: ...
+    def reset_input_buffer(self) -> None: ...
+    def close(self) -> None: ...
+
+
+class SerialBackend(Protocol):
+    def list_ports(self) -> list[ListPortInfo]: ...
+
+    def open(
+        self,
+        port: str,
+        baudrate: int,
+        *,
+        timeout: float,
+        write_timeout: float | None = None,
+    ) -> SerialPort: ...
+
+
+class NativeSerialBackend:
+    def list_ports(self) -> list[ListPortInfo]:
+        return serial.tools.list_ports.comports()
+
+    def open(
+        self,
+        port: str,
+        baudrate: int,
+        *,
+        timeout: float,
+        write_timeout: float | None = None,
+    ) -> SerialPort:
+        return serial.Serial(
+            port, baudrate, timeout=timeout, write_timeout=write_timeout
+        )
+
+
+NATIVE_SERIAL = NativeSerialBackend()
+
+
+def _probe_port(
+    port: str, baudrate: int = GRBL_BAUDRATE, *, backend: SerialBackend = NATIVE_SERIAL
+) -> str | None:
     """Try to connect to a port and identify a GRBL device.
 
     Uses $I query (no reset side-effect, faster than soft-reset).
     Returns the version string if GRBL is detected, None otherwise.
     """
     try:
-        with serial.Serial(port, baudrate, timeout=2) as ser:
+        with closing(backend.open(port, baudrate, timeout=2)) as ser:
             time.sleep(2)
             ser.reset_input_buffer()
             ser.write(b"$I\r\n")
@@ -99,29 +148,29 @@ def _port_priority(port_info: ListPortInfo) -> int:
     return 50  # some other USB device — probe after likely ones
 
 
-def _candidate_port_infos() -> list[ListPortInfo]:
+def _candidate_port_infos(backend: SerialBackend) -> list[ListPortInfo]:
     """port_info objects that look worth probing (skipping bluetooth/debug etc.).
 
     Sorted by likelihood — likely USB-serial chips first. Shared by
     detect_grbl() (which probes them) and candidate_ports() (diagnostics).
     """
     return sorted(
-        [p for p in serial.tools.list_ports.comports() if _port_priority(p) < 99],
+        [p for p in backend.list_ports() if _port_priority(p) < 99],
         key=lambda p: (_port_priority(p), p.device),
     )
 
 
-def candidate_ports() -> list[str]:
+def candidate_ports(*, backend: SerialBackend = NATIVE_SERIAL) -> list[str]:
     """Device names that detect_grbl() would probe. For diagnostics."""
-    return [p.device for p in _candidate_port_infos()]
+    return [p.device for p in _candidate_port_infos(backend)]
 
 
-def detect_grbl() -> str | None:
+def detect_grbl(*, backend: SerialBackend = NATIVE_SERIAL) -> str | None:
     """Scan serial ports and return the first GRBL device port, or None.
 
     Skips Bluetooth/debug ports and probes likely USB-serial ports first.
     """
-    ports = _candidate_port_infos()
+    ports = _candidate_port_infos(backend)
     record_event(
         "arm.serial_candidates",
         ports=[
@@ -146,7 +195,7 @@ def detect_grbl() -> str | None:
         desc = port_info.description or ""
         log.debug(f"[GRBL] trying {port_info.device} ({desc})")
 
-        version = _probe_port(port_info.device)
+        version = _probe_port(port_info.device, backend=backend)
         if version:
             log.debug("GRBL found on %s [%s]", port_info.device, version)
             return port_info.device

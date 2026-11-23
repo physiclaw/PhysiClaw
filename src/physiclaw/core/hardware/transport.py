@@ -15,8 +15,12 @@ import logging
 import re
 import threading
 import time
+from typing import TYPE_CHECKING
 
 from physiclaw.core.hardware.device import DeviceAlarm, DeviceTimeout, ProtocolError
+
+if TYPE_CHECKING:
+    from physiclaw.core.hardware.grbl import SerialPort
 
 log = logging.getLogger(__name__)
 
@@ -36,7 +40,7 @@ class SerialTransport:
     RESPONSE_TIMEOUT_SECONDS = 12.0
     MAX_REPLY_BYTES = 4096
 
-    def __init__(self, ser) -> None:
+    def __init__(self, ser: "SerialPort") -> None:
         self.ser = ser
         # RLock, not Lock: cheap insurance if a caller ever nests a send
         # inside a send-driven callback; never a behavioral difference on

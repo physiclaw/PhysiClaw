@@ -48,8 +48,8 @@ log = logging.getLogger(__name__)
 class PhysiClaw:
     """Facade over the rig + perception: the tool operations MCP exposes."""
 
-    def __init__(self):
-        self.rig = HardwareRig()
+    def __init__(self, *, rig: HardwareRig | None = None):
+        self.rig = HardwareRig() if rig is None else rig
         self.perception = Perception(self.rig)
         # Accessor lambdas, not the objects: both are replaced after
         # construction (calibration, tests), and the validator must see

@@ -146,6 +146,28 @@ def test_each_pytest_suite_keeps_its_own_report_and_temporary_logs():
     assert "${{ matrix.python }}" in upload["with"]["name"]
 
 
+def test_dryrun_uses_isolated_weights_and_collects_failed_run_logs():
+    steps = YAML(typ="safe").load(WORKFLOWS / "ci.yml")["jobs"]["test"]["steps"]
+    provision = next(step for step in steps if step.get("id") == "dryrun-vision")
+    run = next(
+        step
+        for step in steps
+        if step.get("run") == "uv run --locked --offline python scripts/check_dryrun.py"
+    )
+    assert steps.index(provision) < steps.index(run)
+    assert "runner.os == 'Linux' && matrix.python == '3.12'" in provision["if"]
+    assert (
+        run["if"] == "${{ !cancelled() && steps.dryrun-vision.outcome == 'success' }}"
+    )
+    assert run["env"]["PHYSICLAW_HOME"] == provision["env"]["PHYSICLAW_HOME"]
+    assert run["env"]["PHYSICLAW_HOME"].startswith("${{ runner.temp }}/")
+    assert run["env"]["TMPDIR"] == "${{ github.workspace }}/.test-results"
+    assert (
+        run["env"]["COVERAGE_PROCESS_START"] == "${{ github.workspace }}/pyproject.toml"
+    )
+    assert run["env"]["COVERAGE_FILE"] == f"{run['env']['TMPDIR']}/.coverage.dryrun"
+
+
 def test_coverage_keeps_suite_and_platform_data_separate_until_combining():
     jobs = YAML(typ="safe").load(WORKFLOWS / "ci.yml")["jobs"]
     suites = {
@@ -153,8 +175,15 @@ def test_coverage_keeps_suite_and_platform_data_separate_until_combining():
         for step in jobs["test"]["steps"]
         if "COVERAGE_FILE" in step.get("env", {})
     }
-    assert set(suites) == {"make test-cov", "make test-slow", "make test-integration"}
-    assert len({env["COVERAGE_FILE"] for env in suites.values()}) == 3
+    assert set(suites) == {
+        "make test-cov",
+        "make test-slow",
+        "make test-integration",
+        "uv run --locked --offline python scripts/check_dryrun.py",
+    }
+    assert len({Path(env["COVERAGE_FILE"]).name for env in suites.values()}) == len(
+        suites
+    )
     for command in ("make test-slow", "make test-integration"):
         assert "--cov" in shlex.split(suites[command]["PYTEST_ADDOPTS"])
     combined = jobs["coverage"]

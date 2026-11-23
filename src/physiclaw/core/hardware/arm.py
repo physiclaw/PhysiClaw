@@ -37,7 +37,12 @@ from physiclaw.core.hardware.device import (
     DeviceTimeout,
     ProtocolError,
 )
-from physiclaw.core.hardware.grbl import candidate_ports, detect_grbl
+from physiclaw.core.hardware.grbl import (
+    NATIVE_SERIAL,
+    SerialBackend,
+    candidate_ports,
+    detect_grbl,
+)
 from physiclaw.core.hardware.solenoid import Solenoid
 from physiclaw.core.hardware.transport import SerialTransport
 
@@ -112,15 +117,21 @@ class StylusArm:
         "fast": 10000,  # fling, page switch
     }
 
-    def __init__(self, port: str | None = None, baudrate: int = 115200) -> None:
+    def __init__(
+        self,
+        port: str | None = None,
+        baudrate: int = 115200,
+        *,
+        backend: SerialBackend = NATIVE_SERIAL,
+    ) -> None:
         if port is None:
-            port = detect_grbl()
+            port = detect_grbl(backend=backend)
         if port is None:
             # No ports at all ≠ ports that didn't answer as GRBL: the
             # first almost always means the board isn't plugged in or
             # isn't powered, and "specify port manually" would send the
             # user hunting for a port that doesn't exist.
-            if not candidate_ports():
+            if not candidate_ports(backend=backend):
                 raise DeviceNotFound(
                     "GRBL device not found — no serial ports detected; "
                     "is the control board plugged into USB and its 12V "
@@ -129,7 +140,7 @@ class StylusArm:
             raise DeviceNotFound("GRBL device not found, please specify port manually")
 
         try:
-            self.ser = serial.Serial(port, baudrate, timeout=3, write_timeout=3)
+            self.ser = backend.open(port, baudrate, timeout=3, write_timeout=3)
         except (serial.SerialException, OSError) as exc:
             raise DeviceNotFound(f"Cannot open GRBL port {port}: {exc}") from exc
         try:

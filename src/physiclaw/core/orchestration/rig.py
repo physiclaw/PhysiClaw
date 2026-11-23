@@ -22,7 +22,8 @@ from physiclaw.common.text import read_text
 from physiclaw.core.bridge import BridgeState
 from physiclaw.core.calibration import PARK_PCT, Calibration, ScreenTransforms
 from physiclaw.core.hardware.arm import StylusArm
-from physiclaw.core.hardware.camera import Camera
+from physiclaw.core.hardware.camera import NATIVE_CAMERA, Camera, CameraBackend
+from physiclaw.core.hardware.grbl import NATIVE_SERIAL, SerialBackend
 from physiclaw.core.hardware.iphone import SCREENSHOT_TIMEOUT_SECONDS, AssistiveTouch
 
 log = logging.getLogger(__name__)
@@ -57,9 +58,19 @@ class HardwareRig:
     Construction is instant (no hardware). Call connect_arm() and
     connect_camera() to connect hardware. Calibration is handled
     by the /setup skill via HTTP endpoints.
+
+    The rig constructs and owns the drivers. Backends supply serial I/O,
+    camera capture, and device controls.
     """
 
-    def __init__(self):
+    def __init__(
+        self,
+        *,
+        serial_backend: SerialBackend = NATIVE_SERIAL,
+        camera_backend: CameraBackend = NATIVE_CAMERA,
+    ):
+        self._serial_backend = serial_backend
+        self._camera_backend = camera_backend
         self._arm: StylusArm | None = None
         self._cam: Camera | None = None
         self.calibration: Calibration = Calibration()
@@ -296,7 +307,7 @@ class HardwareRig:
             old, self._arm = self._arm, None
         if old is not None:
             old.close()
-        arm = StylusArm()
+        arm = StylusArm(backend=self._serial_backend)
         try:
             self._require_open()
             arm.setup()
@@ -347,7 +358,9 @@ class HardwareRig:
         """
         self._require_open()
         self.disconnect_camera()
-        cam = Camera(index, focus_value=self.calibration.cam_focus)
+        cam = Camera(
+            index, focus_value=self.calibration.cam_focus, backend=self._camera_backend
+        )
         try:
             if self.calibration.cam_rotation is not None:
                 cam.rotation = self.calibration.cam_rotation

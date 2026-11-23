@@ -12,6 +12,7 @@ from physiclaw.cli.clear import clear
 from physiclaw.cli.config import config_app
 from physiclaw.cli.debug import debug
 from physiclaw.cli.doctor import doctor
+from physiclaw.cli.dryrun import dryrun
 from physiclaw.cli.flash import flash
 from physiclaw.cli.logs import logs
 from physiclaw.cli.macros import macros_app
@@ -39,6 +40,7 @@ app = typer.Typer(
 )
 
 app.command()(doctor)
+app.command()(dryrun)
 app.command()(server)
 app.command()(now)
 app.command()(auto)
@@ -112,6 +114,8 @@ def _root(
         ),
     ] = False,
 ) -> None:
+    if ctx.invoked_subcommand == "dryrun":
+        return  # The isolated worker owns its config and logs.
     # VPN clients export `all_proxy=socks://…`, a scheme httpx rejects —
     # rewrite it, and pin loopback into NO_PROXY, before any command
     # builds an HTTP client.
