@@ -3,7 +3,7 @@
 # Fresh CLI and Make bootstrap run without manual dependency sync on all three OSes.
 # Platform-specific tests declare their requirements with pytest skips.
 # Package jobs check fresh installs and upgrades, doctor and server interrupts.
-# Dryrun exercises the full agent workflow on a headless Linux runner.
+# Dryrun exercises the full agent workflow on every OS and Python combination.
 # Real hardware needs manual validation.
 name: CI
 
@@ -107,7 +107,7 @@ jobs:
 
       - name: Install local vision weights for dryrun
         id: dryrun-vision
-        if: ${{ !cancelled() && steps.bootstrap.outcome == 'success' && runner.os == 'Linux' && matrix.python == '3.12' }}
+        if: *test_ready
         timeout-minutes: 5
         env:
           PHYSICLAW_HOME: ${{ runner.temp }}/physiclaw-dryrun

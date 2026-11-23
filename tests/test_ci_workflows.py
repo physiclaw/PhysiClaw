@@ -146,7 +146,7 @@ def test_each_pytest_suite_keeps_its_own_report_and_temporary_logs():
     assert "${{ matrix.python }}" in upload["with"]["name"]
 
 
-def test_dryrun_uses_isolated_weights_and_collects_failed_run_logs():
+def test_dryrun_runs_across_the_test_matrix_with_isolated_weights_and_logs():
     steps = YAML(typ="safe").load(WORKFLOWS / "ci.yml")["jobs"]["test"]["steps"]
     provision = next(step for step in steps if step.get("id") == "dryrun-vision")
     run = next(
@@ -155,10 +155,14 @@ def test_dryrun_uses_isolated_weights_and_collects_failed_run_logs():
         if step.get("run") == "uv run --locked --offline python scripts/check_dryrun.py"
     )
     assert steps.index(provision) < steps.index(run)
-    assert "runner.os == 'Linux' && matrix.python == '3.12'" in provision["if"]
+    assert (
+        provision["if"] == "${{ !cancelled() && steps.bootstrap.outcome == 'success' }}"
+    )
     assert (
         run["if"] == "${{ !cancelled() && steps.dryrun-vision.outcome == 'success' }}"
     )
+    assert not provision.get("continue-on-error", False)
+    assert not run.get("continue-on-error", False)
     assert run["env"]["PHYSICLAW_HOME"] == provision["env"]["PHYSICLAW_HOME"]
     assert run["env"]["PHYSICLAW_HOME"].startswith("${{ runner.temp }}/")
     assert run["env"]["TMPDIR"] == "${{ github.workspace }}/.test-results"
