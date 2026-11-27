@@ -22,6 +22,7 @@ def test_now_invokes_server_with_hot_start(mocker) -> None:
         host="127.0.0.1",
         verbose=True,
         hot_start=True,
+        midscene=False,
         cam_index=2,
     )
 
@@ -34,3 +35,10 @@ def test_now_defaults_leave_cam_index_to_the_bundle(mocker) -> None:
     kwargs = server_spy.call_args.kwargs
     assert kwargs["hot_start"] is True
     assert kwargs["cam_index"] is None
+
+
+def test_now_midscene_delegates(mocker):
+    start = mocker.patch.object(now_mod, "server")
+    now_mod.now(midscene=True)
+    assert start.call_args.kwargs["midscene"]
+    assert start.call_args.kwargs["hot_start"]

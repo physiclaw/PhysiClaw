@@ -32,6 +32,13 @@ def now(
             help="Camera index override (default: value stored in the bundle).",
         ),
     ] = None,
+    midscene: Annotated[
+        bool,
+        typer.Option(
+            "--midscene",
+            help="Serve a Midscene Connect device and skip the built-in agent.",
+        ),
+    ] = False,
 ) -> None:
     """Start the server immediately, skipping setup and verification.
 
@@ -44,4 +51,5 @@ def now(
         verbose=verbose,
         hot_start=True,
         cam_index=cam_index,
+        midscene=midscene,
     )

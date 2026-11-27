@@ -47,6 +47,9 @@ STALE_SECONDS = 8.0
 NUMPAD_RESET_SECONDS = 12.0
 
 
+KEYPAD_NOT_FOUND = "Failed to find passcode keypad"
+
+
 class PhoneUnlock:
     """Stateful passcode entry that caches the keypad "1" location.
 
@@ -62,13 +65,13 @@ class PhoneUnlock:
 
     def unlock_phone(
         self, execute: Execute, perception: "Perception", park: Park
-    ) -> str:
+    ) -> str | None:
         """Wake, open the passcode keypad, and tap the repdigit code.
 
         Runs inside the caller's lock + observation bracket. ``execute``
         runs one already-validated gesture; ``perception`` warms/holds the
         OCR and locates the keypad digit; ``park`` moves the stylus off
-        the screen. Returns the action text the observer scans.
+        the screen. Returns the action text, or None if the keypad was not found.
         """
         # Cached: we already know where "1" is — open the keypad and
         # blind-tap it, no OCR. Cold: OCR-locate it first (see below).
@@ -80,7 +83,7 @@ class PhoneUnlock:
 
     def _locate_and_tap(
         self, execute: Execute, perception: "Perception", park: Park
-    ) -> str:
+    ) -> str | None:
         """Cold path: warm OCR, open the keypad, locate + cache the "1",
         and tap — re-arming a fresh keypad first if the locate outran the
         keypad's lifetime."""
@@ -90,7 +93,7 @@ class PhoneUnlock:
         swipe_at = self._open_keypad(execute, park)
         bbox = perception.wait_for_numpad_digit(gestures.UNLOCK_PASSCODE[0])
         if bbox is None:
-            return "Failed to find passcode keypad"
+            return None
         self._digit_bbox = bbox  # cache so later unlocks skip OCR entirely
 
         # If the locate outran the keypad's lifetime, the numpad is stale:

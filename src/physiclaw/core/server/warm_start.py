@@ -27,6 +27,7 @@ import sys
 from typing import TYPE_CHECKING, cast
 
 from physiclaw.common.config import CONFIG
+from physiclaw.core.orchestration import gestures
 
 # Re-exported from core.server.net (its true home) so existing callers —
 # `warm_start.wait_for_port`, `from ...warm_start import wait_for_port` —
@@ -299,10 +300,10 @@ def try_resume(
                 log.exception(f"{flag}: auto-park after resume failed")
     if verify:
         # Match setup.py's final step: send the phone home (swipe from
-        # bottom), then flip ready. home_screen's engaged() context auto-parks
+        # bottom), then flip ready. execute_steps's engaged() context auto-parks
         # the arm off-screen on exit, so nothing is hovering over the glass
         # afterward.
-        physiclaw.home_screen()
+        physiclaw.execute_steps(gestures.HOME_SCREEN)
     # Settle the camera, then flip ready — become_ready owns that order
     # (under --warm-start the home screen is showing — the dark scene that
     # exposes AE failure; under --hot-start whatever's on screen still

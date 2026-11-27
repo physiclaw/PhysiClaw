@@ -699,6 +699,24 @@ def test_tap_uses_requested_contact_duration(mocker) -> None:
     assert b"G4 P0.2" in written
 
 
+def test_tap_switches_to_hit_and_keep_above_max_tap_seconds(mocker) -> None:
+    arm, fake = _arm(
+        mocker,
+        responses=[b"ok\n"] * 6,
+        status_replies=[b"<Idle|WPos:0,0>\n"],
+    )
+
+    arm.tap(duration=0.5)
+
+    written = b"".join(fake.writes)
+    assert b"M3 S1000" in written
+    assert b"G4 P0.08" in written  # SETTLE_MS
+    assert b"M3 S750" in written  # HOLD_S
+    assert b"G4 P0.5" in written
+    assert b"M5" in written
+    assert b"G4 P0.2" in written
+
+
 def test_double_tap_fires_two_strikes(mocker) -> None:
     arm, fake = _arm(
         mocker,

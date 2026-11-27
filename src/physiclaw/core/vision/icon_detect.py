@@ -35,7 +35,6 @@ from physiclaw.common.image import read_image, write_image
 
 log = logging.getLogger(__name__)
 
-MODEL_PATH = paths.omniparser_onnx()
 INPUT_SIZE = 1280  # V2 was trained at 1280
 MIN_CONFIDENCE = 0.3
 NMS_THRESHOLD = 0.5
@@ -52,15 +51,15 @@ class Element:
 class IconDetector:
     """Detect interactable UI elements using OmniParser V2 icon detect."""
 
-    def __init__(self, model_path: Path = MODEL_PATH):
-        if not model_path.exists():
+    def __init__(self, model_path: Path | None = None):
+        path = paths.omniparser_onnx() if model_path is None else model_path
+        if not path.exists():
             raise FileNotFoundError(
-                f"Model not found at {model_path}\n"
-                "Run: physiclaw setup local-vision-model"
+                f"Model not found at {path}\nRun: physiclaw setup local-vision-model"
             )
         # OpenCV's narrow filename API cannot open Unicode Windows paths.
         self.net = cv2.dnn.readNetFromONNX(
-            np.frombuffer(model_path.read_bytes(), dtype=np.uint8)
+            np.frombuffer(path.read_bytes(), dtype=np.uint8)
         )
 
     def detect(

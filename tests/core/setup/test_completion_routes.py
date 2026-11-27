@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from physiclaw.core.orchestration import gestures
 from physiclaw.core.setup import completion_routes
 
 
@@ -26,7 +27,7 @@ async def test_home_screen_route_dispatches(fake_mcp, async_request) -> None:
 
     resp = await fake_mcp.get("/api/phone/home", "POST")(async_request())
 
-    pl.home_screen.assert_called_once()
+    pl.execute_steps.assert_called_once_with(gestures.HOME_SCREEN)
     assert json.loads(bytes(resp.body).decode()) == {"ok": True}
 
 
@@ -36,7 +37,7 @@ async def test_home_screen_route_returns_503_on_failure(
     async_request,
 ) -> None:
     pl = MagicMock()
-    pl.home_screen.side_effect = RuntimeError("arm jammed")
+    pl.execute_steps.side_effect = RuntimeError("arm jammed")
     completion_routes.register(fake_mcp, pl)
 
     resp = await fake_mcp.get("/api/phone/home", "POST")(async_request())

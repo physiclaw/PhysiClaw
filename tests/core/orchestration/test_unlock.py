@@ -61,7 +61,7 @@ def test_taps_six_times_when_keypad_found(mocker) -> None:
 def test_fails_when_keypad_not_found(mocker) -> None:
     result, recorded, _, _ = _run(mocker, unlock.PhoneUnlock(), bbox=None)
 
-    assert result == "Failed to find passcode keypad"
+    assert result is None
     # Only the wake tap ran; no digit taps after the failed poll.
     assert len(_taps(recorded)) == 1
 

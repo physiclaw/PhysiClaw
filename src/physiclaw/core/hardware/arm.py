@@ -62,7 +62,8 @@ GCODE_SET_ORIGIN = "G92 X0.0 Y0.0 Z0"
 GCODE_SET_WORK_POS = "G92 X{x:.3f} Y{y:.3f} Z0"  # declare current pos = (x, y)
 GCODE_MM_UNITS = "G21"
 GCODE_ABSOLUTE = "G90"
-GCODE_DEFAULT_F = "F8000"
+DEFAULT_RAPID_SPEED = 8000  # mm/min — GRBL default positioning feed rate
+GCODE_DEFAULT_F = f"F{DEFAULT_RAPID_SPEED}"
 GCODE_IDLE_DELAY = "$1=250"
 GCODE_UNLOCK = "$X"
 GCODE_VERSION = "$I"
@@ -99,6 +100,7 @@ class StylusArm:
     # Gesture timing (seconds) — how long the solenoid stays on the glass for
     # each gesture. The solenoid's own electrical/mechanical constants (strike
     # duty, hold duty, rebound) live in solenoid.Solenoid.
+    RAPID_SPEED = DEFAULT_RAPID_SPEED
     TAP_DURATION = 0.08  # phone threshold ~50ms, 80ms has margin
     LONG_PRESS_DURATION = 1.2  # iOS/Android threshold ~500ms, 800~1000ms is safe
     SWIPE_DISTANCE = 15  # mm, default swipe length
@@ -315,14 +317,16 @@ class StylusArm:
         validate_dwell(seconds)
         self._send(GCODE_DWELL.format(s=seconds))
 
-    def rapid_to(self, x: float, y: float, speed: int = 8000) -> None:
+    def rapid_to(self, x: float, y: float, speed: int = DEFAULT_RAPID_SPEED) -> None:
         """Rapid move to a work coordinate without touching the screen (G0).
         Pen must be up first. Public: the orchestration and calibration
         layers drive every calibrated-coordinate positioning move with it."""
         validate_move(x, y, speed)
         self._send(GCODE_FAST_MOVE.format(x=x, y=y, f=speed))
 
-    def _linear_move(self, x: float, y: float, speed: int = 8000) -> None:
+    def _linear_move(
+        self, x: float, y: float, speed: int = DEFAULT_RAPID_SPEED
+    ) -> None:
         """Linear move at controlled speed (G1) — used for a swipe slide while
         the solenoid holds the tip down."""
         validate_move(x, y, speed)
@@ -362,8 +366,16 @@ class StylusArm:
         self.jog(mx / mag * d, my / mag * d)
 
     def tap(self, duration: float | None = None) -> None:
-        """Single tap at current position, optionally overriding the press time."""
-        self.solenoid.tap(self.TAP_DURATION if duration is None else duration)
+        """Single tap at current position, optionally overriding the press time.
+
+        Contacts longer than ``solenoid.MAX_TAP_SECONDS`` switch to hit-and-keep
+        so sustained strike current cannot overheat the coil.
+        """
+        seconds = self.TAP_DURATION if duration is None else duration
+        if seconds > self.solenoid.MAX_TAP_SECONDS:
+            self.solenoid.press_and_hold(seconds)
+        else:
+            self.solenoid.tap(seconds)
         self.wait_idle()
 
     def double_tap(self) -> None:
@@ -377,9 +389,11 @@ class StylusArm:
         self.solenoid.double_tap(self.TAP_DURATION)
         self.wait_idle()
 
-    def long_press(self) -> None:
+    def long_press(self, duration: float | None = None) -> None:
         """Long press at current position."""
-        self.solenoid.press_and_hold(self.LONG_PRESS_DURATION)
+        self.solenoid.press_and_hold(
+            self.LONG_PRESS_DURATION if duration is None else duration
+        )
         self.wait_idle()
 
     def swipe(self, direction: str, speed: str = "medium") -> None:
@@ -414,6 +428,8 @@ class StylusArm:
         speed: str = "medium",
         start_dwell: float = 0.0,
         end_dwell: float = 0.0,
+        *,
+        feed_mm_min: int | None = None,
     ) -> None:
         """Swipe to an absolute work-coordinate (x, y) in mm: press, slide,
         release. Unlike :meth:`swipe` (relative cardinal direction), this
@@ -431,7 +447,7 @@ class StylusArm:
         switcher", while releasing on arrival reads as "go home". G4 is a sync
         barrier, so the dwell runs after the slide finishes and the release
         M-code queues after the dwell."""
-        feed = self.SWIPE_SPEEDS[speed]
+        feed = self.SWIPE_SPEEDS[speed] if feed_mm_min is None else feed_mm_min
         validate_move(x, y, feed)
         validate_dwell(start_dwell)
         validate_dwell(end_dwell)

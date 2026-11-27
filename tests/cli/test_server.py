@@ -367,8 +367,8 @@ def test_server_logs_version_first(mocker, caplog) -> None:
     )
 
 
-@pytest.mark.parametrize("no_runtime", [False, True])
-def test_connection_notice_keeps_the_default_view_short(mocker, caplog, no_runtime):
+@pytest.mark.parametrize("show_mcp_hint", [False, True])
+def test_connection_notice_keeps_the_default_view_short(mocker, caplog, show_mcp_hint):
     from physiclaw.common.log_style import ConsoleFilter, TaggedFormatter
 
     mocker.patch(
@@ -376,7 +376,7 @@ def test_connection_notice_keeps_the_default_view_short(mocker, caplog, no_runti
         return_value=("http://rig.local:8049", "http://192.168.1.25:8049"),
     )
     with caplog.at_level(logging.INFO, logger="physiclaw.cli.server"):
-        server_mod._log_endpoints("127.0.0.1", 8048, no_runtime=no_runtime)
+        server_mod._log_endpoints("127.0.0.1", 8048, show_mcp_hint=show_mcp_hint)
     visible = [r for r in caplog.records if ConsoleFilter(verbose=False).filter(r)]
     logs = visible[-1]
     formatter = TaggedFormatter("physiclaw", False, verbose=False)
@@ -388,7 +388,7 @@ def test_connection_notice_keeps_the_default_view_short(mocker, caplog, no_runti
     )
     assert "Phone: http://rig.local:8049/bridge" in normal
     assert "Logs:" in normal
-    assert ("MCP: http://127.0.0.1:8048/mcp" in normal) is no_runtime
+    assert ("MCP: http://127.0.0.1:8048/mcp" in normal) is show_mcp_hint
     assert all(
         text not in normal
         for text in ("cli.server", "QR code", "Fallback", "Connections")
@@ -396,8 +396,8 @@ def test_connection_notice_keeps_the_default_view_short(mocker, caplog, no_runti
     assert "QR code" in diagnostic and "Fallback" in diagnostic
     assert logs.getMessage().startswith("Logs: ")
     assert normal.splitlines()[-1].endswith("[physiclaw] " + logs.getMessage())
-    assert len(visible) == (4 if no_runtime else 2)
-    assert ("Keep this terminal open" in normal) is no_runtime
+    assert len(visible) == (4 if show_mcp_hint else 2)
+    assert ("Keep this terminal open" in normal) is show_mcp_hint
     assert all("[physiclaw] " in message.splitlines()[0] for message in normal_messages)
     assert normal.count("Phone:") == diagnostic.count("Phone:") == 1
     assert normal.count("Logs:") == diagnostic.count("Logs:") == 1
@@ -544,7 +544,7 @@ def test_server_without_provider_key_starts_mcp_and_hardware_setup(
     maintenance.assert_called_once_with(sync_skills=False)
     server_mod._require_vision_model.assert_called_once()
     server_mod._spawn_runtime.assert_not_called()
-    wizard.assert_called_once_with("127.0.0.1", 8048)
+    wizard.assert_called_once_with("127.0.0.1", 8048, midscene_token=None)
     deps["core_server"].build_apps.assert_called_once()
     deps["state"].write.assert_called_once_with("127.0.0.1", 8048, no_runtime=True)
     deps["serve"].assert_called_once()
@@ -1716,3 +1716,26 @@ def test_server_invalid_model_reports_original_error_and_exits(mocker, capsys):
     assert "unknown provider 'unknown'" in output
     assert "PHYSICLAW_MODEL env" in output
     assert "no model configured" not in output
+
+
+@pytest.mark.parametrize("missing_model", [True, False])
+def test_midscene_skips_agent_and_announces_token_only_when_ready(
+    mocker, capsys, caplog, missing_model
+):
+    from physiclaw.core.server import (
+        midscene_schema,
+    )  # preload before mocking server package
+
+    deps = _patch_server_runtime_deps(mocker, missing_model=missing_model)
+    spawn = mocker.patch.object(server_mod, "_spawn_runtime")
+    server_mod.server(port=8099, midscene=True)
+    server_mod._require_vision_model.assert_not_called()
+    deps["launcher"].resolve.assert_not_called()
+    spawn.assert_not_called()
+    token = deps["core_server"].build_apps.call_args.kwargs["midscene_token"]
+    assert token and token not in capsys.readouterr().out
+    announce = deps["serve"].call_args.kwargs["announce_ready"]
+    announce()
+    output = capsys.readouterr().out
+    assert f"127.0.0.1:8099{midscene_schema.BASE_PATH} --token {token}" in output
+    assert token not in caplog.text

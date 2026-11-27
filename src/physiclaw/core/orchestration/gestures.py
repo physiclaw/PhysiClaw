@@ -137,10 +137,12 @@ SWITCHER_HOLD_SECONDS = 0.6
 # Where the current app's clipped card sits when the switcher opens.
 RIGHT_CENTER = [0.8, 0.4, 0.9, 0.6]
 
+RECENT_APPS = Swipe(BOTTOM_EDGE, "up", "s", "slow", end_dwell=SWITCHER_HOLD_SECONDS)
+
 FORCE_QUIT: tuple[Gesture, ...] = (
     # Short slow swipe-up-and-hold: the hold does the talking, the
     # slide stays small and gentle to keep go-home momentum out.
-    Swipe(BOTTOM_EDGE, "up", "s", "slow", end_dwell=SWITCHER_HOLD_SECONDS),
+    RECENT_APPS,
     # Drag the clipped current-app card from the right edge to center.
     Swipe(RIGHT_CENTER, "left", "l", "medium"),
     # Fling it: start on the centered card's lower half for max travel.

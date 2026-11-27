@@ -1,5 +1,7 @@
 """Setup-owned desktop and phone pages, including bridge URL substitution."""
 
+import json
+
 from starlette.requests import Request
 from starlette.responses import HTMLResponse
 
@@ -40,8 +42,11 @@ async def handle_setup_page(request: Request) -> HTMLResponse:
     """Serve the wizard driving the same server endpoints as the CLI."""
     state = runtime_state.read_live() or {}
     return HTMLResponse(
-        render_phone_page_html("setup-hardware.html", request.url.port or 8048).replace(
-            "__NO_RUNTIME__", "true" if state.get("no_runtime") else "false"
+        render_phone_page_html("setup-hardware.html", request.url.port or 8048)
+        .replace("__NO_RUNTIME__", "true" if state.get("no_runtime") else "false")
+        .replace(
+            "__MIDSCENE_PATH__",
+            json.dumps(getattr(request.app.state, "midscene_path", None)),
         ),
         headers={"Cache-Control": "no-store"},
     )
