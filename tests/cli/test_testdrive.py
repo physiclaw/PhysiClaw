@@ -73,16 +73,17 @@ def _cmds(*commands: str) -> str:
 
 
 @pytest.mark.parametrize(
-    ("command", "method", "arguments"),
+    ("command", "method", "arguments", "message"),
     [
-        ("x10", "jog", (10.0, 0.0)),
-        ("X-1.5 Y2", "jog", (-1.5, 2.0)),
-        ("tap", "tap", ()),
-        ("LONGPRESS", "long_press", ()),
+        ("x10", "jog", (10.0, 0.0), "Moved X by +10 mm"),
+        ("y-5", "jog", (0.0, -5.0), "Moved Y by -5 mm"),
+        ("X-1.5 Y2", "jog", (-1.5, 2.0), "Moved X by -1.5 mm and Y by +2 mm"),
+        ("tap", "tap", (), "Completed tap."),
+        ("LONGPRESS", "long_press", (), "Completed longpress."),
     ],
 )
 def test_command_argument_runs_once_without_a_prompt(
-    fake_arm, mocker, command, method, arguments
+    fake_arm, mocker, command, method, arguments, message
 ):
     perform = mocker.spy(fake_arm, method)
     close = mocker.spy(fake_arm, "close")
@@ -91,7 +92,7 @@ def test_command_argument_runs_once_without_a_prompt(
     result = runner.invoke(cli_app, ["testdrive", command])
 
     assert result.exit_code == 0
-    assert "Completed " in result.stdout
+    assert result.stdout.splitlines()[-1].endswith(f" {message}")
     assert "Controls" not in result.stdout
     assert fake_arm.setup_called
     perform.assert_called_once_with(*arguments)
@@ -321,6 +322,17 @@ def test_refuses_when_runtime_lock_is_held_without_a_live_server(mocker, args):
     arm.assert_not_called()
 
 
+def test_refuses_when_runtime_lock_cannot_be_opened(mocker):
+    paths.runtime_state_file().with_suffix(".lock").mkdir(parents=True)
+    arm = mocker.patch("physiclaw.core.hardware.arm.StylusArm")
+
+    result = runner.invoke(app, ["x10"])
+
+    assert result.exit_code == 1
+    assert "Cannot acquire the PhysiClaw runtime lock:" in result.stderr
+    arm.assert_not_called()
+
+
 def test_exits_plainly_when_board_missing(mocker) -> None:
     mocker.patch("physiclaw.common.runtime_state.read_live", return_value=None)
     mocker.patch(
@@ -398,6 +410,7 @@ def test_regression_testdrive_close_failure_is_a_clean_error(
     assert result.exit_code == 1
     assert isinstance(result.exception, SystemExit)
     assert "could not close the board connection: close failed" in result.stderr
+    assert "Moved" not in result.stdout
     assert "Completed" not in result.stdout
     assert "Test drive ended" not in result.output
     close.assert_called_once_with()

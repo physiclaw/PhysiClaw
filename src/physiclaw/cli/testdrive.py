@@ -186,9 +186,8 @@ def testdrive(
     """
     action = None
     if command is not None:
-        command = command.strip().lower()
         try:
-            action = _parse_action(command)
+            action = _parse_action(command.strip().lower())
         except ValueError as e:
             exit_error(str(e), code=2)
 
@@ -214,10 +213,19 @@ def testdrive(
             exit_error("Another PhysiClaw session is running or starting.")
         except OSError as e:
             exit_error(f"Cannot acquire the PhysiClaw runtime lock: {e}")
-        performed_action = _drive_board(port, action)
+        if not _drive_board(port, action):
+            return
 
-    if performed_action:
-        typer.echo("  " + ok(f"Completed {command}."))
+    if isinstance(action, tuple):
+        distances = " and ".join(
+            f"{axis} by {distance:+g} mm"
+            for axis, distance in zip(("X", "Y"), action, strict=True)
+            if distance
+        )
+        message = f"Moved {distances}"
+    else:
+        message = f"Completed {action}."
+    typer.echo("  " + ok(message))
 
 
 def _drive_board(port: str | None, action: _Action | None) -> bool:
