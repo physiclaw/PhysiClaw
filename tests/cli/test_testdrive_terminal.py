@@ -130,7 +130,8 @@ def test_unavailable_line_editor_falls_back_to_plain_input(
 
 
 @pytest.mark.parametrize("encoding", ["ascii", "cp1252", "gbk", "utf-8"])
-def test_session_supports_console_encodings(monkeypatch, encoding):
+@pytest.mark.parametrize("command", [None, "tap"], ids=["interactive", "single-action"])
+def test_testdrive_supports_console_encodings(monkeypatch, encoding, command):
     stream = Console(encoding, tty=False)
     monkeypatch.setattr(sys, "stdout", stream)
     arm = SimpleNamespace(port="COM3", setup=Mock(), tap=Mock(), close=Mock())
@@ -145,16 +146,20 @@ def test_session_supports_console_encodings(monkeypatch, encoding):
 
     monkeypatch.setattr("builtins.input", read)
 
-    testdrive.testdrive()
+    testdrive.testdrive(command=command)
 
     output = stream.getvalue()
     output.encode(encoding, "strict")
     assert "Connected on" in output
     assert "Board disconnected." not in output
-    assert "X10" in output and "longpress" in output
     assert "\033" not in output
-    marker = "->" if encoding in {"ascii", "cp1252"} else "→"
-    assert prompts == [f"testdrive {marker} "] * 2
+    if command is None:
+        assert "X10" in output and "longpress" in output
+        marker = "->" if encoding in {"ascii", "cp1252"} else "→"
+        assert prompts == [f"testdrive {marker} "] * 2
+    else:
+        assert "Completed tap." in output
+        assert prompts == []
     arm.tap.assert_called_once_with()
     arm.close.assert_called_once_with()
 

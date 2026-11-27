@@ -19,7 +19,10 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 from typer.testing import CliRunner
 
+from physiclaw.cli import app as cli_app
+from physiclaw.common import paths
 from physiclaw.core.hardware.device import DeviceNotFound, DeviceTimeout, ProtocolError
+from physiclaw.port.locks import FileLockBusy, exclusive_file_lock
 
 testdrive_mod = importlib.import_module("physiclaw.cli.testdrive")
 
@@ -67,6 +70,80 @@ def fake_arm(mocker) -> FakeArm:
 def _cmds(*commands: str) -> str:
     """Stdin feed for the interactive loop, one command per prompt."""
     return "".join(c + "\n" for c in commands)
+
+
+@pytest.mark.parametrize(
+    ("command", "method", "arguments"),
+    [
+        ("x10", "jog", (10.0, 0.0)),
+        ("X-1.5 Y2", "jog", (-1.5, 2.0)),
+        ("tap", "tap", ()),
+        ("LONGPRESS", "long_press", ()),
+    ],
+)
+def test_command_argument_runs_once_without_a_prompt(
+    fake_arm, mocker, command, method, arguments
+):
+    perform = mocker.spy(fake_arm, method)
+    close = mocker.spy(fake_arm, "close")
+    prompt = mocker.patch.object(testdrive_mod, "_prompt_session")
+
+    result = runner.invoke(cli_app, ["testdrive", command])
+
+    assert result.exit_code == 0
+    assert "Completed " in result.stdout
+    assert "Controls" not in result.stdout
+    assert fake_arm.setup_called
+    perform.assert_called_once_with(*arguments)
+    close.assert_called_once_with()
+    prompt.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("command", "message"),
+    [
+        ("wat", "Unknown command."),
+        ("x1 0", "Unknown command."),
+        ("t ap", "Unknown command."),
+        ("x21", "Move skipped."),
+        ("y-51", "Move skipped."),
+    ],
+)
+def test_invalid_command_argument_fails_before_connecting(mocker, command, message):
+    arm = mocker.patch("physiclaw.core.hardware.arm.StylusArm")
+
+    result = runner.invoke(cli_app, ["testdrive", command])
+
+    assert result.exit_code == 2
+    assert message in result.stderr
+    arm.assert_not_called()
+
+
+@pytest.mark.parametrize("port", ["COM12", "/dev/ttyUSB0"])
+def test_single_action_holds_runtime_lock_until_serial_close(mocker, port):
+    lock_path = paths.runtime_state_file().with_suffix(".lock")
+    arm = FakeArm()
+
+    def close():
+        with (
+            pytest.raises(FileLockBusy, match="lock is held"),
+            exclusive_file_lock(lock_path),
+        ):
+            pytest.fail("another session can enter during serial cleanup")
+
+    close_arm = mocker.patch.object(arm, "close", side_effect=close)
+    arm_factory = mocker.patch(
+        "physiclaw.core.hardware.arm.StylusArm", return_value=arm
+    )
+
+    result = runner.invoke(cli_app, ["testdrive", "x10", "--port", port])
+
+    assert result.exit_code == 0
+    arm_factory.assert_called_once_with(port)
+    close_arm.assert_called_once_with()
+    assert arm.jogs == [(10.0, 0.0)]
+    with exclusive_file_lock(lock_path):
+        pass
 
 
 # ---------- the command loop ----------
@@ -132,8 +209,8 @@ def test_prompt_reflects_the_last_action_without_extra_output(fake_arm, mocker) 
     assert "Moved" not in result.output
 
 
-def test_commands_ignore_case_and_spaces(fake_arm) -> None:
-    result = runner.invoke(app, [], input=_cmds("x10 Y5", "TAP", "LongPress", "Q"))
+def test_commands_accept_mixed_case_and_axis_spacing(fake_arm) -> None:
+    result = runner.invoke(app, [], input=_cmds(" x10 Y5 ", "TAP", "LongPress", "Q"))
 
     assert result.exit_code == 0
     assert fake_arm.jogs == [(10.0, 5.0)]
@@ -220,16 +297,28 @@ def test_empty_and_zero_moves_do_not_send_hardware_commands(fake_arm, command) -
 # ---------- guards and error paths ----------
 
 
-def test_refuses_when_server_live(mocker) -> None:
+@pytest.mark.parametrize("args", [[], ["x10"]])
+def test_refuses_when_server_live(mocker, args) -> None:
     mocker.patch("physiclaw.common.runtime_state.read_live", return_value={"pid": 42})
     arm_spy = mocker.patch("physiclaw.core.hardware.arm.StylusArm")
 
-    result = runner.invoke(app, [])
+    result = runner.invoke(app, args)
 
     assert result.exit_code == 1
     assert "stop it first" in result.output
     assert "pid 42" in result.output
     arm_spy.assert_not_called()
+
+
+@pytest.mark.parametrize("args", [[], ["x10"]])
+def test_refuses_when_runtime_lock_is_held_without_a_live_server(mocker, args):
+    arm = mocker.patch("physiclaw.core.hardware.arm.StylusArm")
+    with exclusive_file_lock(paths.runtime_state_file().with_suffix(".lock")):
+        result = runner.invoke(app, args)
+
+    assert result.exit_code == 1
+    assert "Another PhysiClaw session" in result.stderr
+    arm.assert_not_called()
 
 
 def test_exits_plainly_when_board_missing(mocker) -> None:
@@ -245,16 +334,18 @@ def test_exits_plainly_when_board_missing(mocker) -> None:
     assert "GRBL device not found" in result.output
 
 
-def test_board_dying_midrun_closes_port(fake_arm, mocker) -> None:
+@pytest.mark.parametrize("args", [[], ["x10"]])
+def test_board_dying_midrun_closes_port(fake_arm, mocker, args) -> None:
     mocker.patch.object(
         fake_arm, "jog", side_effect=ProtocolError("GRBL error: error:9")
     )
 
-    result = runner.invoke(app, [], input=_cmds("x10"))
+    result = runner.invoke(app, args, input=_cmds("x10"))
 
     assert result.exit_code == 1
     assert "Test drive stopped" in result.output
     assert "Moved" not in result.output
+    assert "Completed" not in result.output
     assert "Test drive ended" not in result.output
     assert fake_arm.closed
 
@@ -296,14 +387,18 @@ def test_regression_testdrive_serial_failure_closes_arm_and_reports_error(
 @pytest.mark.parametrize(
     "error", [OSError("close failed"), ProtocolError("close failed")]
 )
-def test_regression_testdrive_close_failure_is_a_clean_error(fake_arm, mocker, error):
+@pytest.mark.parametrize("args", [[], ["x10"]])
+def test_regression_testdrive_close_failure_is_a_clean_error(
+    fake_arm, mocker, error, args
+):
     close = mocker.patch.object(fake_arm, "close", side_effect=error)
 
-    result = runner.invoke(app, [], input=_cmds("q"))
+    result = runner.invoke(app, args, input=_cmds("q"))
 
     assert result.exit_code == 1
     assert isinstance(result.exception, SystemExit)
     assert "could not close the board connection: close failed" in result.stderr
+    assert "Completed" not in result.stdout
     assert "Test drive ended" not in result.output
     close.assert_called_once_with()
 
@@ -453,6 +548,8 @@ def test_testdrive_without_readline_still_accepts_commands(fake_arm, mocker):
         "x1e2",
         "x+1",
         "x--1",
+        "x1 0",
+        "t ap",
         "y1x1",
         "x1x2",
         "x1junk",
@@ -460,7 +557,7 @@ def test_testdrive_without_readline_still_accepts_commands(fake_arm, mocker):
         "x1;M3",
     ],
 )
-def test_testdrive_malformed_moves_never_reach_hardware(fake_arm, command):
+def test_testdrive_malformed_commands_never_reach_hardware(fake_arm, command):
     commands = _cmds(command, "q")
 
     result = runner.invoke(app, [], input=commands)
