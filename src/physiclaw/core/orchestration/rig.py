@@ -264,7 +264,7 @@ class HardwareRig:
             self.release()
 
     @contextmanager
-    def engaged(self, wait_seconds: float = 0):
+    def engaged(self, wait_seconds: float = 0, *, require_ready: bool = False):
         """Check hardware, acquire lock, auto-park on exit, then release.
         Tool entries pass TOOL_LOCK_WAIT_SECONDS to wait out short
         background contention; fail-open callers (the watchdog poll)
@@ -272,21 +272,26 @@ class HardwareRig:
         self.require_hardware()
         with self.locked(wait_seconds=wait_seconds):
             self.require_hardware()
-            try:
+            if require_ready and not self.ready:
+                raise RuntimeError("Complete PhysiClaw hardware setup first")
+            with self.park_after_motion():
                 yield
-            finally:
-                try:
-                    self.park()
-                except Exception:
-                    # Best-effort like shutdown's _safe, but never silent: a
-                    # persistently failing inter-gesture park leaves the tip
-                    # over the glass while gestures keep running.
-                    log.exception(
-                        "engaged(): auto-park failed",
-                        extra={
-                            "console_message": "Arm could not park — check its position before continuing"
-                        },
-                    )
+
+    @contextmanager
+    def park_after_motion(self):
+        """Park on exit from a motion sequence. Caller holds the rig lock."""
+        try:
+            yield
+        finally:
+            try:
+                self.park()
+            except Exception:
+                log.exception(
+                    "engaged(): auto-park failed",
+                    extra={
+                        "console_message": "Arm could not park — check its position before continuing"
+                    },
+                )
 
     # ─── Hardware connection ──────────────────────────────────
 
@@ -625,7 +630,11 @@ class HardwareRig:
         self.assert_locked()
         t = self.require_transforms()
         cx, cy = t.bbox_center_pct(bbox)
-        gx, gy = t.pct_to_grbl_mm(cx, cy)
+        self.move_to_point(cx, cy)
+
+    def move_to_point(self, x: float, y: float) -> None:
+        self.assert_locked()
+        gx, gy = self.require_transforms().pct_to_grbl_mm(x, y)
         arm = self.require_arm()
         arm.rapid_to(gx, gy)
         arm.wait_idle()

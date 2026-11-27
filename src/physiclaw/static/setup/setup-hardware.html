@@ -210,6 +210,14 @@ h1{font-size:30px;line-height:1.16;margin:0 0 13px;letter-spacing:-.025em;font-w
   clip-path:inset(50%);white-space:nowrap;border:0}
 #mcpAddress{min-width:0;overflow-wrap:anywhere;text-align:left;color:var(--txt);
   -webkit-user-select:all;user-select:all}
+.connection-list{display:grid;gap:12px;text-align:left;width:fit-content;max-width:100%;margin:22px auto 0}
+.connection-row + .connection-row{border-top:1px solid var(--line);padding-top:12px}
+.connection-row strong{color:var(--txt)}
+.connection-address{display:flex;align-items:center;gap:8px;padding-inline-start:14px}
+.connection-address code{min-width:0;overflow-wrap:anywhere;font-size:13px;color:var(--muted)}
+.copy-address{background:transparent;border:0;color:var(--muted);padding:6px;cursor:pointer}
+.copy-address:hover,.copy-address:focus-visible{color:var(--accent)}
+.connection-hint{color:var(--muted);font-size:12px;margin:4px 0 0;padding-inline-start:14px}
 .success-hero .big{width:80px;height:80px;border-radius:50%;margin:0 auto 18px;display:grid;place-items:center;
   font-size:40px;background:linear-gradient(135deg,var(--accent-lt),var(--accent-d));color:var(--accent-ink);
   box-shadow:0 12px 40px rgba(212,81,26,.4)}
@@ -542,6 +550,13 @@ const STR = {
   s_finish_learning: {
     en: "On the first run, PhysiClaw needs a few minutes to learn your chat app and keyboard layout. Put your chat app in the Dock at the bottom of your iPhone's Home Screen so it's easy to find.",
     zh: "首次使用时，PhysiClaw 还需要几分钟来熟悉聊天应用和键盘布局。请把聊天应用放在 iPhone 主屏幕底部的 Dock 栏，方便后续打开。",
+  },
+  copyAddress: { en: n => `Copy ${n} URL`, zh: n => `复制 ${n} 地址` },
+  copied: { en: "Copied", zh: "已复制" },
+  copyFailed: { en: "Copy failed", zh: "复制失败" },
+  midsceneTokenHint: {
+    en: "Use with the session token printed in the PhysiClaw terminal.",
+    zh: "请配合 PhysiClaw 终端中输出的本次 token 使用。",
   },
   s_finish_close: { en: "You can close this tab now.", zh: "现在可以关闭这个标签页了。" },
   s_finish_mcp_checking: { en: "Checking…", zh: "检查中…" },
@@ -1097,6 +1112,45 @@ function assistiveTouch(ctx) {
 }
 
 /* ── 10. Finish ────────────────────────────────────── */
+const midscenePath = __MIDSCENE_PATH__;
+
+function connectionRow(label, path, hint) {
+  const row = $(`<div class="connection-row"><strong class="mcp-label"></strong>
+    <div class="connection-address"><code></code><button class="copy-address" type="button">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 5V4a1 1 0 0 0-1-1H5a2 2 0 0 0-2 2v10a1 1 0 0 0 1 1h1"/></svg></button>
+      <span class="copy-status" role="status"></span></div></div>`);
+  const url = window.location.origin + path;
+  row.querySelector("strong").textContent = label;
+  row.querySelector("code").textContent = url;
+  if (hint) {
+    const noteEl = document.createElement("p");
+    noteEl.className = "connection-hint";
+    noteEl.textContent = hint;
+    row.appendChild(noteEl);
+  }
+  const button = row.querySelector("button");
+  button.setAttribute("aria-label", t("copyAddress", label));
+  button.title = t("copyAddress", label);
+  button.onclick = async () => {
+    const feedback = row.querySelector(".copy-status");
+    try {
+      if (navigator.clipboard) await navigator.clipboard.writeText(url);
+      else {
+        const field = document.createElement("textarea");
+        field.value = url;
+        field.style.cssText = "position:fixed;opacity:0";
+        document.body.appendChild(field);
+        try {
+          field.select();
+          if (!document.execCommand("copy")) throw new Error("copy");
+        } finally { field.remove(); button.focus(); }
+      }
+      feedback.textContent = t("copied");
+    } catch { feedback.textContent = t("copyFailed"); }
+  };
+  return row;
+}
+
 function finish(ctx) {
   // Already done (e.g. a page refresh after setup) → show the ready state
   // straight away. Only a genuine first finish runs home + mark-ready, so a
@@ -1115,8 +1169,10 @@ function finish(ctx) {
       <p class="lede" style="margin:10px auto 0;max-width:42ch">${t("s_finish_readyLede", when)}</p>`;
     // Only the built-in runtime automatically learns the screen layout.
     if (__NO_RUNTIME__) {
-      const connect = $(`<p class="mcp-connect"><span class="mcp-label">MCP:<span class="sr-only" id="mcpStatus" role="status"></span></span> <span id="mcpAddress"></span></p>`);
-      connect.querySelector("#mcpAddress").textContent = window.location.origin + "/mcp";
+      const connect = midscenePath ? $('<div class="mcp-connect connection-list"><span class="sr-only" id="mcpStatus" role="status"></span></div>') : $(`<p class="mcp-connect"><span class="mcp-label">MCP:<span class="sr-only" id="mcpStatus" role="status"></span></span> <span id="mcpAddress"></span></p>`);
+      if (midscenePath) {
+        connect.append(connectionRow("MCP", "/mcp"), connectionRow("Midscene Connect", midscenePath, t("midsceneTokenHint")));
+      } else connect.querySelector("#mcpAddress").textContent = window.location.origin + "/mcp";
       hero.appendChild(connect);
       const status = connect.querySelector("#mcpStatus");
       function setState(state) {

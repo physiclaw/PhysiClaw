@@ -29,6 +29,18 @@ test('MCP completion shows the current server address, including a custom port',
   assert.equal(posts(ui).length, 0);
 });
 
+test('Midscene completion copies the base device URL and points to the terminal token', async () => {
+  const copied = [];
+  const ui = await createSetup({noRuntime: true, midscene: true,
+    origin: 'http://[::1]:9123', initial: {ready: true}, writeText: value => copied.push(value)});
+  const panel = ui.el('panel');
+  assert.match(panel.textContent, /Midscene Connect/);
+  assert.match(panel.textContent, /session token printed in the PhysiClaw terminal/);
+  const buttons = panel.querySelectorAll('.copy-address');
+  for (const button of buttons) await button.onclick();
+  assert.deepEqual(copied, ['http://[::1]:9123/mcp', 'http://[::1]:9123/midscene-device']);
+});
+
 test('MCP indicator waits for a live response before showing connected', async () => {
   const pending = Promise.withResolvers();
   let probes = 0;

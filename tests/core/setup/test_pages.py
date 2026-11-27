@@ -93,6 +93,7 @@ async def test_handle_setup_page_serves_wizard(mocker, no_runtime) -> None:
     req = _fake_request()
     req.url = SimpleNamespace(port=8048)
 
+    req.app = SimpleNamespace(state=SimpleNamespace())
     resp = await handle_setup_page(req)
 
     assert resp.status_code == 200

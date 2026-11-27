@@ -134,6 +134,13 @@ def server(
             "`physiclaw clear`.",
         ),
     ] = CONFIG.server.save_raw_camera,
+    midscene: Annotated[
+        bool,
+        typer.Option(
+            "--midscene",
+            help="Serve a Midscene Connect device and skip the built-in agent.",
+        ),
+    ] = False,
 ) -> None:
     """Run the PhysiClaw MCP server.
 
@@ -182,7 +189,7 @@ def server(
         lambda record: "Invalid HTTP request received" not in record.getMessage()
     )
     model_ref, model_source, runtime_label = _resolve_runtime_model(
-        no_runtime=no_runtime
+        no_runtime=no_runtime or midscene
     )
     no_runtime = model_ref is None
     log = logging.getLogger(__name__)
@@ -194,7 +201,8 @@ def server(
             "console_message": f"PhysiClaw {__version__} — starting hardware",
         },
     )
-    _require_vision_model()
+    if not midscene:
+        _require_vision_model()
     live = runtime_state.read_live()
     if live and live.get("service") == ASSISTIVE_TOUCH_SERVICE:
         stop_service(live)
@@ -233,8 +241,46 @@ def server(
             runtime_state.write(
                 host, port, model_ref=model_ref, model_source=model_source
             )
-        _log_endpoints(host, port, no_runtime=no_runtime)
-        apps = build_apps(host)
+        announce_ready: bool | Callable[[], None] = no_runtime
+        if midscene:
+            import secrets
+
+            from physiclaw.core.server.midscene_schema import BASE_PATH
+
+            token = secrets.token_urlsafe(32)
+            url = f"http://{url_host(host)}:{port}{BASE_PATH}"
+
+            # Credentials go directly to the terminal, never through log handlers.
+            def announce_midscene() -> None:
+                typer.secho(
+                    "✔ PhysiClaw is ready for Midscene Connect", fg="green", bold=True
+                )
+                typer.echo()
+                typer.echo(f"  Connect URL       {url}")
+                typer.echo(f"  Token             {token}")
+                typer.echo(
+                    "  Midscene Connect  https://www.midscenejs.com/midscene-connect"
+                )
+                typer.echo()
+                typer.echo(
+                    "  Playground "
+                    + typer.style("· run in another terminal", dim=True)
+                )
+                command = (
+                    f"npx @midscene/connect@beta playground --url {url} --token {token}"
+                )
+                typer.echo(
+                    "    "
+                    + typer.style("$ ", dim=True)
+                    + typer.style(command, fg="cyan")
+                )
+
+            announce_ready = announce_midscene
+            _log_endpoints(host, port, show_mcp_hint=False)
+            apps = build_apps(host, midscene_token=token)
+        else:
+            _log_endpoints(host, port, show_mcp_hint=no_runtime)
+            apps = build_apps(host)
         runtime = None
         if not no_runtime:
             runtime = ManagedRuntime(_spawn_runtime(host, port, verbose, runtime_label))
@@ -245,7 +291,7 @@ def server(
                 port,
                 *apps,
                 sockets=listeners,
-                announce_ready=no_runtime,
+                announce_ready=announce_ready,
                 runtime=runtime,
                 on_started=partial(
                     _start_hardware_bringup,
@@ -284,7 +330,7 @@ def _serve(
     bridge_app,
     *,
     sockets: tuple[socket.socket, socket.socket],
-    announce_ready: bool,
+    announce_ready: bool | Callable[[], None],
     on_started: Callable[[], None],
     runtime: ManagedRuntime | None = None,
 ) -> None:
@@ -388,7 +434,11 @@ def _serve(
             if control_server.started and bridge_server.started:
                 try:
                     on_started()
-                    if announce_ready:
+                    if callable(announce_ready):
+                        _announce_ready_when_up(
+                            host, port, stopping=stopping, notify=announce_ready
+                        )
+                    elif announce_ready:
                         _announce_ready_when_up(host, port, stopping=stopping)
                 except BaseException as e:
                     failures.append(
@@ -440,7 +490,11 @@ def _serve(
 
 
 def _announce_ready_when_up(
-    host: str, port: int, *, stopping: threading.Event | None = None
+    host: str,
+    port: int,
+    *,
+    stopping: threading.Event | None = None,
+    notify: Callable[[], None] | None = None,
 ) -> None:
     """`physiclaw mcp` mode: one ready line when the rig can actually be
     driven — /api/status `ready: true`, the same flag the built-in
@@ -467,7 +521,11 @@ def _announce_ready_when_up(
         while not stopping.is_set():
             try:
                 if check_ready_once(base):
-                    if not stopping.is_set():
+                    if stopping.is_set():
+                        return
+                    if notify is not None:
+                        notify()
+                    else:
                         log.info(
                             "PhysiClaw ready — MCP tools live at %s/mcp",
                             base,
@@ -643,27 +701,26 @@ def _resolve_runtime_model(*, no_runtime: bool) -> tuple[str | None, str | None,
     return None, None, "external MCP client"
 
 
-def _log_endpoints(host: str, port: int, *, no_runtime: bool) -> None:
+def _log_endpoints(host: str, port: int, *, show_mcp_hint: bool) -> None:
     """Log the MCP URL, the QR link, and the phone /bridge URLs — primary
     (mDNS, survives IP changes) plus IP fallback, or a single URL and a
-    LocalHostName tip when the two coincide. Without a built-in runtime
-    (--no-runtime / `physiclaw mcp`) an external MCP client is the consumer,
-    so the /mcp line carries the connect hint — dialable via
-    `config.url_host`, since the client pastes it."""
+    LocalHostName tip when the two coincide. When `show_mcp_hint` is True
+    (external MCP client mode), print the /mcp line and connect hint —
+    dialable via `config.url_host`, since the client pastes it."""
     log = logging.getLogger(__name__)
     from physiclaw.common import paths
     from physiclaw.core.bridge import bridge_base_urls
 
     primary, fallback = bridge_base_urls(port)
     base = f"http://{url_host(host)}:{port}"
-    log.info("MCP: %s/mcp", base, extra={"console": no_runtime})
+    log.info("MCP: %s/mcp", base, extra={"console": show_mcp_hint})
     log.info("Phone: %s/bridge", primary, extra={"console": True})
     log.info("QR code: %s/api/bridge/qr (scan with your phone)", base)
     if primary != fallback:
         log.info("Fallback: %s/bridge (if mDNS is blocked)", fallback)
     else:
         log.info("Tip: set a stable LocalHostName for <name>.local URLs.")
-    if no_runtime:
+    if show_mcp_hint:
         log.info(
             "After hardware setup, connect your AI app to the MCP address above.\n"
             "Keep this terminal open while using PhysiClaw. Press Ctrl+C to stop.",

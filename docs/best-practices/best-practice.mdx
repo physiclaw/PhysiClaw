@@ -1,9 +1,9 @@
 ---
 title: Best practices
-description: How to get the most out of PhysiClaw, as a personal assistant, connected to a coding agent, and with playbooks for routine tasks.
+description: How to get the most out of PhysiClaw, as a personal assistant, connected to a coding agent or Midscene for automated testing, and with playbooks for routine tasks.
 ---
 
-PhysiClaw works three ways: as your personal assistant, as an MCP server connected to a coding agent, and with playbooks for the tasks you repeat.
+PhysiClaw works as your personal assistant, as an MCP server for coding agents, with Midscene for automated UI testing on a real phone, and with playbooks for the tasks you repeat.
 
 ## As a personal assistant
 
@@ -34,6 +34,39 @@ If you already work with a coding agent, you can connect PhysiClaw to it as an [
 :::tip[Type in the terminal]
 Open Instacart and tell me what's in my cart.
 :::
+
+## Automated testing with Midscene
+
+PhysiClaw has built-in [Midscene Connect](https://www.midscenejs.com/midscene-connect) support, so you can run vision-driven E2E UI tests on a real phone without enabling device debugging interfaces:
+
+```bash
+physiclaw server --midscene
+# Or reuse the saved calibration if the rig hasn't moved:
+# physiclaw now --midscene
+```
+
+Once ready, start Playground using the Connect URL and session token printed in the PhysiClaw terminal (you can also copy the base URL on the setup completion page):
+
+```bash
+✔ PhysiClaw is ready for Midscene Connect
+
+  Connect URL       http://127.0.0.1:8048/midscene-device
+  Token             <your-token>
+  Midscene Connect  https://www.midscenejs.com/midscene-connect
+
+  Playground · run in another terminal
+    $ npx @midscene/connect@beta playground --url http://127.0.0.1:8048/midscene-device --token <your-token>
+```
+
+| Category | Capabilities | Notes |
+| --- | --- | --- |
+| Screen | `screenshot`, `size` | Calibrated camera view |
+| Touch | `tap`, `doubleClick`, `longPress` | Supports `duration` on `tap` and `longPress` |
+| Swipe | `swipe`, `dragAndDrop` | Supports `duration` and `repeat` on `swipe` |
+| System | `homeButton`, `backButton`, `recentAppsButton` | Physical iOS edge and switcher gestures |
+| Custom | `sendToClipboard`, `forceQuit`, `unlockPhone` | Clipboard paste helper, force-quit app, configured test passcode unlock |
+
+To learn more about writing Midscene automated test scripts, see the [Midscene Connect docs](https://www.midscenejs.com/midscene-connect) and [midscene-test-everything](https://github.com/web-infra-dev/midscene-test-everything).
 
 ## Make routine tasks into playbooks
 

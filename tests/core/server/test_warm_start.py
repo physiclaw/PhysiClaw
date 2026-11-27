@@ -12,6 +12,7 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
+from physiclaw.core.orchestration import gestures
 from physiclaw.core.server import net, warm_start
 from tests.core.conftest import wire_locked
 
@@ -189,7 +190,7 @@ def test_try_resume_succeeds_on_clean_path(mocker) -> None:
     app.rig.connect_camera.assert_called_once_with(1)
     # Origin re-pinned from the park spot so the bundle's affine stays valid.
     app.rig.restore_park_origin.assert_called_once()
-    app.home_screen.assert_called_once()
+    app.execute_steps.assert_called_once_with(gestures.HOME_SCREEN)
     # become_ready owns the settle-then-mark order (camera settle between
     # home — dark scene showing — and the ready flip).
     app.become_ready.assert_called_once()
@@ -280,7 +281,7 @@ def test_try_resume_no_verify_skips_everything_that_touches_the_phone(
     assert result is True
     sanity.assert_not_called()
     app.rig.bridge.wait_for_connection.assert_not_called()
-    app.home_screen.assert_not_called()
+    app.execute_steps.assert_not_called()
     app.rig.restore_park_origin.assert_called_once()
     app.become_ready.assert_called_once()
 

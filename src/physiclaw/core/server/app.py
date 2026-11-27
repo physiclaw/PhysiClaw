@@ -140,8 +140,20 @@ def shutdown(bundle: ServerBundle = default_bundle) -> None:
             pl.rig.setup_recording.close()
 
 
-def build_apps(host: str = "127.0.0.1") -> tuple[ControlGate, Starlette]:
+def build_apps(
+    host: str = "127.0.0.1", *, midscene_token: str | None = None
+) -> tuple[ControlGate, Starlette]:
     """(control_asgi, bridge_asgi) — built on demand by `cli/server.py`.
     `streamable_http_app()` is lazy-init inside MCPServer, so this is safe
     to call once serving is about to start. `host` is the control bind."""
-    return build_control_app(mcp, host), build_bridge_app(_phone_app)
+    if midscene_token is not None:
+        from physiclaw.core.server.midscene_connect import device_app
+        from physiclaw.core.server.midscene_schema import BASE_PATH
+
+        app = mcp.streamable_http_app(host=host)
+        app.state.midscene_path = BASE_PATH
+        app.mount(BASE_PATH, device_app(physiclaw, midscene_token))
+        control = ControlGate(app, host)
+    else:
+        control = build_control_app(mcp, host)
+    return control, build_bridge_app(_phone_app)

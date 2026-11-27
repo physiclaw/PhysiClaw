@@ -244,6 +244,11 @@ class PhysiClaw:
             case _:
                 assert_never(step)
 
+    def _run_steps(self, steps: tuple[gestures.Gesture, ...]) -> None:
+        """Replay validated gestures under an already-held rig lock."""
+        for step in steps:
+            self._execute(step)
+
     def _run_gesture(self, step: gestures.Gesture) -> "GestureResult":
         """Run one typed gesture under the observation bracket."""
         return self._observed(lambda: self._execute(step))
@@ -257,11 +262,31 @@ class PhysiClaw:
         macro gestures (home_screen / go_back / force_quit)."""
 
         def act() -> str:
-            for step in steps:
-                self._execute(step)
+            self._run_steps(steps)
             return result
 
         return self._observed(act)
+
+    def execute_steps(
+        self, steps: tuple[gestures.Gesture, ...], *, require_ready: bool = False
+    ) -> None:
+        """Run validated gestures without post-action camera observation."""
+        with self.rig.engaged(
+            wait_seconds=TOOL_LOCK_WAIT_SECONDS, require_ready=require_ready
+        ):
+            self._run_steps(steps)
+
+    def execute_unlock(self, *, require_ready: bool = False) -> str:
+        """Run the mechanical unlock routine without post-action observation."""
+        with self.rig.engaged(
+            wait_seconds=TOOL_LOCK_WAIT_SECONDS, require_ready=require_ready
+        ):
+            result = self._unlock.unlock_phone(
+                self._execute, self.perception, self.rig.park
+            )
+            if result is None:
+                raise RuntimeError(unlock.KEYPAD_NOT_FOUND)
+            return result
 
     # ─── Public gestures (with lock) ─────────────────────────
 
@@ -321,9 +346,11 @@ class PhysiClaw:
             self._clipboard.record_miss(self.rig.require_bridge().connectivity_hint())
         )
 
-    def send_to_clipboard(self, text: str) -> str:
+    def send_to_clipboard(self, text: str, *, require_ready: bool = False) -> str:
         """Copy text to the phone's clipboard via AssistiveTouch long-press."""
-        with self.rig.engaged(wait_seconds=TOOL_LOCK_WAIT_SECONDS):
+        with self.rig.engaged(
+            wait_seconds=TOOL_LOCK_WAIT_SECONDS, require_ready=require_ready
+        ):
             return self._send_to_clipboard(text)
 
     def _run_step(self, tool: str, arg) -> str:
@@ -400,7 +427,8 @@ class PhysiClaw:
         phone unlocked, and the AGENT retries if not.
         """
         return self._observed(
-            lambda: self._unlock.unlock_phone(
-                self._execute, self.perception, self.rig.park
+            lambda: (
+                self._unlock.unlock_phone(self._execute, self.perception, self.rig.park)
+                or unlock.KEYPAD_NOT_FOUND
             )
         )

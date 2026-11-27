@@ -2,11 +2,13 @@
 
 import asyncio
 import logging
+from functools import partial
 from typing import TYPE_CHECKING
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from physiclaw.core.orchestration import gestures
 from physiclaw.core.setup.run_log import run_setup_step
 
 if TYPE_CHECKING:
@@ -24,7 +26,10 @@ def register(mcp: "MCPServer", physiclaw: "PhysiClaw") -> None:
     async def _home(request: Request) -> JSONResponse:
         try:
             await asyncio.to_thread(
-                run_setup_step, physiclaw.rig, "finish.home", physiclaw.home_screen
+                run_setup_step,
+                physiclaw.rig,
+                "finish.home",
+                partial(physiclaw.execute_steps, gestures.HOME_SCREEN),
             )
             return JSONResponse({"ok": True})
         except Exception as e:
