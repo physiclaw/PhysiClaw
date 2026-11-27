@@ -42,22 +42,3 @@ Look up "<your question>" on ChatGPT.
 :::tip[No model set?]
 The agent needs a model provider. If you haven't set one up, see [Get an API key](/en/set-up/provider/).
 :::
-
-## Use Midscene Playground
-
-Start `physiclaw server --midscene` and complete hardware setup. If the arm
-is parked and the rig has not moved since the previous clean shutdown, use
-`physiclaw now --midscene` to restore the saved calibration.
-
-When the hardware is ready, copy the Playground command printed in the terminal.
-It includes the device URL and a bearer token for this server session. Restarting
-the server generates a new token. Configure the vision model and provider key in
-Midscene. PhysiClaw serves one calibrated phone and skips its built-in agent.
-
-Playground reads camera images and drives taps, double taps, long presses,
-swipes, drag and drop, Home, Back (iOS edge gesture), and the app switcher.
-Custom actions copy text to the phone clipboard, close the current app, or unlock
-a test phone configured for PhysiClaw's unlock routine. Open the printed API docs
-URL to browse the endpoints. To try a request, select **Authorize** and enter the session token.
-
-On the setup completion page, copy the URL beside Midscene Connect to use it as `--url`. The copied URL includes the session token.

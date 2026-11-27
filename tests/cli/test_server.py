@@ -544,7 +544,7 @@ def test_server_without_provider_key_starts_mcp_and_hardware_setup(
     maintenance.assert_called_once_with(sync_skills=False)
     server_mod._require_vision_model.assert_called_once()
     server_mod._spawn_runtime.assert_not_called()
-    wizard.assert_called_once_with("127.0.0.1", 8048, midscene_token=None)
+    wizard.assert_called_once_with("127.0.0.1", 8048)
     deps["core_server"].build_apps.assert_called_once()
     deps["state"].write.assert_called_once_with("127.0.0.1", 8048, no_runtime=True)
     deps["serve"].assert_called_once()
@@ -1737,5 +1737,9 @@ def test_midscene_skips_agent_and_announces_token_only_when_ready(
     announce = deps["serve"].call_args.kwargs["announce_ready"]
     announce()
     output = capsys.readouterr().out
-    assert f"127.0.0.1:8099{midscene_schema.BASE_PATH} --token {token}" in output
+    base_url = f"http://127.0.0.1:8099{midscene_schema.BASE_PATH}"
+    assert f"Connect URL       {base_url}" in output
+    assert f"Token             {token}" in output
+    assert f"{base_url} --token {token}" in output
+    assert "/api/docs/" not in output
     assert token not in caplog.text

@@ -1,4 +1,4 @@
-"""Wire contracts shared by discovery, validation and the OpenAPI document."""
+"""Wire contracts shared by discovery and request validation."""
 
 from typing import Annotated
 
@@ -126,86 +126,4 @@ def device_info() -> dict:
         "pointerType": "touch",
         "primitives": list(PRIMITIVES),
         "actions": actions,
-    }
-
-
-def openapi() -> dict:
-    schemas = {}
-    paths = {}
-    size = {"width": {"type": "integer"}, "height": {"type": "integer"}}
-    outputs = {
-        "info": {
-            k: {
-                "type": "array",
-                "items": {"type": "string" if k == "primitives" else "object"},
-            }
-            if isinstance(v, list)
-            else {"type": "string"}
-            for k, v in device_info().items()
-        },
-        "size": size,
-        "screenshot": {
-            **size,
-            "image": {"type": "string", "description": "JPEG data URL"},
-        },
-    }
-
-    def response(props):
-        return {
-            "200": {
-                "description": "Success",
-                "content": {
-                    "application/json": {
-                        "schema": {"type": "object", "properties": props}
-                    }
-                },
-            },
-            "401": {"description": "Bearer token required"},
-        }
-
-    for name, props in outputs.items():
-        paths[f"/{name}"] = {
-            "get": {
-                "tags": ["Device"],
-                "operationId": name,
-                "responses": response(props),
-            }
-        }
-    for kind, models in (
-        ("primitives", PRIMITIVES),
-        ("actions", {k: v[0] for k, v in ACTIONS.items()}),
-    ):
-        for name, model in models.items():
-            schema = model.model_json_schema(
-                ref_template="#/components/schemas/{model}"
-            )
-            schemas.update(schema.pop("$defs", {}))
-            output = {"ok": {"type": "boolean"}}
-            if kind == "actions":
-                output["result"] = {"type": "string"}
-            paths[f"/{kind}/{name}"] = {
-                "post": {
-                    "operationId": name,
-                    "tags": [kind.capitalize()],
-                    "requestBody": {
-                        "required": True,
-                        "content": {"application/json": {"schema": schema}},
-                    },
-                    "responses": response(output),
-                }
-            }
-    return {
-        "openapi": "3.1.0",
-        "info": {
-            "title": "PhysiClaw Midscene Device API",
-            "version": "1",
-            "description": "Inspect the connected phone and execute actions on the calibrated rig. Coordinates are pixels in the device screenshot.",
-        },
-        "servers": [{"url": BASE_PATH + "/api"}],
-        "paths": paths,
-        "components": {
-            "schemas": schemas,
-            "securitySchemes": {"bearer": {"type": "http", "scheme": "bearer"}},
-        },
-        "security": [{"bearer": []}],
     }

@@ -1,9 +1,9 @@
 ---
 title: 最佳实践
-description: 如何用好 PhysiClaw：作为个人助理，接入编程智能体，把例行任务做成 playbook。
+description: 如何用好 PhysiClaw——作为个人助理，接入编程智能体，用 Midscene 做自动化测试，以及把例行任务做成 playbook。
 ---
 
-PhysiClaw 有三种用法：作为个人助理，作为 MCP 服务器接入编程智能体，以及用 playbook 执行重复任务。
+PhysiClaw 可以作为个人助理，作为 MCP 服务器接入编程智能体，配合 Midscene 做真机自动化测试，还可以用 playbook 执行重复任务。
 
 ## 作为个人助理
 
@@ -34,6 +34,39 @@ PhysiClaw 在使用过程中逐渐了解你的偏好。
 :::tip[在终端输入]
 打开小象超市，告诉我购物车里有什么。
 :::
+
+## 用 Midscene 做自动化测试
+
+PhysiClaw 已经内置集成了 [Midscene Connect](https://www.midscenejs.com/zh/midscene-connect)，无需在手机上开启调试接口，即可用视觉模型直接对真机跑端到端 UI 自动化测试：
+
+```bash
+physiclaw server --midscene
+# 如果设备位置没有变化，可直接复用已保存的标定：
+# physiclaw now --midscene
+```
+
+硬件就绪后，使用 PhysiClaw 终端输出的 Connect URL 和本次 token 启动 Playground（标定完成页也可直接复制基础连接地址）：
+
+```bash
+✔ PhysiClaw is ready for Midscene Connect
+
+  Connect URL       http://127.0.0.1:8048/midscene-device
+  Token             <your-token>
+  Midscene Connect  https://www.midscenejs.com/midscene-connect
+
+  Playground · run in another terminal
+    $ npx @midscene/connect@beta playground --url http://127.0.0.1:8048/midscene-device --token <your-token>
+```
+
+| 类别 | 支持能力 | 说明 |
+| --- | --- | --- |
+| 画面 | `screenshot`、`size` | 校准后的屏幕画面 |
+| 点击 | `tap`、`doubleClick`、`longPress` | `tap` 和 `longPress` 支持 `duration` |
+| 滑动 | `swipe`、`dragAndDrop` | `swipe` 支持 `duration` 和 `repeat` |
+| 系统 | `homeButton`、`backButton`、`recentAppsButton` | 物理边缘手势回主屏、返回、多任务界面 |
+| 自定义动作 | `sendToClipboard`、`forceQuit`、`unlockPhone` | 写入剪贴板辅助输入、关闭当前应用、解锁已配置测试密码的手机 |
+
+想了解更多 Midscene 自动化测试脚本写法，可以参考 [Midscene Connect 文档](https://www.midscenejs.com/zh/midscene-connect) 与 [midscene-test-everything](https://github.com/web-infra-dev/midscene-test-everything)。
 
 ## 把例行任务做成 playbook
 

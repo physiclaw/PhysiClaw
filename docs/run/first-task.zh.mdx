@@ -42,13 +42,3 @@ physiclaw now
 :::tip[还没配置模型？]
 使用智能体前，需要先配置大模型。尚未配置的话，请参阅[获取 API Key](/zh/set-up/provider/)。
 :::
-
-## 使用 Midscene Playground
-
-运行 `physiclaw server --midscene` 并完成硬件校准。如果上次正常关机后设备位置没有变化、机械臂仍在停靠点，可用 `physiclaw now --midscene` 恢复已保存的标定。
-
-硬件就绪后，在另一个终端运行打印出的 Playground 命令。命令包含这台设备的 URL 和本次服务的 token，重启后会生成新 token。视觉模型和 API key 在 Midscene 侧配置，PhysiClaw 提供单台手机的画面和触控，并跳过内置 agent。
-
-Playground 可以点击、双击、长按、滑动、拖放、回主屏、执行 iOS 边缘返回手势和打开多任务界面。自定义动作支持复制文字到手机剪贴板、关闭当前应用，以及解锁已配置 PhysiClaw 测试密码的手机。打开终端打印的 API 文档地址即可查看请求参数。要试用接口，点击 **Authorize** 并输入本次服务的 token。
-
-标定完成页中 Midscene Connect 旁的复制按钮会复制含本次 token 的连接地址，可直接用作 `--url`。

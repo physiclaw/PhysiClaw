@@ -38,7 +38,7 @@ Object.defineProperties(prototype, {
 });
 
 async function createSetup({saved = true, language = 'en', initial = {}, responses = {}, noRuntime = false,
-  midscene = false, token = '', writeText = () => {}, origin = 'http://127.0.0.1:8048'} = {}) {
+  midscene = false, writeText = () => {}, origin = 'http://127.0.0.1:8048'} = {}) {
   const filename = path.join(__dirname, '../../src/physiclaw/static/setup/setup-hardware.html');
   const html = fs.readFileSync(filename, 'utf8').replace('__NO_RUNTIME__', String(noRuntime)).replace('__MIDSCENE_PATH__', JSON.stringify(midscene ? '/midscene-device' : null));
   const document = documentFrom(html);
@@ -76,7 +76,7 @@ async function createSetup({saved = true, language = 'en', initial = {}, respons
   ]);
   let now = Date.parse("2026-08-30T12:00:00Z");
   const context = vm.createContext({
-    document, URLSearchParams, window: {location: {origin, hash: token ? "#midscene=" + token : "", pathname: "/setup-hardware", search: ""}, history: {replaceState() {}}}, navigator: {language, clipboard: {writeText}}, console, AbortController,
+    document, window: {location: {origin}}, navigator: {language, clipboard: {writeText}}, console, AbortController,
     localStorage: {getItem: () => null, setItem() {}},
     Date: class extends Date {static now() { return now; }},
     setTimeout: (callback, delay = 0) => {

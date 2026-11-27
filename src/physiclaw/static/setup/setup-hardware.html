@@ -217,6 +217,7 @@ h1{font-size:30px;line-height:1.16;margin:0 0 13px;letter-spacing:-.025em;font-w
 .connection-address code{min-width:0;overflow-wrap:anywhere;font-size:13px;color:var(--muted)}
 .copy-address{background:transparent;border:0;color:var(--muted);padding:6px;cursor:pointer}
 .copy-address:hover,.copy-address:focus-visible{color:var(--accent)}
+.connection-hint{color:var(--muted);font-size:12px;margin:4px 0 0;padding-inline-start:14px}
 .success-hero .big{width:80px;height:80px;border-radius:50%;margin:0 auto 18px;display:grid;place-items:center;
   font-size:40px;background:linear-gradient(135deg,var(--accent-lt),var(--accent-d));color:var(--accent-ink);
   box-shadow:0 12px 40px rgba(212,81,26,.4)}
@@ -553,7 +554,10 @@ const STR = {
   copyAddress: { en: n => `Copy ${n} URL`, zh: n => `复制 ${n} 地址` },
   copied: { en: "Copied", zh: "已复制" },
   copyFailed: { en: "Copy failed", zh: "复制失败" },
-  enterToken: { en: "Enter the Midscene token from the PhysiClaw terminal.", zh: "请输入 PhysiClaw 终端中的 Midscene token。" },
+  midsceneTokenHint: {
+    en: "Use with the session token printed in the PhysiClaw terminal.",
+    zh: "请配合 PhysiClaw 终端中输出的本次 token 使用。",
+  },
   s_finish_close: { en: "You can close this tab now.", zh: "现在可以关闭这个标签页了。" },
   s_finish_mcp_checking: { en: "Checking…", zh: "检查中…" },
   s_finish_mcp_online: { en: "Online", zh: "在线" },
@@ -1109,16 +1113,8 @@ function assistiveTouch(ctx) {
 
 /* ── 10. Finish ────────────────────────────────────── */
 const midscenePath = __MIDSCENE_PATH__;
-// The locally launched wizard receives its credential in a URL fragment.
-// Keep it in this history entry across reloads, outside the address bar.
-let wizardToken = null;
-if (midscenePath) {
-  const fragment = new URLSearchParams(window.location.hash.slice(1)).get("midscene");
-  wizardToken = fragment || window.history.state?.midsceneToken;
-  if (fragment) window.history.replaceState({midsceneToken: fragment}, "", window.location.pathname + window.location.search);
-}
 
-function connectionRow(label, path, withToken) {
+function connectionRow(label, path, hint) {
   const row = $(`<div class="connection-row"><strong class="mcp-label"></strong>
     <div class="connection-address"><code></code><button class="copy-address" type="button">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 5V4a1 1 0 0 0-1-1H5a2 2 0 0 0-2 2v10a1 1 0 0 0 1 1h1"/></svg></button>
@@ -1126,22 +1122,22 @@ function connectionRow(label, path, withToken) {
   const url = window.location.origin + path;
   row.querySelector("strong").textContent = label;
   row.querySelector("code").textContent = url;
+  if (hint) {
+    const noteEl = document.createElement("p");
+    noteEl.className = "connection-hint";
+    noteEl.textContent = hint;
+    row.appendChild(noteEl);
+  }
   const button = row.querySelector("button");
   button.setAttribute("aria-label", t("copyAddress", label));
   button.title = t("copyAddress", label);
   button.onclick = async () => {
-    let value = url;
-    if (withToken) {
-      const token = wizardToken || window.prompt(t("enterToken"))?.trim();
-      if (!token) return;
-      value += "/" + encodeURIComponent(token);
-    }
     const feedback = row.querySelector(".copy-status");
     try {
-      if (navigator.clipboard) await navigator.clipboard.writeText(value);
+      if (navigator.clipboard) await navigator.clipboard.writeText(url);
       else {
         const field = document.createElement("textarea");
-        field.value = value;
+        field.value = url;
         field.style.cssText = "position:fixed;opacity:0";
         document.body.appendChild(field);
         try {
@@ -1175,7 +1171,7 @@ function finish(ctx) {
     if (__NO_RUNTIME__) {
       const connect = midscenePath ? $('<div class="mcp-connect connection-list"><span class="sr-only" id="mcpStatus" role="status"></span></div>') : $(`<p class="mcp-connect"><span class="mcp-label">MCP:<span class="sr-only" id="mcpStatus" role="status"></span></span> <span id="mcpAddress"></span></p>`);
       if (midscenePath) {
-        connect.append(connectionRow("MCP", "/mcp", false), connectionRow("Midscene Connect", midscenePath, true));
+        connect.append(connectionRow("MCP", "/mcp"), connectionRow("Midscene Connect", midscenePath, t("midsceneTokenHint")));
       } else connect.querySelector("#mcpAddress").textContent = window.location.origin + "/mcp";
       hero.appendChild(connect);
       const status = connect.querySelector("#mcpStatus");

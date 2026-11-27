@@ -10,11 +10,9 @@ from pydantic import ValidationError
 from starlette.applications import Starlette
 from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
-from starlette.responses import FileResponse, JSONResponse
-from starlette.routing import Mount, Route
-from starlette.staticfiles import StaticFiles
+from starlette.responses import JSONResponse
+from starlette.routing import Route
 
-from physiclaw.common.assets import STATIC_DIR
 from physiclaw.core.orchestration.midscene_device import MidsceneDevice
 from physiclaw.core.orchestration.orchestrator import PhysiClaw
 from physiclaw.core.orchestration.rig import TOOL_LOCK_WAIT_SECONDS
@@ -22,7 +20,6 @@ from physiclaw.core.server.midscene_schema import (
     ACTIONS,
     PRIMITIVES,
     device_info,
-    openapi,
 )
 
 log = logging.getLogger(__name__)
@@ -56,14 +53,7 @@ def device_app(pl: PhysiClaw, token: str) -> Starlette:
         @wraps(handler)
         async def checked(request: Request):
             auth = request.headers.getlist("authorization")
-            link_token = request.path_params.get("link_token")
-            if link_token is not None:
-                valid = hmac.compare_digest(link_token.encode(), token.encode())
-            else:
-                valid = len(auth) == 1 and hmac.compare_digest(
-                    auth[0].encode(), expected
-                )
-            if not valid:
+            if len(auth) != 1 or not hmac.compare_digest(auth[0].encode(), expected):
                 return error(401, "UNAUTHORIZED", "A valid bearer token is required")
             try:
                 return await handler(request)
@@ -84,9 +74,6 @@ def device_app(pl: PhysiClaw, token: str) -> Starlette:
     @authenticated
     async def info(request: Request):
         return JSONResponse(device_info())
-
-    async def spec(request: Request):
-        return JSONResponse(openapi())
 
     @authenticated
     async def screenshot(request: Request):
@@ -127,32 +114,10 @@ def device_app(pl: PhysiClaw, token: str) -> Starlette:
             return JSONResponse({**result, "result": value})
         return JSONResponse(result)
 
-    async def docs(request: Request):
-        return FileResponse(
-            STATIC_DIR / "midscene" / "docs.html",
-            headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
-        )
-
     routes = [
         Route("/api/info", info),
         Route("/api/screenshot", screenshot),
         Route("/api/size", size),
-        Route("/api/openapi.json", spec),
-        Route("/api/docs/", docs),
-        Mount(
-            "/api/docs/assets",
-            StaticFiles(directory=STATIC_DIR / "vendor" / "swagger-ui-5.35.1"),
-        ),
         Route("/api/{kind}/{name}", action, methods=["POST"]),
     ]
-    # Connect appends /api/... to its base URL. Keep the credential in a
-    # path segment so a copied URL works with an unmodified Connect client.
-    routes.extend(
-        [
-            Route("/{link_token}/api/info", info),
-            Route("/{link_token}/api/size", size),
-            Route("/{link_token}/api/screenshot", screenshot),
-            Route("/{link_token}/api/{kind}/{name}", action, methods=["POST"]),
-        ]
-    )
     return Starlette(routes=routes)

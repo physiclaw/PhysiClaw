@@ -66,7 +66,7 @@ def device(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_discovery_auth_docs_and_route_isolation(device):
+async def test_discovery_auth_and_route_isolation(device):
     phone, client = device
     async with client:
         phone.rig.ready = False
@@ -89,40 +89,19 @@ async def test_discovery_auth_docs_and_route_isolation(device):
             },
             "required": ["text"],
         }
-        spec = (await client.get(f"{PREFIX}/openapi.json")).json()
-        assert all("/primitives/" + p in spec["paths"] for p in info["primitives"])
-        assert all("/actions/" + a["name"] in spec["paths"] for a in info["actions"])
-        docs = await client.get(f"{PREFIX}/docs/")
-        assert docs.status_code == 200
-        assert "SwaggerUIBundle" in docs.text
-        for asset in ("swagger-ui-bundle.js", "swagger-ui.css"):
-            assert (
-                await client.get(f"{PREFIX}/docs/assets/{asset}")
-            ).status_code == 200
+        assert (await client.get(f"{PREFIX}/docs/", headers=AUTH)).status_code == 404
+        assert (
+            await client.get(f"{PREFIX}/openapi.json", headers=AUTH)
+        ).status_code == 404
+        assert (
+            await client.get("/midscene-device/test-token/api/info")
+        ).status_code == 404
         assert (await client.get(f"{PREFIX}/size", headers=AUTH)).status_code == 503
     for app in assembly.build_apps():
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1"
         ) as client:
             assert (await client.get(f"{PREFIX}/info", headers=AUTH)).status_code == 404
-
-
-@pytest.mark.asyncio
-async def test_copied_device_url_authenticates_without_a_header(device):
-    phone, client = device
-    async with client:
-        base = "/midscene-device/test-token/api"
-        assert (await client.get(f"{base}/info")).json()[
-            "protocol"
-        ] == "midscene-connect/1"
-        assert (await client.get(f"{base}/screenshot")).is_success
-        assert (await client.get(f"{base}/size")).is_success
-        point = {"point": {"x": 1, "y": 2}}
-        assert (
-            await client.post("/midscene-device/wrong/api/primitives/tap", json=point)
-        ).status_code == 401
-        phone.rig.move_to_point.assert_not_called()
-        assert (await client.post(f"{base}/primitives/tap", json=point)).is_success
 
 
 @pytest.mark.asyncio

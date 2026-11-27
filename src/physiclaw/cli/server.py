@@ -242,7 +242,6 @@ def server(
                 host, port, model_ref=model_ref, model_source=model_source
             )
         announce_ready: bool | Callable[[], None] = no_runtime
-        token = None
         if midscene:
             import secrets
 
@@ -257,20 +256,21 @@ def server(
                     "✔ PhysiClaw is ready for Midscene Connect", fg="green", bold=True
                 )
                 typer.echo()
-                typer.echo(f"  📖  Device API         {url}/api/docs/")
+                typer.echo(f"  Connect URL       {url}")
+                typer.echo(f"  Token             {token}")
                 typer.echo(
-                    "  🌍  Midscene Connect   https://www.midscenejs.com/midscene-connect"
+                    "  Midscene Connect  https://www.midscenejs.com/midscene-connect"
                 )
                 typer.echo()
                 typer.echo(
-                    "  🎮  Playground "
+                    "  Playground "
                     + typer.style("· run in another terminal", dim=True)
                 )
                 command = (
                     f"npx @midscene/connect@beta playground --url {url} --token {token}"
                 )
                 typer.echo(
-                    "      "
+                    "    "
                     + typer.style("$ ", dim=True)
                     + typer.style(command, fg="cyan")
                 )
@@ -302,7 +302,6 @@ def server(
                     cam_index=cam_index,
                     auto_calibrate=auto_calibrate,
                     no_setup_hardware=no_setup_hardware,
-                    midscene_token=token,
                 ),
             )
         except KeyboardInterrupt:
@@ -744,7 +743,6 @@ def _start_hardware_bringup(
     cam_index: int | None,
     auto_calibrate: bool,
     no_setup_hardware: bool,
-    midscene_token: str | None = None,
 ) -> None:
     """Dispatch hardware bring-up to one of five mutually exclusive modes. Each
     (except --no-setup-hardware, which just waits) runs in a daemon thread so
@@ -762,7 +760,7 @@ def _start_hardware_bringup(
             extra={"console": True},
         )
     else:
-        _open_hardware_wizard(host, port, midscene_token=midscene_token)
+        _open_hardware_wizard(host, port)
 
 
 def _warm_start_hardware(
@@ -827,9 +825,7 @@ def _auto_calibrate_hardware(host: str, port: int) -> None:
     threading.Thread(target=_auto_calibrate_thread, daemon=True).start()
 
 
-def _open_hardware_wizard(
-    host: str, port: int, *, midscene_token: str | None = None
-) -> None:
+def _open_hardware_wizard(host: str, port: int) -> None:
     """Default mode: open the browser hardware-setup wizard once the server is
     actually accepting connections (the page immediately calls /api/status).
     Runs in a daemon thread to keep browser launch off the serving loop."""
@@ -847,10 +843,7 @@ def _open_hardware_wizard(
 
         if wait_for_port(host, port):
             try:
-                webbrowser.open(
-                    setup_url
-                    + (f"#midscene={midscene_token}" if midscene_token else "")
-                )
+                webbrowser.open(setup_url)
             except Exception:
                 # A headless desktop must still be able to start the server.
                 log.debug("could not open browser for setup wizard", exc_info=True)
